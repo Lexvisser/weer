@@ -27,8 +27,19 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith('/api/')) return; // nooit cachen, altijd live data
 
+  // 2026-08-26-fix, op verzoek van Lex (verlopen-weeralarm-icoontjes
+  // vervaagden niet, ook niet na een harde herlaad) -- fetch(event.request)
+  // zonder cache-optie volgt gewoon de normale HTTP-cacheregels van de
+  // browser. Een harde herlaad (Ctrl+Shift+R) omzeilt dat alleen voor de
+  // request die de pagina zelf doet, niet voor een fetch() die van
+  // BINNENUIT een service worker wordt gedaan -- en omdat serveStatic() in
+  // server.js geen Cache-Control/ETag/Last-Modified meestuurt, kon Chrome
+  // hier toch een oude styles.css/app.js uit eigen cache aan de pagina
+  // blijven geven, zelfs na syncen naar de server. cache: 'no-store' dwingt
+  // hier altijd een echte netwerk-fetch af, precies zoals de strategie
+  // hierboven al bedoeld was ("altijd de nieuwste versie zien").
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: 'no-store' })
       .then((netwerkResponse) => {
         const kopie = netwerkResponse.clone();
         caches.open(CACHE_NAAM).then((cache) => cache.put(event.request, kopie));

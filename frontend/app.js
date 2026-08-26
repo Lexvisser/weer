@@ -3695,11 +3695,19 @@ function renderMap(signalen) {
   // hetzelfde rijtje als Vliegradar hierboven (Lex: "alle andere icons
   // verborgen") — leeg lijstje, geen enkel ander kaart-icoon zolang er
   // getrackt wordt.
+  // 2026-08-26, op verzoek van Lex: verlopen signalen (detail.verlopen,
+  // zie historie.js) niet meer als los, gedimd icoon op de kaart tonen --
+  // dat vervagen bleek in de praktijk onbetrouwbaar (zie sw.js-fix
+  // hierboven) en maakte de kaart alleen maar drukker. De "waar was het"-
+  // geschiedenis blijft gewoon bewaard in het inklapbare "verlopen"-blokje
+  // per categorie in de Meldingen-lijst (zie renderMeldingen/
+  // maakVerlopenMeldingItem) -- dit verandert alleen wat er op de kaart zelf
+  // te zien is.
   const teTonenSignalen = vliegModusActief || kaartVolgType
     ? []
     : zeeModusActief
-      ? signalen.filter((s) => s.categorie === 'navtex')
-      : signalen.filter((s) => s.categorie !== 'navtex');
+      ? signalen.filter((s) => s.categorie === 'navtex' && !s.detail?.verlopen)
+      : signalen.filter((s) => s.categorie !== 'navtex' && !s.detail?.verlopen);
   groepeerStationSignalen(teTonenSignalen.filter((s) => s.lat != null && s.lon != null))
     .forEach((s) => {
       // Gevlogen spoor eerst tekenen (onder de marker) — zelf opgebouwd door
@@ -3722,6 +3730,14 @@ function renderMap(signalen) {
       // kaart ("waar was het") i.p.v. een volwaardige actieve melding (die
       // staan niet meer in de Meldingen-lijst, zie renderMeldingen).
       const verlopenKlasse = s.detail?.verlopen ? ' is-verlopen' : '';
+      // 2026-08-26, op verzoek van Lex (na een uur-lang stokoude
+      // onweerbui op de kaart door een WebSocket-hapering bij Blitzortung
+      // -- zie SourceState.isStale()/staleAfterMs in normalize.js/
+      // config.js): dezelfde gedimde is-verlopen-look, nu ook op de
+      // kaart-pin zelf zodra de BRON van dit signaal al te lang niets vers
+      // heeft aangeleverd, i.p.v. alleen de subtiele klasse in de
+      // Meldingen-lijst (maakMeldingItem() verderop).
+      const haperendKlasse = s.bron?.haperend ? ' is-haperend' : '';
       // 2026-08-24, op verzoek van Lex ("als het van ukho is maken we ze
       // blauw (test)") — puur een tijdelijk, visueel testmiddel om
       // navtexLokaal- en UKHO-signalen op de kaart uit elkaar te kunnen
@@ -3779,13 +3795,13 @@ function renderMap(signalen) {
       const icon = s.categorie === 'navtex'
         ? L.divIcon({
             className: '',
-            html: `<div class="navtex-pin${verlopenKlasse}${ukhoTestKlasse}${kabelKlasse}${surveyKlasse}${ankerKlasse}${stationKlasse}${generiekeBoeiKlasse}">${hazardIconHtml(s)}</div>`,
+            html: `<div class="navtex-pin${verlopenKlasse}${haperendKlasse}${ukhoTestKlasse}${kabelKlasse}${surveyKlasse}${ankerKlasse}${stationKlasse}${generiekeBoeiKlasse}">${hazardIconHtml(s)}</div>`,
             iconSize: [26, 26],
             iconAnchor: [13, 13],
           })
         : L.divIcon({
             className: '',
-            html: `<div class="hazard-pin ${pinKlasse}${verlopenKlasse}">${hazardIconHtml(s)}</div>`,
+            html: `<div class="hazard-pin ${pinKlasse}${verlopenKlasse}${haperendKlasse}">${hazardIconHtml(s)}</div>`,
             iconSize: [30, 30],
             iconAnchor: [15, 15],
           });
