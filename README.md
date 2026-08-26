@@ -46,7 +46,8 @@ draaien gewoon mee: aardbevingen (USGS, EMSC), orkanen (NHC), tornado's en
 severe weather (NWS, SPC Day 1-outlook, IEM Local Storm Reports),
 algemeen weer (Open-Meteo, KNMI EDR), weerwaarschuwingen (Meteoalarm),
 multi-hazard-vangnet (GDACS), onweer (Blitzortung, live WebSocket-stream),
-hulpdiensten (P2000, Lifeliner/OpenSky), getij (RWS), en de hele
+hulpdiensten (P2000, Lifeliner/OpenSky), getij (RWS), stormvloedkering-
+status (Maeslant-/Hartelkering, RWS-drempel + nieuwsbevestiging), en de hele
 hemel-categorie (maanstand, ISS-passages, Starlink-trein, ruimteweer/aurora,
 meteorenzwermen, planeten). Voor de volledige, actuele lijst incl. tier
 (officieel/community/lokaal) en pollfrequentie: `backend/src/config.js` is

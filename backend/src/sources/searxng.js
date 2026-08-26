@@ -125,3 +125,37 @@ export async function fetchSearxngMedia(zoekterm, limiet = 4) {
     geefSlotVrij();
   }
 }
+
+// 2026-08-26, op verzoek van Lex ("Maeslantkering/stormvloedkering-status
+// als melding") — voor sources/stormvloedkering.js: ZOEKT of er recent
+// nieuws is (geen foto's/video's zoals fetchSearxngMedia hierboven), dus
+// geen thumbnail-eis en geen stockfoto-filter (niet van toepassing op
+// platte nieuwstekst). time_range=day (niet 'week' zoals hierboven) omdat
+// het hier gaat om "is dit NET gebeurd", niet om media bij een ramp die al
+// een paar dagen loopt. Zelfde MAX_GELIJKTIJDIG-wachtrij hergebruikt (geen
+// eigen tweede limiet nodig, deze en fetchSearxngMedia delen dezelfde
+// SearXNG-instance).
+export async function fetchSearxngNieuws(zoekterm, limiet = 5) {
+  if (!zoekterm) return [];
+  await verkrijgSlot();
+  try {
+    const url = `${SEARXNG_URL}/search?q=${encodeURIComponent(zoekterm)}&format=json&categories=news&time_range=day`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`SearXNG search gaf status ${res.status}`);
+    const body = await res.json();
+    return (body.results ?? [])
+      .filter((r) => r.url && r.title)
+      .map((r) => ({
+        titel: r.title,
+        samenvatting: r.content || '',
+        link: r.url,
+        bron: r.source ? `SearXNG (${r.source})` : 'SearXNG',
+      }))
+      .slice(0, limiet);
+  } catch (err) {
+    console.error(`[weer] searxng nieuws ophalen mislukt voor "${zoekterm}":`, err.message ?? err);
+    return [];
+  } finally {
+    geefSlotVrij();
+  }
+}

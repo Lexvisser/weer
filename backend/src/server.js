@@ -41,6 +41,7 @@ import { fetchIssLive } from './sources/issLive.js';
 import { controleerIssAlarm } from './sources/celestrak.js';
 import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
+import { fetchStormvloedkering } from './sources/stormvloedkering.js';
 
 // Elke bron-id (uit config.js) gekoppeld aan de functie die 'm ophaalt.
 // Nieuwe bron toevoegen? Zet 'm hier neer, voeg een rij toe in config.js,
@@ -72,6 +73,7 @@ const FETCHERS = {
   navtex: (env) => fetchNavtex(env),
   ukho: (env) => fetchUkho(env),
   navtexLokaal: (env) => fetchNavtexLokaal(env),
+  stormvloedkering: () => fetchStormvloedkering(),
 };
 
 const MIME = {

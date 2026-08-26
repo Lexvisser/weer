@@ -410,6 +410,32 @@ export const SOURCES = [
     // comment in navtexLokaal.js).
     note: 'Testontvangst met ATS Mini + MLA-30+ loopantenne op lexdev-nw, gedecodeerd met navtex_rx_from_file. Zie sources/navtexLokaal.js voor het volledige voorbehoud — dit is nadrukkelijk nog een testopstelling, geen definitief systeem.',
   },
+  {
+    id: 'stormvloedkering',
+    categorie: 'stormvloedkering-waarschuwing',
+    naam: 'Maeslant-/Hartelkering (RWS-drempel + nieuwsbevestiging)',
+    tier: 'officieel',
+    pollIntervalMs: 30 * 60 * 1000,
+    staleAfterMs: 3 * 60 * 60 * 1000,
+    implemented: true,
+    // 2026-08-26, op verzoek van Lex ("De Maeslantkering/stormvloedkering-
+    // status zou ik wel als melding willen toevoegen") — geen directe
+    // kering-standsensor gevonden bij RWS (uitgebreid onderzocht, zie de
+    // uitgebreide toelichting bovenaan sources/stormvloedkering.js), dus
+    // TWEE gecombineerde signalen: (1) vroege waarschuwing via RWS' eigen
+    // gepubliceerde sluitcriterium (verwachte waterstand >NAP+3,00m
+    // Rotterdam of >NAP+2,90m Dordrecht, dezelfde bewezen WADAR-aanroep als
+    // getij.js), categorie 'stormvloedkering-waarschuwing'; (2) bevestiging
+    // via nieuwsmonitoring op Lex' eigen SearXNG-instance (net als
+    // searxng.js), categorie 'stormvloedkering-gesloten' — community/
+    // fragiel, hangt af van of/hoe snel er nieuws verschijnt. Maeslant- en
+    // Hartelkering samen in één melding (sluiten vrijwel altijd
+    // gelijktijdig, zelfde operationeel team). Beide categorieën nog niet
+    // live bevestigd tegen een echte sluiting (die kwam voor het eerst pas
+    // in december 2023 voor, dus zeldzaam) — check bij een volgende storm
+    // de server-log.
+    note: 'RWS-sluitcriterium (WADAR-verwachting) als vroege waarschuwing + SearXNG-nieuwsmonitoring als bevestiging — zie sources/stormvloedkering.js voor het volledige voorbehoud. Nog niet live bevestigd tegen een echte sluiting.',
+  },
 ];
 
 export function getSource(id) {

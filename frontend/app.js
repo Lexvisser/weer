@@ -410,6 +410,13 @@ const EMOJI_PER_CATEGORIE = {
   // (reddingsboei) — past beter bij "maritiem veiligheidsbericht" dan een
   // schotelantenne.
   navtex: '🛟',
+  // 2026-08-26, op verzoek van Lex — Maeslant-/Hartelkering, zie
+  // backend/src/sources/stormvloedkering.js. 🚧 voor de vroege
+  // waarschuwing (kans op sluiting, nog niet bevestigd), 🔒 voor de
+  // nieuws-bevestigde daadwerkelijke sluiting — bewust een ander icoon
+  // zodat het verschil ook op de kaart meteen duidelijk is.
+  'stormvloedkering-waarschuwing': '🚧',
+  'stormvloedkering-gesloten': '🔒',
 };
 
 // 2026-08-19, op verzoek van Lex ("Moet toch Weeralarm gaan heten op de
@@ -458,6 +465,8 @@ const NAAM_PER_CATEGORIE = {
   tsunami: 'Tsunami Warning',
   'tsunami-watch': 'Tsunami Watch',
   navtex: 'NAVTEX',
+  'stormvloedkering-waarschuwing': 'Kans op sluiting stormvloedkering',
+  'stormvloedkering-gesloten': 'Stormvloedkering gesloten',
 };
 // Categorieën met rijkere popup-inhoud (plaatjes/tekstblokken, zie
 // popupExtraHtml) krijgen een bredere Leaflet-popup dan de standaard 240px.
@@ -5591,7 +5600,16 @@ function renderZonMaan(signalenPerCategorie) {
 // tornado's, maar waren nooit aan deze lijst toegevoegd. Zelfde reden als
 // bij weerwaarschuwing: geen Doppler-relevantie, dus niet in
 // DOPPLER_CATEGORIEEN, wel hier.
-const ALARM_CATEGORIEEN = new Set([...DOPPLER_CATEGORIEEN, 'weerwaarschuwing', 'tsunami', 'tsunami-watch']);
+// 2026-08-26, op verzoek van Lex ("Maeslantkering/stormvloedkering-status
+// als melding") — 'stormvloedkering-gesloten' (nieuws-bevestigde sluiting)
+// erbij als volledig-scherm-alarm-trigger, zelfde soort losstaande
+// toevoeging als weerwaarschuwing/tsunami hierboven. 'stormvloedkering-
+// waarschuwing' (de vroege, afgeleide inschatting) bewust NIET hier — dat
+// zou te vaak/te vroeg het volledig-scherm-alarm laten afgaan voor iets
+// dat nog geen bevestigde gebeurtenis is; die krijgt wel gewoon een
+// Pushover/mail/webpush-melding (zie stormvloedkering.js), alleen niet dit
+// zwaarste kanaal.
+const ALARM_CATEGORIEEN = new Set([...DOPPLER_CATEGORIEEN, 'weerwaarschuwing', 'tsunami', 'tsunami-watch', 'stormvloedkering-gesloten']);
 
 // 2026-08-21, op verzoek van Lex ("ik wil een knop waarmee ik de alarmen
 // zelf kan aan- en uitzetten... voor elke categorie een aan/uit switch") —
@@ -5614,6 +5632,7 @@ const ALARM_CATEGORIE_DEFINITIES = [
   // ELK navtex-bericht laten alarmeren, veel te druk); dit dekt alleen
   // type-D berichten.
   { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)' },
+  { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)' },
 ];
 
 // Client-side voorkeur (per toestel/browser) — geen serverinstelling, dit is
