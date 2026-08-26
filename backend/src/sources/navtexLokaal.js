@@ -743,6 +743,30 @@ function zelfVervalDatumIn(tekst) {
 // meerdere keren voorkomen (niet live gezien, voor de zekerheid alles
 // meegenomen).
 const CANCEL_REGEX = /CANCEL\s+([\s\S]{0,40})/gi;
+// 2026-08-26, op verzoek van Lex ("MSI 217/26 MSI 216/26 CANCELLED") --
+// tweede, omgekeerde volgorde: het referentienummer EERST, met "CANCELLED"
+// er losstaand achteraan i.p.v. "CANCEL <referentie>" ervoor (allebei
+// bestaande NAVTEX-formuleringen). Per gevonden referentie wordt alleen
+// gekeken naar het stukje tekst TOT de volgende referentie (of einde
+// bericht) -- anders zou een CANCELLED verderop in het bericht per ongeluk
+// aan een EERDERE referentie kunnen blijven plakken, zoals hier het eigen
+// berichtnummer (217/26) vlak voor de echte, ingetrokken referentie
+// (216/26).
+const REFERENTIE_GLOBAAL_REGEX = new RegExp(REFERENTIE_REGEX.source, 'gi');
+function cancelledAchterAfIn(tekst) {
+  const gevonden = [];
+  const matches = [...tekst.matchAll(REFERENTIE_GLOBAAL_REGEX)];
+  for (let i = 0; i < matches.length; i++) {
+    const eind = matches[i].index + matches[i][0].length;
+    const volgendeStart = i + 1 < matches.length ? matches[i + 1].index : tekst.length;
+    const ertussen = tekst.slice(eind, volgendeStart);
+    if (/^\s*(?:IS\s+|NOW\s+)?CANCELLED\b/i.test(ertussen)) {
+      const ref = referentieIn(matches[i][0]);
+      if (ref) gevonden.push(ref);
+    }
+  }
+  return gevonden;
+}
 function geannuleerdeReferentiesIn(tekst) {
   const gevonden = [];
   CANCEL_REGEX.lastIndex = 0;
@@ -752,6 +776,7 @@ function geannuleerdeReferentiesIn(tekst) {
     const ref = referentieIn(m[1]);
     if (ref) gevonden.push(ref);
   }
+  gevonden.push(...cancelledAchterAfIn(tekst));
   return gevonden;
 }
 

@@ -260,6 +260,27 @@ function zelfVervalDatumIn(tekst) {
 // Alle "CANCEL <referentienummer>"-vermeldingen, MET uitzondering van
 // "CANCEL THIS MSG/MESSAGE ..." (dat is de zelf-vervaldatum hierboven).
 const CANCEL_REGEX = /CANCEL\s+([\s\S]{0,40})/gi;
+// 2026-08-26, zie navtexLokaal.js voor de volledige toelichting (Lex:
+// "MSI 217/26 MSI 216/26 CANCELLED") -- omgekeerde volgorde t.o.v.
+// CANCEL_REGEX hierboven: referentie eerst, "CANCELLED" losstaand
+// erachteraan. Alleen het stukje tekst TOT de volgende referentie (of einde
+// bericht) telt mee, zodat een CANCELLED verderop niet per ongeluk aan een
+// eerdere referentie (zoals het eigen berichtnummer) blijft plakken.
+const REFERENTIE_GLOBAAL_REGEX = new RegExp(REFERENTIE_REGEX.source, 'gi');
+function cancelledAchterAfIn(tekst) {
+  const gevonden = [];
+  const matches = [...tekst.matchAll(REFERENTIE_GLOBAAL_REGEX)];
+  for (let i = 0; i < matches.length; i++) {
+    const eind = matches[i].index + matches[i][0].length;
+    const volgendeStart = i + 1 < matches.length ? matches[i + 1].index : tekst.length;
+    const ertussen = tekst.slice(eind, volgendeStart);
+    if (/^\s*(?:IS\s+|NOW\s+)?CANCELLED\b/i.test(ertussen)) {
+      const ref = referentieUitTekst(matches[i][0]);
+      if (ref) gevonden.push(ref);
+    }
+  }
+  return gevonden;
+}
 function geannuleerdeReferentiesIn(tekst) {
   const gevonden = [];
   CANCEL_REGEX.lastIndex = 0;
@@ -269,6 +290,7 @@ function geannuleerdeReferentiesIn(tekst) {
     const ref = referentieUitTekst(m[1]);
     if (ref) gevonden.push(ref);
   }
+  gevonden.push(...cancelledAchterAfIn(tekst));
   return gevonden;
 }
 // Module-scoped, overleeft pollcycli zolang de service draait — zelfde
