@@ -5279,6 +5279,11 @@ const ALARM_CATEGORIE_DEFINITIES = [
   { id: 'tsunami', label: 'Tsunami Warning' },
   { id: 'tsunami-watch', label: 'Tsunami Watch' },
   { id: 'weerwaarschuwing', label: 'Weeralarm (oranje/rood)' },
+  // 2026-08-26, op verzoek van Lex — zie de uitgebreide toelichting bij
+  // magAlarmeren() hieronder. Losse toggle i.p.v. gewoon "navtex" (dat zou
+  // ELK navtex-bericht laten alarmeren, veel te druk); dit dekt alleen
+  // type-D berichten.
+  { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)' },
 ];
 
 // Client-side voorkeur (per toestel/browser) — geen serverinstelling, dit is
@@ -5527,7 +5532,18 @@ MELDINGEN_KNOP_EL?.addEventListener('click', async () => {
 // opdringerig, dus dezelfde grens. Die grens staat los van de aan/uit-knop
 // hierboven: geel alarmeert nooit, wat de knop ook zegt.
 function magAlarmeren(s) {
-  if (!ALARM_CATEGORIEEN.has(s.categorie) || s.detail?.verlopen) return false;
+  if (s.detail?.verlopen) return false;
+  // 2026-08-26, op verzoek van Lex ("noodberichten via navtex met een alarm
+  // laten binnenkomen net als de andere alarms") -- navtex zit expres NIET
+  // in ALARM_CATEGORIEEN: bijna elk navtex-bericht is routine (boei
+  // verplaatst, licht kapot, oefening) en zou het alarm zinloos druk maken.
+  // Alleen berichttype D (SAR/opsporing-redding, piraterij, tsunami/
+  // natuurrampen -- zie noodbericht in navtexLokaal.js) verdient dezelfde
+  // volledig-scherm/geluid/trilling-behandeling als tornado/tsunami/
+  // weerwaarschuwing hieronder, dus een eigen kortsluiting vóór de generieke
+  // ALARM_CATEGORIEEN-check (die 'navtex' als categorie sowieso nooit bevat).
+  if (s.categorie === 'navtex') return Boolean(s.detail?.noodbericht) && alarmCategorieAan('navtex-nood');
+  if (!ALARM_CATEGORIEEN.has(s.categorie)) return false;
   if (!alarmCategorieAan(s.categorie)) return false; // door Lex zelf uitgezet in Instellingen
   if (s.categorie === 'weerwaarschuwing') return s.detail?.kleur === 'oranje' || s.detail?.kleur === 'rood';
   return true;

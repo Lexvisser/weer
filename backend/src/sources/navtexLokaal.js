@@ -1132,6 +1132,20 @@ export async function fetchNavtexLokaal(env = {}) {
       laatstGezien: b.laatstGezien ? b.laatstGezien.toISOString() : null,
       // 2026-08-26, zie positieIsStation hierboven.
       positieIsStation: b.positieIsStation,
+      // 2026-08-26, op verzoek van Lex ("noodberichten via navtex met een
+      // alarm laten binnenkomen net als de andere alarms") -- de tweede
+      // letter in de NAVTEX-code (zie leesStationEnType()/typeLetter
+      // hierboven, ITU-R M.540/M.625) geeft het berichttype aan; letter D is
+      // "SAR (opsporing en redding), piraterij, tsunami's en andere
+      // natuurrampen" (zie TYPE_OMSCHRIJVING.D hierboven) -- precies de
+      // categorie die een telefoonalarm verdient, in tegenstelling tot bijv.
+      // A (gewone navigatiewaarschuwing) of E (weersverwachting). Alleen
+      // zinvol voor deze lokale bron (typeLetter komt uit de eigen
+      // ATS Mini-decodering); de UKHO-bulletinbron (ukho.js) heeft geen
+      // vergelijkbare lettercode en blijft dus altijd noodbericht:false. Zie
+      // magAlarmeren() in app.js voor de daadwerkelijke alarmtrigger.
+      typeLetter: b.typeLetter ?? null,
+      noodbericht: b.typeLetter === 'D',
       bron: 'lokaal (ATS Mini + MLA-30+, testopstelling)',
       bestand,
     };
