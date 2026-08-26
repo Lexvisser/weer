@@ -485,6 +485,29 @@ const MELDINGEN_CATEGORIEEN_UITGESLOTEN = new Set(['hemel', 'algemeen-weer']);
 function initMap() {
   kaart = L.map('map', { attributionControl: true, zoomControl: true, maxZoom: 18 }).setView([THUIS.homeLat, THUIS.homeLon], 6);
 
+  // 2026-08-26-fix, op melding van Lex (blijvend zwart/afgesneden vlak
+  // rechts op de kaart, tablet-breedte, meteen bij het openen -- geen
+  // pinch/zoom nodig): L.map('map', ...) hierboven meet de containermaat op
+  // het EXACTE moment van initMap() (aangeroepen zodra laadConfig()'s eigen
+  // fetch klaar is, dus mogelijk vlak vóórdat de pagina een volledige
+  // reflow/laatste stylesheet-toepassing heeft gehad). Als de tablet-only
+  // fullscreen-kaart-CSS (@media (min-width:768px) body.kaart-actief in
+  // styles.css) op dat moment nog niet volledig is toegepast, bakt Leaflet
+  // een te kleine interne maat in -- de kaart-DIV zelf is dan wel al
+  // edge-to-edge breed (CSS klopt), maar Leaflet tekent alleen tegels
+  // binnen zijn eigen (te kleine) onthouden maat, en de rest van de
+  // container blijft gewoon zijn eigen donkere achtergrondkleur tonen
+  // (.map { background:#0c0f1a }) -- vandaar het zwarte vlak.
+  // wisselView()'s eigen kaart.invalidateSize() (verderop in dit bestand)
+  // vangt dit alleen bij een latere tabwissel NAAR Kaart, niet bij de
+  // eerste keer laden terwijl je al op de kaarttab staat (de standaardstand,
+  // en precies Lex' geval). Een ResizeObserver op de kaartcontainer zelf is
+  // hier het robuustere structurele antwoord: die meldt zich bij ELKE
+  // daadwerkelijke afmetingswijziging (initiële layout, lettertype-reflow,
+  // rotatie, iPad-split-view), niet alleen het ene moment waarop
+  // wisselView() toevallig oplet.
+  new ResizeObserver(() => kaart.invalidateSize()).observe(document.getElementById('map'));
+
   // Losse pane voor de wolkenfilm, boven de basiskaart-tiles maar onder de
   // markers — houdt de radarlaag ook onafhankelijk instelbaar (bijv. een
   // eigen CSS-filter) zonder de basiskaart te raken, mocht dat later nodig zijn.
@@ -2494,6 +2517,19 @@ const NAVTEX_BOEI_CARDINAAL_SVG = {
   west: NAVTEX_BOEI_WEST_SVG,
 };
 
+// 2026-08-26, op verzoek van Lex (PA04 "WAVERIDER BUOY DEPLOYED": "de
+// waverider bouy is helemaal geel (volledig rond) met een antenne") --
+// zie detail.boeiSoort in navtexLokaal.js. Na een echte referentiefoto van
+// Lex een paar keer bijgesteld: romp een platte, brede koepel (i.p.v. een
+// volledige bol) met een inkeping in de onderkant (het luikje op de foto),
+// citroengele mast vanuit het midden van de romp i.p.v. wit vanaf de rand.
+const NAVTEX_WAVERIDER_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <path d="M5.5,17.2 A6.5,4 0 0 1 18.5,17.2 L11,17.2 L9,15.5 L7,17.2 Z" fill="#ffcc33" stroke="#8a6d1a" stroke-width="0.7" stroke-linejoin="round"/>
+    <line x1="12" y1="16" x2="15.8" y2="2.2" stroke="#f5f500" stroke-width="1.3" stroke-linecap="round"/>
+  </svg>
+`.trim();
+
 // 2026-08-26, op verzoek van Lex ("ik zie dat er berichten zijn die zijn
 // herleid tot het uitzendstation... daar kan een radiomast voor gebruikt
 // worden") -- zie positieIsStation in navtexLokaal.js/ukho.js hierboven.
@@ -2622,8 +2658,21 @@ function hazardIconHtml(s) {
     // andere boei-nieuw-signalen (geen kardinaalteken) houden gewoon het
     // bestaande groene icoon via de normale NAVTEX_EVENT_ICOON-lookup.
     const kardinaal = s.detail?.eventType === 'boei-nieuw' ? NAVTEX_BOEI_CARDINAAL_SVG[s.detail?.boeiRichting] : null;
+    // 2026-08-26, zie NAVTEX_WAVERIDER_SVG hierboven -- zelfde
+    // voorrangsvolgorde-idee als kardinaal hierboven, een boei-nieuw-signaal
+    // is nooit tegelijk kardinaal EN waverider dus de volgorde t.o.v.
+    // elkaar maakt niet uit.
+    const waverider = s.detail?.eventType === 'boei-nieuw' && s.detail?.boeiSoort === 'waverider' ? NAVTEX_WAVERIDER_SVG : null;
     const rigStatus = (s.detail?.eventType === 'riglijst' || s.detail?.eventType === 'platform-defect') ? NAVTEX_EVENT_ICOON[s.detail?.rigStatusType] : null;
-    return kardinaal ?? rigStatus ?? NAVTEX_EVENT_ICOON[s.detail?.eventType] ?? NAVTEX_BOEI_SVG;
+    // 2026-08-26, op verzoek van Lex ("alle boeien die nu rood zijn worden
+    // groen, wat waverider hiervoor ook had... alle boeien die geen eigen
+    // event hebben nog") -- de rood/oranje NAVTEX_BOEI_SVG hierboven was tot
+    // nu toe de terugval voor ALLES zonder eigen icoon (dus ook niet-
+    // gebonden aan 'boei-nieuw'). Vervangen door dezelfde groene
+    // NAVTEX_BOEI_NIEUW_SVG als hierboven, zodat elke boei zonder eigen
+    // classificatie er nu consequent hetzelfde (groen) uitziet i.p.v. soms
+    // groen (boei-nieuw) en soms rood (deze algemene terugval).
+    return kardinaal ?? waverider ?? rigStatus ?? NAVTEX_EVENT_ICOON[s.detail?.eventType] ?? NAVTEX_BOEI_NIEUW_SVG;
   }
   if (s.categorie === 'tornado' || s.categorie === 'tornado-watch') {
     if (s.detail?.tornadoEmergency) return '🚨';
@@ -3711,9 +3760,15 @@ function renderMap(signalen) {
       // om precies te bepalen wanneer de generieke boei ook ECHT getoond
       // wordt (en dus niet per ongeluk ook gloeit rond een ander icoon).
       const kardinaalActief = s.detail?.eventType === 'boei-nieuw' && NAVTEX_BOEI_CARDINAAL_SVG[s.detail?.boeiRichting];
+      // 2026-08-26, zie NAVTEX_WAVERIDER_SVG/hazardIconHtml() hierboven --
+      // zelfde soort uitzondering als kardinaalActief hierboven, anders
+      // gloeit de generieke-boei-achtergrond ook nog per ongeluk rond het
+      // eigen gele waverider-icoon.
+      const waveriderActief = s.detail?.eventType === 'boei-nieuw' && s.detail?.boeiSoort === 'waverider';
       const generiekeBoeiKlasse = s.categorie === 'navtex'
         && !s.detail?.positieIsStation
         && !kardinaalActief
+        && !waveriderActief
         && !NAVTEX_EVENT_ICOON[s.detail?.eventType]
         ? ' is-generieke-boei'
         : '';
@@ -3735,9 +3790,21 @@ function renderMap(signalen) {
             iconAnchor: [15, 15],
           });
       const popupBreedte = POPUP_BREED_CATEGORIEEN.has(s.categorie) ? 300 : 240;
+      // 2026-08-26, perf-fix (op melding van Lex: kaart-opbouw trager +
+      // zwarte tegels bij pinch-zoom): popupHtml(s) draaide voorheen
+      // EAGER voor elke marker, elke 20-seconden-ververscyclus (zie
+      // verversen()/renderMap() hierboven), ook als niemand 'm ooit opent.
+      // Sinds de riglijst-boei/platform-opsplitsing (elke platform/boei nu
+      // een eigen puntsignaal i.p.v. 1 gedeeld signaal) is dat aantal
+      // markers per cyclus flink gegroeid. Leaflet's bindPopup() accepteert
+      // ook een functie i.p.v. een kant-en-klare string -- die wordt pas
+      // aangeroepen op het moment dat de popup daadwerkelijk opent (ook via
+      // marker.openPopup(), zie centreerOpMelding() hierboven), dus dit
+      // werk verschuift van "elke cyclus, voor alle markers" naar "alleen
+      // bij een klik, voor die ene marker".
       const marker = L.marker([s.lat, s.lon], { icon })
         .addTo(signaalLaag)
-        .bindPopup(popupHtml(s) + navtexGroepPopupHtml(s), { maxWidth: popupBreedte });
+        .bindPopup(() => popupHtml(s) + navtexGroepPopupHtml(s), { maxWidth: popupBreedte });
       markersPerId.set(s.id, marker);
       if (Array.isArray(s._groepMeer)) s._groepMeer.forEach((extra) => markersPerId.set(extra.id, marker));
     });

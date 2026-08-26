@@ -1596,6 +1596,14 @@ export async function fetchNavtexLokaal(env = {}) {
           boeiDetails: b.eventInfo.type === 'boei-nieuw' ? boeiDetailsUit(b.body) : null,
           // 2026-08-26, zie cardinaalRichtingUit() hierboven.
           boeiRichting: b.eventInfo.type === 'boei-nieuw' ? cardinaalRichtingUit(b.body) : null,
+          // 2026-08-26, op verzoek van Lex (PA04 "PUZZLE HOLE WAVERIDER
+          // BUOY DEPLOYED": "de waverider bouy is helemaal geel (volledig
+          // rond) met een antenne") -- eigen icoon i.p.v. het generieke
+          // groene "nieuwe boei"-icoon, zie NAVTEX_WAVERIDER_SVG in app.js.
+          // Letterlijk trefwoord, net als CARDINAAL_REGEX hierboven -- staat
+          // altijd zo in de tekst (het is een meetinstrument-typenaam, geen
+          // vrije omschrijving).
+          boeiSoort: b.eventInfo.type === 'boei-nieuw' && /WAVERIDER/i.test(b.body) ? 'waverider' : null,
         },
       }),
     ];
