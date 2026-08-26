@@ -1,0 +1,1133 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+/* 2026-08-25, op melding van Lex ("dubbelklikken vergroot de knoppen op de
+   iOS devices... het hele venster") — dat is Safari's ingebouwde dubbeltik-
+   om-in-te-zoomen-gebaar, dat op mobiel razendsnel per ongeluk afgaat bij
+   twee keer kort achter elkaar tikken (bv. twee keer op een knop tikken die
+   niet meteen reageerde). `touch-action: manipulation` schakelt specifiek
+   dat dubbeltik-zoom-gebaar uit, zonder het gewone twee-vinger-pinch-zoomen
+   te blokkeren (dat blijft dus gewoon werken, ook op de kaart) — het
+   standaardadvies hiervoor, i.p.v. `user-scalable=no` in de viewport-meta-
+   tag zetten (dat zou ALLE zoom uitschakelen, ook bewust pinch-zoomen op de
+   kaart, wat hier niet de bedoeling is).
+   Op html+body i.p.v. alleen op knoppen: Lex meldde dat het hele venster
+   uitzoomt, niet alleen een knop-element, dus dit moet op paginaniveau. */
+html, body { height: 100%; touch-action: manipulation; }
+html {
+  background: radial-gradient(ellipse at top, #131725 0%, #05060a 60%);
+}
+body {
+  /* Nog geen echte tablet/PC-layout (staat open) — voorlopig houdt dit de
+     app op elk schermformaat phone-shaped en voorkomt een uitgerekte,
+     te-brede kaart op een groot venster. */
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+  background: transparent;
+  color: #e8eaed;
+  font-family: 'Inter', sans-serif;
+  /* De pagina zelf scrollt bewust NIET meer (vandaar overflow:hidden en een
+     vaste hoogte i.p.v. min-height) — alleen de actieve .view hieronder
+     scrollt intern. Reden: zolang de hele pagina scrolt, laat Safari op
+     iOS tijdens dat scrollen zijn adresbalk in/uitklappen, en die overgang
+     veroorzaakt precies het "terugveren vlak voor je een knop kunt raken"-
+     probleem bij bijv. de onderste "+N meer"-knop. Met een niet-scrollende
+     pagina en een los scrollend binnenvak speelt die adresbalk-animatie niet
+     meer mee. 100dvh i.p.v. 100vh volgt bovendien Safari's daadwerkelijke
+     zichtbare hoogte, i.p.v. de hoogte van vóór het inklappen van de balk. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.statusbar { flex-shrink:0; display:flex; justify-content:space-between; padding: 12px 20px 4px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#7d8399; }
+
+.app-header { flex-shrink:0; display:flex; justify-content:space-between; align-items:center; padding: 10px 20px 14px; }
+.app-header .loc .name { font-family:'Space Grotesk',sans-serif; font-size:18px; color:#f4f6fb; }
+.app-header .loc .sub { font-family:'JetBrains Mono',monospace; font-size:11px; color:#7d8399; }
+.app-header .temp { font-family:'Space Grotesk',sans-serif; font-size:22px; color:#f4f6fb; }
+/* 2026-08-20: weericoon + conditietekst ("Bewolkt") stonden hier eerst naast
+   de plaatsnaam links (.loc .name-row, inmiddels weg) — op Lex' verzoek
+   verhuisd naar rechts, naast de temperatuur, en iets vergroot (was 20px
+   icoon/12px tekst). .temp-groep is de rechterkant van de header: icoon,
+   dan conditietekst, dan de temperatuur zelf, in die volgorde. */
+.app-header .temp-groep { display:flex; align-items:center; gap:6px; }
+.app-header .temp-groep .weer-icoon-wrap-klein { flex-shrink:0; line-height:0; }
+.app-header .temp-groep .weer-icoon-wrap-klein svg { width:26px; height:auto; display:block; }
+.app-header .temp-groep .conditie-klein { font-family:'Space Grotesk',sans-serif; font-size:14px; color:#9aa2c2; }
+
+/* views (tabs) — elke .view is nu zelf het scrollende vak (zie toelichting
+   bij body hierboven), niet de pagina als geheel. min-height:0 is nodig
+   binnen een flex-kolom, anders groeit het vak mee met de inhoud i.p.v. te
+   scrollen. padding-bottom houdt rekening met de vaste bottom-nav eronder
+   (incl. env(safe-area-inset-bottom), voor iPhones zonder homeknop) plus wat
+   extra ademruimte zodat het laatste item nooit precies op de scroll-rand
+   staat. overscroll-behavior-y:contain voorkomt de elastische terugveer-
+   bounce zelf nog als extra vangnet. */
+.view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px) + 24px);
+}
+.view-titel { font-family:'Space Grotesk',sans-serif; font-size:15px; color:#f4f6fb; padding: 14px 16px 10px; }
+/* 2026-08-20-fix, op verzoek van Lex ("als de kaart groot is dan zie ik half
+   kaart half lijst") — #viewKaart hieronder (een ID-selector) heeft een
+   hogere CSS-specificiteit dan deze kale .verborgen-klasse, dus won
+   `display:flex` van de kaart altijd van `display:none` zodra je tussen
+   tabbladen wisselde — de kaarttab bleef dus gewoon zichtbaar naast het
+   lijst-tabblad. !important is hier de juiste (en enige) manier om deze
+   "verborgen"-utility-klasse altijd te laten winnen, ongeacht welke andere
+   display-regel een element verder nog heeft. (2026-08-21: #viewKaart is
+   niet meer conditioneel op een .kaart-uitvergroot-klasse, zie verderop —
+   het specificiteitsprobleem en dus de noodzaak van !important blijft
+   hetzelfde.) */
+.verborgen { display:none !important; }
+
+/* map — echte Leaflet-kaart, Storm Noir-gestileerd via een CSS-filter op de tegel-pane */
+.map-wrap { padding: 0 16px; position:relative; }
+/* 2026-08-19: was 300px, toen verlaagd naar 210px ("compacter verticaal
+   zodat zon/maan op 1 scherm passen") — bleek Lex een dag later juist te
+   klein ("de kaart is gisteren wel erg klein geworden"). 2026-08-20: de
+   platte zonboog + het 6-koloms weer-grid maakten eerst ~75-80px vrij (naar
+   285px), waarna Lex nog restruimte zag onder de boog ("ik heb nog wat
+   ruimte onder de boog... de kaart zou nog 6 mm bij kunnen") — de
+   zonmaan-kaart-padding/marges hierboven verder verkleind (~21px extra) plus
+   de gevraagde 6mm (≈23px, op basis van de gangbare 96dpi/25.4mm-vuistregel
+   voor CSS-px) samen naar de kaart toe: 285 + 21 + 23 ≈ 330px.
+   Tunable: laat het weten als dit op je toestel nog niet de juiste balans is. */
+.map { position:relative; height:330px; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.08); background:#0c0f1a; }
+
+/* 2026-08-19: basiskaart is overgestapt van CARTO's al-donkere "dark_all" naar
+   OpenStreetMap's standaard (lichte/kleurrijke) tegels — zie server.js voor
+   waarom. De oude hue-rotate/saturate/brightness-combinatie was afgestemd op
+   bijna-zwarte broncijngels en maakt een lichte kaart juist té fel. Nu eerst
+   invert(1) om licht→donker om te draaien, met een tegengestelde hue-rotate
+   (~180°) om de kleuren (groen=park, blauw=water) weer ongeveer normaal te
+   laten kloppen i.p.v. de "negatief"-look die pure invert() geeft — een
+   gangbare truc om lichte kaarttegels een donkere-modus-uiterlijk te geven.
+   Nooit live gezien op Lex' eigen scherm; als de kleuren/contrast niet
+   kloppen is dit de eerste plek om bij te stellen. */
+#map .leaflet-tile-pane { filter: invert(1) hue-rotate(200deg) brightness(0.95) contrast(0.9) saturate(1.4); }
+
+/* 2026-08-20, op verzoek van Lex ("los klikken op de kaart toggelt hele
+   gebied, iphone, tot de onderste rij knoppen zoiets" / "de navtexkaart mag
+   ook groter... over de icons en de zonbaan heen vallen") — de kaart vult de
+   volle beschikbare hoogte van dit tabblad. #viewKaart is zelf al de
+   scrollende .view (zie hierboven) met een vaste padding-bottom die precies
+   de ruimte van de bottom-nav reserveert — door #viewKaart een flex-kolom te
+   maken en .map-wrap daarbinnen te laten groeien (flex:1), vult de kaart
+   automatisch exact tot net boven de bottom-nav, zonder losse
+   hoogteberekening.
+   2026-08-21: op verzoek van Lex ("de kaart standaard groot altijd groot...
+   het wisselen tussen klein en groot mag dus vervallen") is dit niet meer
+   een tik-om-te-vergroten-stand (toggleKaartUitvergroot() in app.js is
+   vervallen) maar de permanente, enige weergave van #viewKaart. Het
+   weerkaartje en de zon/maan-kaart stonden hier eerst verborgen "onder" de
+   grote kaart — die zijn inmiddels helemaal verhuisd naar de Hemel-tab (zie
+   index.html), dus die vermelding hieronder is historisch. */
+/* 2026-08-20-fix: eerste versie liet de kaart maar een paar mm groeien —
+   WEATHER_CARD_EL/ZONMAAN_KAART_EL krijgen hun zichtbaarheid via
+   element.style.display = 'block' in app.js (renderWeer()/renderZonMaan(),
+   elke ververscyclus), en zo'n INLINE style wint altijd van een gewone
+   externe regel, ongeacht selector-specificiteit — de weerkaart/zon-maan-
+   kaart bleven dus gewoon hun eigen ruimte opeisen naast .map-wrap, en
+   flex:1 op .map-wrap kreeg alleen de kruimels die overbleven. !important
+   hieronder is de enige manier om een inline style te overrulen zonder de
+   render-functies in app.js zelf conditioneel te maken. */
+/* 2026-08-20-fix-4, op verzoek van Lex ("ik ben de balk weer kwijt bij een
+   grote kaart... het balkje zakt te ver weg") — padding-bottom:0 liet
+   .map-wrap (en dus .radar-controls, die daar `bottom` t.o.v. van hangt) tot
+   de LETTERLIJKE schermonderkant reiken, ONDER de vaste bottom-nav. Elke
+   poging om .radar-controls' `bottom` precies op de nav-hoogte te zetten
+   (vaste px-gok, daarna een live DOM-meting in app.js) bleek stuk voor stuk
+   net iets mis — te hoog (kaartrandje zichtbaar) of te laag (balk verdwijnt
+   achter de nav, niet meer klikbaar). In plaats van die hoogte te blijven
+   raden/meten: padding-bottom NIET meer op 0 zetten, dus .map-wrap stopt hier
+   (net als in elke andere tab) gewoon op de al lang bestaande, betrouwbare
+   .view-reservering vlak boven de bottom-nav — .radar-controls kan daardoor
+   overal dezelfde vaste bottom:6px gebruiken (zie hieronder), geen aparte
+   uitvergroot-regel of JS-meting meer nodig. De kaart wordt nog steeds flink
+   groter (weerkaartje/zonmaan-kaart blijven verborgen), alleen niet meer
+   letterlijk tot ónder de navigatiebalk. */
+/* 2026-08-20-fix-5, op verzoek van Lex ("het balkje staat wel goed, maar er
+   is nog ruimte om de kaart nog wat groter te maken, balkje zal dan wat mee
+   moeten zakken") — de standaard `.view`-reservering (78px + 24px "lucht" +
+   safe-area) is bedoeld voor scrollende lijsten, met wat extra ademruimte
+   onder de laatste regel. Voor de grote kaart is die 24px lucht pure
+   verspilde ruimte: hier verkleind naar alleen de navigatiebalk-hoogte plus
+   een kleine marge (geen losse berekening/meting, gewoon een iets kleinere
+   vaste waarde dan de 78px van fix-4) — .map-wrap (en dus .radar-controls,
+   die bottom:6px t.o.v. daarvan gebruikt) groeit hierdoor mee naar beneden.
+   2026-08-21: op verzoek van Lex ("de kaart standaard groot altijd groot...
+   het wisselen tussen klein en groot mag dus vervallen") is deze weergave nu
+   niet meer conditioneel op een .kaart-uitvergroot-klasse — #viewKaart is
+   hierdoor altijd zo, en het weerkaartje/de zon-maan-kaart staan sowieso niet
+   meer hier (verhuisd naar de Hemel-tab), dus de oude hide-regel daarvoor is
+   ook vervallen. */
+#viewKaart { display:flex; flex-direction:column; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+#viewKaart .map-wrap { flex:1; min-height:0; display:flex; flex-direction:column; }
+#viewKaart .map { flex:1; height:auto; }
+
+/* 2026-08-24, op verzoek van Lex: "de ipad weergave zo maken dat het hele
+   venster door de kaart wordt ingenomen". Eerste stap richting een echte
+   tablet-layout (zie de "nog backlog"-notitie hierboven bij body) — bewust
+   beperkt tot de Kaart-tab zelf: Meldingen/Hemel/Instellingen blijven de
+   vertrouwde telefoon-brede kolom van 480px, alleen de kaart gaat op een
+   tablet-breed scherm (>=768px, bv. iPad) edge-to-edge. body.kaart-actief
+   wordt gezet in wisselView() in app.js en staat al standaard in de HTML
+   (Kaart is de standaard-tab), dus dit klopt ook meteen bij het opstarten.
+   Statusbar/header gaan uit beeld (horen bij de smalle-kolom-layout, passen
+   niet bij een edge-to-edge kaart) — de foutbanner blijft bewust wél zichtbaar
+   (bovenaan, boven de kaart) zodat verbindingsfouten niet onopgemerkt
+   blijven. #viewKaart wordt fixed+inset:0 zodat de kaart zelf het volledige
+   venster vult i.p.v. de 480px-kolom. De bottom-nav blijft in beeld als
+   zwevende, afgeronde balk bovenop de kaart (net als de bestaande
+   map-toggle/radar-controls-knoppen) zodat je nog tussen tabs kunt
+   wisselen. */
+@media (min-width: 768px) {
+  body.kaart-actief .statusbar,
+  body.kaart-actief .app-header {
+    display: none;
+  }
+  body.kaart-actief #viewKaart {
+    position: fixed;
+    inset: 0;
+    max-width: none;
+    padding-bottom: 0;
+    z-index: 10;
+  }
+  body.kaart-actief #viewKaart .map-wrap { padding: 0; }
+  body.kaart-actief #viewKaart .map { border-radius: 0; border: none; }
+  body.kaart-actief .bottom-nav {
+    bottom: 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  }
+}
+
+/* 2026-08-20: Zee-modus — de basiskaart (#map .leaflet-tile-pane hierboven)
+   staat standaard in de donkere "Storm Noir"-filter; die liet de OSM-tegels
+   ONDER de (deels transparante) seamark-laag nog steeds inverted/donker
+   doorschemeren. Zolang Zee-modus aan staat (zie
+   kaart.getContainer().classList.toggle('zee-modus-actief', ...) in
+   toggleZeeModus()) die filter hier uitzetten. */
+#map.zee-modus-actief .leaflet-tile-pane { filter: none; }
+
+/* 2026-08-20: labels van de Shipping Forecast-zeegebieden (Dogger, Humber,
+   German Bight, ...), zie ZEE_GEBIEDEN/bouwZeeGebiedenLaag() in app.js.
+   Tweede versie: subtieler dan de eerste poging op Lex' verzoek ("de
+   lijntjes zijn daar ook veel subtieler") — kleiner, lichter grijs, geen
+   hoofdletters/gloed meer, dichter bij een naamlabel op een echte zeekaart. */
+/* 2026-08-20-fix: was per ongeluk wit — Lex wilde grijs (zoals de lijnen
+   hierboven), en de basiskaart is in Zee-modus niet meer donker-gefilterd
+   (dus wit tekst-op-licht was ook gewoon slecht leesbaar). Donkergrijs met
+   een lichte halo i.p.v. donkere, past bij de nu weer kleurrijke basiskaart.
+   2026-08-24, op verzoek van Lex ("de naam van het gebied iets zwarter, en
+   dat alleen daarop klikken die synopsis geeft") — kleur verder verdonkerd,
+   en pointer-events weer aan (was none) nu het label zelf het klikdoel is
+   i.p.v. de hele polygon (zie bouwZeeGebiedenLaag() in app.js) — cursor
+   erbij zodat duidelijk is dat het label klikbaar is. */
+.zee-gebied-label { background:none; border:none; box-shadow:none; color:rgba(35,35,35,0.95); font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.02em; text-shadow:0 1px 2px rgba(255,255,255,0.7); pointer-events:auto; cursor:pointer; z-index:610 !important; transition:font-size 0.12s ease-out; }
+.zee-gebied-label::before { display:none; }
+/* 2026-08-25-fix, op melding van Lex ("icons van de kaart staan er soms nog
+   voor") — de hover-regel hieronder zette dit label al eerder tijdelijk op
+   z-index:10000 juist om te voorkomen dat 'ie achter een naburige pin
+   wegzakt (zie de toelichting daar), maar dat gold dus alleen tijdens hover.
+   In rust (permanent:true, dus praktisch altijd zichtbaar) kon een marker-
+   pin er gewoon voor blijven staan. !important omdat Leaflet zelf ook een
+   inline z-index op dit element zet (voor de automatische lat-gebaseerde
+   marker-stapelvolgorde) die anders zou winnen van deze class-regel — net
+   als bij de transform-kwestie hierboven. 610 is ruim boven een normale
+   Leaflet-marker (pane-z-index 600) maar nog altijd lager dan de 10000 bij
+   hover, zodat een gehoverd label nog steeds prioriteit houdt boven een
+   ander (niet-gehoverd) zeegebied-label.
+   2026-08-25, op vraag van Lex ("hoe doen we dat op iOS devices"): :hover
+   bestaat niet echt op een touchscreen — sommige mobiele browsers (Safari
+   op iOS incluis) simuleren 'm na een tik en laten 'm dan "hangen" tot een
+   tik ergens anders, wat hier een permanent te groot label zou geven na de
+   eerste aanraking. Daarom hier bewust geschaald tot @media (hover: hover)
+   — apparaten met een ECHTE muis. Op touch is dit ook niet nodig: een tik
+   op het label opent toch al de volledige synopsis-popup met de golfhoogte
+   gewoon leesbaar in lopende tekst (zie zeeSynopsisPopupHtml() in app.js). */
+@media (hover: hover) and (pointer: fine) {
+  .zee-gebied-label:hover { font-size:18px; z-index:10000; }
+  .zee-gebied-label:hover .golf-label { font-size:19px; }
+}
+/* 2026-08-25, op verzoek van Lex ("een golfje naast de gebiedsnamen met de
+   golfhoogte") — badge naast de gebiedsnaam (zie zeeGebiedLabelHtml() in
+   app.js). Iets lichter/kleiner dan de naam zelf zodat de naam het primaire
+   leeselement blijft en het golfje duidelijk een aanvulling is; zelfde
+   monospace/text-shadow-aanpak als .zee-gebied-label zodat het op elke
+   basiskaart-kleur leesbaar blijft.
+   2026-08-25-fix, op verzoek van Lex ("nog niet tevreden over het golfje,
+   spectaculairder en iets groter"): basisgrootte 9px->11px.
+   2026-08-25-fix2, op melding van Lex ("de gloed vervormt de golf... en op
+   de zeekaart is het nu te prominent blauw gevuld") — de kleurige glow-laag
+   hier weer weg (die maakte het label zelf te nadrukkelijk blauw); alleen
+   de oorspronkelijke witte halo blijft voor leesbaarheid. Het "spectaculaire"
+   zit nu in het losse golf-icoon (zie .golf-emoji svg hieronder), niet meer
+   in de labeltekst zelf. */
+.golf-label { margin-left:4px; color:#1a7aa8; font-size:11px; text-shadow:0 1px 2px rgba(255,255,255,0.75); transition:font-size 0.12s ease-out; }
+/* Gedeeld door .golf-label (kaartlabel) én .popup-golfhoogte (klik-popup) —
+   em-eenheden zodat het icoon in beide contexten (en in de hover-vergrote
+   staat hierboven) automatisch meeschaalt met de tekst eromheen, zonder
+   losse px-waarden per plek.
+   2026-08-25-fix2, op melding van Lex ("de gloed vervormt de golf... andere
+   icon denk ik" / "ja meer een open vorm denk ik") — was een 🌊-emoji met
+   filter:drop-shadow erop, maar een kleur-glyph met veel eigen detail vloeit
+   bij een gloed samen tot een onherkenbare blob. Nu een eigen, bewust OPEN
+   SVG-golflijn (fill:none/stroke, zie golfIcoonHtml() in app.js) — een dunne
+   lijn kan niet "vollopen" tot een blob zoals de emoji deed, dus de gloed
+   blijft er nu netjes omheen zitten i.p.v. 'm te overstemmen. */
+.golf-emoji { width:1.3em; height:1em; display:inline-block; vertical-align:middle; color:#3ec6ff; filter: drop-shadow(0 0 0.1em rgba(62,198,255,0.8)); }
+
+.map-toggle { position:absolute; top:10px; right:10px; z-index:1000; display:flex; background:rgba(10,11,18,0.85); border:1px solid rgba(255,255,255,0.12); border-radius:9px; padding:3px; gap:2px; }
+.map-toggle button { border:none; background:transparent; color:#9199b5; font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:6px 10px; border-radius:6px; cursor:pointer; }
+.map-toggle button.actief { background:#1c2030; color:#f4f6fb; }
+
+.doppler-producten { position:absolute; top:48px; right:10px; z-index:1000; display:flex; background:rgba(10,11,18,0.85); border:1px solid rgba(255,255,255,0.12); border-radius:9px; padding:3px; gap:2px; }
+.doppler-product-btn { border:none; background:transparent; color:#9199b5; font-family:'JetBrains Mono',monospace; font-size:9.5px; padding:5px 8px; border-radius:6px; cursor:pointer; }
+.doppler-product-btn.actief { background:#1c2030; color:#f4f6fb; }
+
+/* 2026-08-22, op verzoek van Lex — vervangt de oude losse "Zoek ISS"/
+   "Starlink"-kaartknoppen. Linksboven i.p.v. rechtsboven (zoals
+   .map-toggle/.doppler-producten) zodat ze elkaar nooit overlappen. Staat
+   standaard uit (style="display:none" in index.html), verschijnt alleen
+   zolang kaartVolgType actief is — zie startKaartVolgen()/stopKaartVolgen()
+   in app.js. */
+.kaart-volg-stop { position:absolute; top:10px; left:10px; z-index:1000; display:flex; background:rgba(10,11,18,0.85); border:1px solid rgba(255,255,255,0.12); border-radius:9px; padding:3px; }
+.kaart-volg-stop button { border:none; background:transparent; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer; }
+.kaart-volg-stop button:active { opacity:0.7; }
+
+/* 2026-08-21: flex-wrap toegevoegd toen Vliegradar/Vaarradar (zie hieronder)
+   het aantal knoppen in deze balk op 5-7 bracht — bij een smal scherm kon dat
+   overflowen. position:absolute + bottom:6px (i.p.v. top) betekent dat een
+   tweede regel de balk omhoog laat groeien i.p.v. onder het scherm/de
+   bottom-nav weg te zakken, dus dit is een veilige toevoeging na de eerdere
+   "balkje kwijt"-problematiek hierboven. */
+/* 2026-08-21: oranje -> teal, op Lex' keuze uit 7 voorbeeldkleuren die ik als
+   losse preview-pagina stuurde (kleur_voorbeelden_balkje.html, variant 3). */
+.radar-controls { position:absolute; bottom:6px; left:10px; right:10px; z-index:1000; display:flex; flex-wrap:wrap; align-items:center; gap:8px; row-gap:6px; background:rgba(45,212,191,0.22); border:1px solid rgba(110,230,215,0.45); border-radius:9px; padding:5px 10px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#f4f6fb; backdrop-filter: blur(4px); }
+/* 2026-08-21, op verzoek van Lex ("Vlucht op de eerste regel, als het krap
+   wordt mag de tekst eraf") — 480px is dezelfde breedtegrens die de rest van
+   de app al gebruikt als "telefoon-breedte" (zie .bottom-nav's max-width
+   hieronder), dus dit geldt in de praktijk op vrijwel elk telefoonscherm,
+   en pas NIET meer zodra er ooit een bredere/tablet-layout komt (nog
+   backlog, zie projectlog). Onder die grens: alleen het emoji-icoon
+   overhouden, geen tekstlabel — dat maakt elke knop een stuk smaller,
+   genoeg om Vlucht (en de rest) op de eerste regel te laten passen i.p.v.
+   naar een tweede regel te wrappen. */
+@media (max-width: 480px) {
+  .radar-controls .knop-tekst { display:none; }
+  .radar-controls .satelliet-toggle { padding:3px 7px; }
+}
+/* 2026-08-21, op verzoek van Lex ("ik zie dat de knoppen onderin de tekst
+   geselecteerd kan worden, dat mag er uit") — een lange-tap op een knop
+   (bijv. per ongeluk op de telefoon) selecteerde anders de knoptekst/emoji's
+   i.p.v. gewoon te klikken. -webkit-touch-callout:none erbij tegen iOS'
+   eigen lange-tap-context-menu (kopiëren/opzoeken). Eerst alleen op
+   .radar-controls gezet, maar dat bleek niet de plek die Lex bedoelde (of
+   niet de enige) — nu globaal op alle button-elementen (dus ook de vaste
+   onderbalk Kaart/Meldingen/Hemel/Instellingen), zodat dit overal geldt
+   zonder losse knoppenbalken één voor één te moeten afvangen. */
+button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+/* 2026-08-20: na drie mislukte pogingen om .radar-controls' `bottom` exact op
+   de nav-hoogte te zetten in de uitvergrote stand (vaste px-gok, toen een
+   JS-meting — zie fix-4 hierboven bij #viewKaart.kaart-uitvergroot) is dat
+   hele probleem bij de wortel aangepakt: .map-wrap reikt niet meer tot ónder
+   de bottom-nav, dus deze aparte regel is niet meer nodig — bottom:6px
+   hierboven geldt nu gewoon in beide standen. */
+/* 2026-08-20, op verzoek van Lex ("Zee gelijk rechts uitlijnen") — Zee is
+   conceptueel iets anders dan Regenradar/Satelliet (een hele andere
+   kaartweergave, geen laag erbovenop), dus visueel gescheiden naar de
+   rechterkant van dezelfde balk i.p.v. gewoon achteraan de rij te blijven
+   plakken. `right:10px` hierboven geeft de balk zelf nu een vaste breedte
+   (i.p.v. content-breed), en margin-left:auto op de Zee-knop duwt 'm (en
+   alleen hem) helemaal naar rechts binnen die balk. */
+#toggleZee { margin-left: auto; }
+.radar-controls button { border:none; background:#1c2030; color:#f4f6fb; width:22px; height:22px; border-radius:50%; cursor:pointer; font-size:10px; line-height:1; }
+/* Los label vóór de ▶-knop: zonder dit was het niet duidelijk dat deze knop
+   bij regenradar hoort (i.t.t. de Satelliet-knop hiernaast, die wel een
+   eigen label heeft) — vandaar Lex' vraag "het is dus regenradar?". */
+.radar-controls .radar-label { white-space:nowrap; opacity:0.85; }
+/* Satelliet-knop wijkt bewust af van de ronde play-knop hiernaast (rechthoekig,
+   met label) — dit is een aan/uit-toggle met een andere betekenis, geen
+   framebediening, dus geen visuele suggestie dat het bij dezelfde afspeellus hoort. */
+.radar-controls .satelliet-toggle { width:auto; border-radius:9px; padding:3px 8px; font-family:'JetBrains Mono',monospace; }
+.radar-controls .satelliet-toggle.actief { background:#3ec6ff; color:#05060a; }
+
+/* 2026-08-21: de losstaande groot/klein-driehoekknop (.uitvergroot-driehoek)
+   is vervallen op verzoek van Lex ("de kaart standaard groot altijd groot...
+   het wisselen tussen klein en groot mag dus vervallen") — geen toggle meer
+   nodig, dus geen knop meer nodig. */
+/* 2026-08-19: "Aarde nu" — dekt het hele scherm af zolang 'ie actief is, met
+   een duidelijk sluitkruisje rechtsboven i.p.v. nogmaals op de knop te moeten
+   tikken. z-index ruim boven de bottom-nav (1000) en andere overlays.
+   2026-08-20: van position:absolute (gekoppeld aan .map-wrap, gaf exact de
+   kaart-afmeting/afgeronde hoeken) naar position:fixed + volledig scherm
+   (geen border-radius meer) sinds de "Aarde nu"-knop verhuisd is naar de
+   Hemel-tab (Lex: "dat is logischer") — de overlay hangt nu niet meer onder
+   .map-wrap in de HTML, dus moet zelf het hele viewport pakken i.p.v. te
+   leunen op een positioned ancestor. z-index verhoogd van 1100 naar 2100
+   (was ruim genoeg toen de overlay alleen de kaart afdekte, maar de
+   bottom-nav zit zelf op z-index:2000 — zonder deze verhoging zou die balk
+   nu over de volledige-scherm-video heen blijven steken). */
+.aarde-overlay { position:fixed; inset:0; z-index:2100; overflow:hidden; background:#000; }
+/* 2026-08-19: sinds de overstap naar de YouTube IFrame Player API vervangt
+   YouTube de #aardeVideo-div zelf door een <iframe id="aardeVideo">, waarbij
+   de class "aarde-video" verloren gaat — daarom hier zowel op class als op
+   id stylen, zodat de afmeting sowieso goed blijft, voor en na die
+   vervanging. Expliciet zwarte achtergrond erbij — een <iframe> is standaard
+   wit tot de inhoud geladen is, wat Lex zag als een storende "witte
+   strook"/flits bij het opstarten van de stream. */
+.aarde-video, .aarde-video iframe, #aardeVideo { width:100%; height:100%; border:0; display:block; background:#000; }
+.aarde-sluiten { position:absolute; top:8px; right:8px; z-index:2101; width:28px; height:28px; border-radius:50%; border:none; background:rgba(10,11,18,0.85); color:#f4f6fb; font-size:14px; line-height:1; cursor:pointer; }
+/* 2026-08-19: eerdere pogingen om YouTube's titel-overlay af te dekken (op
+   een gegokte positie) of de datum eruit te lezen bleken zonder visuele
+   feedback niet betrouwbaar te fixen — dus nu simpeler: het hele beeld blijft
+   even zwart bij het opstarten (zie laadAardePlayer() in app.js), zodat je
+   die overlay/branding gewoon nooit te zien krijgt. dekt de volle .aarde-video
+   af, gaat na ~5,5 sec vanzelf weer weg. */
+.aarde-laden { position:absolute; inset:0; z-index:2101; background:#000; pointer-events:none; }
+
+/* 2026-08-20, op verzoek van Lex ("als ik op een label in de kaart klik...
+   hele venster daarvoor gebruiken, knop om eruit te gaan is dan handig") —
+   schermvullende weergave van elke kaart-popup, i.p.v. Leaflet's eigen kleine
+   popup-bubbel. z-index net als .aarde-overlay hierboven (2100+), ruim boven
+   de bottom-nav (2000) en Leaflet's eigen panes (die zitten ver onder de
+   1000); onder de tornado-alarm-gloed/-popup (5000/6000), want die moet
+   altijd kunnen doorbreken. De inhoud (#labelPopupInhoud) hergebruikt
+   simpelweg de bestaande .popup-titel/.popup-sub/.popup-advies/etc-opmaak
+   (zie popupHtml()/popupExtraHtml()/zeeSynopsisPopupHtml() in app.js) — die
+   werd al gegenereerd voor de oude, kleine Leaflet-popup en verandert hier
+   niet, alleen de omlijsting eromheen. */
+.label-popup-overlay { position:fixed; inset:0; z-index:2200; background:#0e111c; display:flex; flex-direction:column; }
+.label-popup-overlay.verborgen { display:none; }
+.label-popup-balk { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:calc(10px + env(safe-area-inset-top, 0px)) 12px 10px; background:rgba(10,11,18,0.9); border-bottom:1px solid rgba(255,255,255,0.1); }
+/* 2026-08-20, op verzoek van Lex ("misschien handig om daarvoor een trapje
+   te hebben") — A－/A＋ stappen door TEKSTGROOTTE_STAPPEN (app.js), i.p.v.
+   Lex' oude per-tekstblok tik-om-te-vergroten-truc: één stepper regelt nu de
+   hele popup-inhoud ineens, en onthoudt de gekozen stap voor de volgende
+   popup die hij opent. */
+.label-popup-tekstgrootte { display:flex; gap:6px; }
+.label-popup-tekstgrootte button, .label-popup-sluiten { border:none; background:#1c2030; color:#f4f6fb; border-radius:8px; padding:7px 12px; font-family:'JetBrains Mono',monospace; font-size:12px; cursor:pointer; }
+.label-popup-tekstgrootte button:disabled { opacity:0.35; cursor:default; }
+.label-popup-sluiten { background:#ff2e6d; color:#fff; font-weight:600; }
+.label-popup-inhoud { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px)); font-family:'JetBrains Mono',monospace; }
+/* Basis ('normaal') komt overeen met de oude, compacte Leaflet-popup-opmaak
+   (11.5px titel-context, 10px advies-tekst e.d. — zie .popup-titel/.popup-sub/
+   .popup-advies hieronder) zodat de inhoud er vertrouwd uitziet; de stappen
+   errond schalen alles naar verhouding groter/kleiner via em-gebaseerde
+   font-sizes op de losse popup-*-klassen (die staan al in em/px op zichzelf,
+   dus hier volstaat één font-size op de container plus 'em' zou eigenlijk
+   preciezer zijn — voor nu simpelweg elke stap expliciet op de container). */
+.label-popup-inhoud.tekst-klein { font-size:12px; }
+.label-popup-inhoud.tekst-normaal { font-size:15px; }
+.label-popup-inhoud.tekst-groot { font-size:18px; }
+.label-popup-inhoud.tekst-extra-groot { font-size:22px; }
+.label-popup-inhoud .popup-titel { font-size:1.3em; margin-bottom:4px; }
+.label-popup-inhoud .popup-sub,
+.label-popup-inhoud .popup-stats,
+.label-popup-inhoud .popup-surge,
+.label-popup-inhoud .popup-link { font-size:0.75em; }
+.label-popup-inhoud .popup-advies { font-size:0.9em; }
+/* 2026-08-19: Lex meldde dat de regenradar-animatie nog steeds "schokkerig"
+   voelt — "de hele bui wordt opgetild en verderop neergezet". Dat klopt: elk
+   RainViewer-frame is een écht momentopname 10 minuten uit elkaar (bevestigd
+   in zijn eigen video: 18:30/18:40/18:50/...), geen tussenliggende
+   bewegingsdata — dus een bui die in 10 minuten een paar km opschuift, springt
+   in de animatie onvermijdelijk van A naar B i.p.v. te "vloeien". Dat is een
+   eigenschap van de brondata, geen bug in de afspeeltiming (die is apart al
+   gefixt). Wél kan de overgang zelf zachter: de crossfade wisselde tot nu toe
+   in één instant (setOpacity zonder animatie), wat het "optillen en ergens
+   anders neerzetten"-gevoel juist versterkte. Deze transition maakt er een
+   geleidelijke 400ms dissolve van — verzacht het springen, maar tovert er
+   geen echte vloeiende beweging bij (dat zou losse bewegingsinterpolatie
+   tussen frames vereisen, een heel ander soort werk). Selector pakt de twee
+   tegellaag-containers (radarLagen.a/.b) binnen hun eigen Leaflet-pane. */
+.leaflet-radarPane-pane > .leaflet-layer { transition: opacity 400ms linear; }
+
+.leaflet-container { background:#0c0f1a; font-family:'Inter',sans-serif; }
+/* 2026-08-19: met meerdere kaartlagen tegelijk aan (bv. Regenradar +
+   Satelliet) plakt Leaflet alle attributieteksten achter elkaar — kon dan
+   wrappen en over de knoppenbalk onder de kaart heen lijken te lopen. Naast
+   het inkorten van de attributieteksten zelf (zie app.js) hier ook een harde
+   vangnet: nooit wrappen, altijd afkappen met "…" i.p.v. een tweede regel. */
+.leaflet-control-attribution { background:rgba(5,6,10,0.75) !important; color:#7d8399 !important; font-size:9px !important; max-width:70%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.leaflet-control-attribution a { color:#9199b5 !important; }
+.leaflet-control-zoom a { background:rgba(20,22,32,0.9) !important; color:#e8eaed !important; border-color:rgba(255,255,255,0.12) !important; }
+.leaflet-control-zoom a:hover { background:rgba(30,34,54,0.95) !important; }
+.leaflet-popup-content-wrapper { background:#0e111c; color:#e8eaed; border:1px solid rgba(255,255,255,0.1); border-radius:10px; }
+.leaflet-popup-tip { background:#0e111c; }
+.leaflet-popup-content { font-family:'JetBrains Mono',monospace; font-size:11.5px; margin:10px 12px; }
+/* 2026-08-24, op verzoek van Lex ("het icon waarop werd geklikt als grote
+   kopie bij de tekst... dan zie je ook eindelijk eens goed hoe mooi die
+   icons zijn") — een uitvergrote kopie van hetzelfde icoon als op de kaart-
+   pin (zie hazardIconHtml() in app.js, dezelfde functie/HTML, alleen hier
+   groter via deze eigen klasse i.p.v. de kleine .navtex-pin/.hazard-pin-
+   maat) links naast de titel/subtekst in de popup. Werkt voor élk
+   signaaltype (niet alleen navtex) — hazardIconHtml() heeft altijd een
+   fallback-emoji, dus dit breekt nergens. Dezelfde schaduw/gloed-filter als
+   de kaart-pins (zie .navtex-pin svg hieronder) voor visuele consistentie,
+   al is dat op de effen donkere popup-achtergrond minder noodzakelijk dan
+   op de kaart zelf. */
+.popup-kop { display:flex; align-items:flex-start; gap:10px; }
+.popup-kop-tekst { flex:1; min-width:0; }
+.popup-icoon-groot { flex-shrink:0; width:44px; height:44px; display:flex; align-items:center; justify-content:center; overflow:hidden; font-size:32px; line-height:1; }
+.popup-icoon-groot svg { width:44px; height:44px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 3px rgba(255,255,255,0.5)); }
+.popup-titel { font-weight:600; color:#f4f6fb; }
+/* 2026-08-25, op verzoek van Lex ("grote letters in een andere kleur...
+   onder de titel met ruimte boven en onder 3 mm") — golfhoogte-regel in de
+   zeegebied-synopsis-popup (zie zeeSynopsisPopupHtml() in app.js). #3ec6ff
+   is het bestaande cyaan-accent van de app (zie .popup-link/.satelliet-
+   toggle.actief hierboven/hieronder) i.p.v. het donkerdere golfje-blauw van
+   het kaartlabel, dat op deze donkere popup-achtergrond te weinig contrast
+   zou geven. mm-eenheid rechtstreeks (CSS ondersteunt 'm nativ), geen
+   px-omrekening nodig.
+   2026-08-25-fix, op verzoek van Lex ("nog niet tevreden over het golfje,
+   spectaculairder en iets groter"): 22px->26px.
+   2026-08-25-fix2, op melding van Lex ("de gloed vervormt de golf... te
+   prominent blauw gevuld") — de zware dubbele tekst-gloed van fix hierboven
+   weer teruggebracht naar één subtiele laag; het golficoon zelf (zie
+   .golf-emoji hieronder) draagt nu het "spectaculaire" effect. */
+.popup-golfhoogte { font-family:'Space Grotesk',sans-serif; font-size:26px; font-weight:700; color:#3ec6ff; text-shadow:0 0 6px rgba(62,198,255,0.4); margin:3mm 0; }
+.popup-sub { color:#9199b5; font-size:10.5px; margin-top:3px; }
+/* 2026-08-20: detail.verlopen (zie historie.js) — moet meteen duidelijk zijn
+   dat dit geen actuele melding meer is. */
+.popup-verlopen { color:#6b7280; font-size:10.5px; font-style:italic; margin-top:3px; }
+/* 2026-08-20, op verzoek van Lex ("klokje is lastig te herkennen") — het
+   🕓-klokje vóór de "uitgegeven om"-tijd (zie popupHtml/maakMeldingItem)
+   stond in zijn volle, felle emoji-kleur, wat niet paste bij de verder
+   gedempte grijze meta-tekst eromheen. Emoji-kleur is niet met CSS `color`
+   te veranderen (het zijn ingebakken kleurglyphs, geen tekst), vandaar
+   `filter: grayscale` — dat werkt wel, en de opacity dempt 'm verder tot
+   ongeveer hetzelfde grijstintniveau als de tekst ernaast. */
+.tijd-icoon-mat { filter: grayscale(1) brightness(0.8); opacity: 0.55; }
+
+/* Voorheen: gloeiende, halftransparante pins — mooi tegen een donkere kaart,
+   maar vielen weg tegen de lichte Voyager-ondergrond — eerst naar solide
+   pins overgestapt, maar de transparante glow-stijl werd gemist. Dit is de
+   middenweg: nog steeds transparant/glazig, maar met een backdrop-blur zodat
+   de kleur leesbaar blijft ongeacht wat voor kleur kaart eronder zit, plus
+   een slagschaduw voor houvast tegen de nu lichte ondergrond. */
+/* text-shadow toegevoegd (2026-08-18) — het emoji-icoon (bijv. 🌀 bij een
+   orkaan) kon op de halfdoorzichtige, geblurde pin-achtergrond te weinig
+   contrast hebben om goed op te vallen, vooral in een gecomprimeerd
+   screenshot. Een donkere gloed erachter maakt het icoon zelf leesbaarder
+   ongeacht de kaartkleur eronder, zonder de frosted-glass-look te breken. */
+.hazard-pin { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; text-shadow: 0 1px 4px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.4); backdrop-filter: blur(3px) saturate(1.6); -webkit-backdrop-filter: blur(3px) saturate(1.6); box-shadow:0 2px 6px rgba(10,13,22,0.35); }
+.hazard-pin.ernst-kritiek { background:rgba(255,46,109,0.45); border:1.5px solid rgba(255,46,109,0.9); box-shadow:0 0 14px rgba(255,46,109,0.5), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.ernst-waarschuwing { background:rgba(255,138,61,0.42); border:1.5px solid rgba(255,138,61,0.85); box-shadow:0 0 12px rgba(255,138,61,0.4), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.ernst-let-op { background:rgba(255,176,102,0.38); border:1.5px solid rgba(255,176,102,0.8); box-shadow:0 0 10px rgba(255,176,102,0.3), 0 2px 6px rgba(10,13,22,0.25); }
+.hazard-pin.ernst-info { background:rgba(62,198,255,0.42); border:1.5px solid rgba(62,198,255,0.85); box-shadow:0 0 12px rgba(62,198,255,0.4), 0 2px 6px rgba(10,13,22,0.3); }
+/* Lifeliner (traumahelikopter) — eigen vast gele helikopter-SVG i.p.v. de
+   ernst-kleur/emoji, 2026-08-19 op Lex' verzoek ("een gele helikopter").
+   Vervangt de ernst-klasse (zie renderMap in app.js), dus dit staat los van
+   hoe urgent het signaal verder is. Achtergrond bewust donker (i.p.v. ook
+   geel) — anders verdwijnt het gele icoontje tegen een even gele achtergrond. */
+.hazard-pin.is-lifeliner { background:rgba(20,22,34,0.6); border:1.5px solid rgba(255,214,51,0.9); box-shadow:0 0 14px rgba(255,214,51,0.45), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.is-lifeliner svg, .melding-item .em svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+
+/* 2026-08-20: detail.verlopen (zie historie.js) — tot 48u terug bewaarde,
+   niet meer actieve waarschuwingen, puur als lichte trail op de kaart ("waar
+   was het"). Na de ernst-*/is-lifeliner-regels hierboven zodat dit in de
+   CSS-cascade wint en de gloed/kleur van een actieve melding overstemt —
+   geen aparte glow meer, duidelijk minder opvallend dan iets actiefs. */
+.hazard-pin.is-verlopen { opacity: 0.4; filter: grayscale(0.6); box-shadow: 0 2px 4px rgba(10,13,22,0.25); }
+
+/* 2026-08-20, op verzoek van Lex: NAVTEX ("een volledig separaat gebeuren")
+   krijgt een eigen markervorm i.p.v. de gedeelde ronde .hazard-pin met
+   ernst-kleuren hierboven. Zie renderMap() in app.js.
+   2026-08-20-fix: eerst nog een vierkant-afgeronde badge-achtergrond
+   (teal-rand/donker vlak) net als .hazard-pin, maar Lex wilde de boei
+   "los... uit dat vierkantje" — geen omkaderde badge meer, gewoon het kale
+   icoon (NAVTEX_BOEI_SVG in app.js, heeft al zijn eigen kleuren/vulling),
+   met een drop-shadow voor leesbaarheid tegen wisselende ondergrond i.p.v.
+   een eigen achtergrondvlak. */
+.navtex-pin { width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-size:16px; text-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.4); }
+.navtex-pin svg { width:22px; height:22px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 3px rgba(255,255,255,0.5)); }
+.navtex-pin.is-verlopen { opacity: 0.4; filter: grayscale(0.6); }
+/* 2026-08-24, op verzoek van Lex ("als het van ukho is maken we ze blauw
+   (test)") — puur een tijdelijke, visuele markering om navtexLokaal- en
+   UKHO-signalen op de kaart uit elkaar te houden. Bewust GEEN gevulde
+   achtergrond-badge (Lex wilde de boei eerder al expliciet "los... uit dat
+   vierkantje", zie de comment bij .navtex-pin in app.js) — een blauwe gloed
+   rond het icoon zelf werkt op zowel de SVG-boei als de emoji-iconen zonder
+   een omkaderd vlak terug te introduceren. */
+.navtex-pin.is-ukho-test { filter: drop-shadow(0 0 5px rgba(76,157,240,0.95)) drop-shadow(0 0 5px rgba(76,157,240,0.95)); }
+/* 2026-08-24, op verzoek van Lex ("en dan diezelfde blauwe zweem er achter
+   als bij de rigs, dat vind ik wel mooi") — zelfde blauwe gloed als
+   is-ukho-test hierboven, maar dan permanent voor kabel-signalen (los van
+   de bron/is-ukho-test), zie kabelKlasse in app.js. */
+.navtex-pin.is-kabel { filter: drop-shadow(0 0 5px rgba(76,157,240,0.95)) drop-shadow(0 0 5px rgba(76,157,240,0.95)); }
+/* 2026-08-24, op verzoek van Lex ("maatje groter pls") — het
+   boot-met-sonargolven-icoon (survey) leest op de gedeelde 22px-maat nog
+   klein; eigen, iets grotere maat i.p.v. de gedeelde .navtex-pin svg-regel
+   aan te passen, zodat de andere navtex-iconen hun formaat houden. Zie
+   surveyKlasse in app.js. */
+.navtex-pin.is-survey svg { width:28px; height:28px; }
+/* 2026-08-24: zelfde reden als is-survey hierboven — het losse ketting-
+   schakeltje boven het anker (zie NAVTEX_ANKER_SVG in app.js) valt bij de
+   gedeelde 22px-maat bijna weg. Zie ankerKlasse in app.js. */
+.navtex-pin.is-anker svg { width:26px; height:26px; }
+
+/* 2026-08-21: Vliegradar/Vaarradar-markers — bewust neutraal (geen
+   ernst-kleur, dit is geen hazard) en simpel (emoji i.p.v. eigen SVG, Lex
+   noemde de iconen zelf nog "TBD"), zelfde ronde-badge-opzet als .hazard-pin
+   hierboven maar in een neutrale donkere tint. */
+.verkeer-pin { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; background:rgba(20,22,34,0.7); border:1.5px solid rgba(244,246,251,0.5); box-shadow:0 2px 6px rgba(10,13,22,0.35); text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+
+/* 2026-08-21, op verzoek van Lex ("vliegtuigjes zonder cirkeltje en de
+   juiste koers laten draaien") — losgetrokken van .verkeer-pin hierboven
+   (dat blijft voor ⛴️, zit al gewend aan het rondje). Geen achtergrond/rand
+   meer, puur de emoji zelf, gedraaid via een inline transform (per vliegtuig
+   andere koers, dus niet in deze vaste regel te vangen — zie bouwVliegIcon()
+   in app.js). text-shadow blijft, anders vervaagt de emoji tegen een lichte
+   kaartondergrond. */
+.vlieg-pin { width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:18px; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+
+.home-pin { width:14px; height:14px; border-radius:50%; background:rgba(62,198,255,0.9); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); box-shadow:0 0 0 5px rgba(62,198,255,0.25), 0 0 12px rgba(62,198,255,0.55), 0 2px 6px rgba(10,13,22,0.3); }
+
+/* Losse bliksemflitsen achter een aangetikt onweercomplex — SVG-circles
+   (lichter dan losse divIcon-markers bij mogelijk honderden punten), met een
+   zachte gloed zodat verse flitsen duidelijk feller ogen dan oude. */
+.flits-punt { filter: drop-shadow(0 0 4px rgba(255,209,102,0.65)); pointer-events:none; }
+
+/* Polygon-omtrek van een gebied-signaal (bv. tornado-watch) — subtiele
+   rode gestippelde lijn, bewust ingetogener dan de flitsen-stipjes: dit is
+   een gebiedsaanduiding, geen los datapunt, dus mag niet domineren. */
+.gebied-omtrek { filter: drop-shadow(0 0 3px rgba(255,46,109,0.3)); pointer-events:none; }
+
+/* NHC-voorspelde-koerslijn van een orkaan (2026-08-17) — elektrisch blauw
+   i.p.v. het kritieke rood van de gebied-omtrek hierboven: dit is een
+   voorspelling/richting, geen waarschuwingsgebied, dus bewust een ander
+   signaalkleur om de twee niet door elkaar te laten lopen. */
+.koers-lijn { filter: drop-shadow(0 0 3px rgba(62,198,255,0.35)); pointer-events:none; }
+
+/* Rijkere popup-inhoud (orkaan/aardbeving/cycloonvorming/etc.), 2026-08-18 —
+   satellietbeeld, ShakeMap, community-media, advies-tekst, storm surge. Zie
+   popupExtraHtml() in app.js voor welke categorie welk blok toont.
+   2026-08-19: community-media generiek gemaakt (was alleen orkaan/Reddit-
+   foto's) — .popup-fotostrip-item/-play zijn nieuw, voor het ▶-badge op
+   videomateriaal (Wikimedia Commons/Reddit/Bluesky, zie media.js). */
+.popup-extra { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.popup-stats { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #c7cbe0; }
+.popup-foto { width: 100%; max-height: 130px; object-fit: cover; border-radius: 6px; display: block; }
+.popup-fotostrip { display: flex; gap: 4px; }
+.popup-fotostrip img { width: 100%; height: 52px; object-fit: cover; border-radius: 4px; flex: 1; min-width: 0; }
+.popup-fotostrip-item { position: relative; flex: 1; min-width: 0; display: block; }
+.popup-fotostrip-play {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 14px; color: #fff; text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+.popup-fotostrip-label { font-size: 9.5px; color: #7d8399; letter-spacing: 0.02em; }
+.popup-advies { font-size: 10px; line-height: 1.4; color: #9199b5; white-space: pre-wrap; }
+/* 2026-08-24, op verzoek van Lex ("in een andere kleur en vrij duidelijk
+   voorafgaand aan de tekst het ID/naam van de specifieke rig" — later
+   samengevoegd met de al bestaande naam-in-de-titel: "die in amber tonen? en
+   de andere vervallen?") — inline binnen .popup-titel (zie
+   riglijstTitelHtml() in app.js), dus bewust GEEN eigen font-size/weight
+   meer (was eerst een los blokje) — die erft nu gewoon van .popup-titel mee,
+   alleen de kleur wijkt af. Amber i.p.v. de al gebruikte rood/groen/blauw
+   (kabel-aders, ukho-test-gloed) om verwarring met die betekenissen te
+   voorkomen. */
+.popup-rig-naam { color: #ffb84d; }
+.popup-rig-naam-onbekend { font-style: italic; font-weight: 400; }
+.popup-rig-teller { font-weight: 400; color: #c99a5c; font-size: 10.5px; }
+/* 2026-08-21-fix, op verzoek van Lex ("ik zie bij hurricane Lala nu het
+   volledige bulletin IN PLAATS VAN de melding") — de vorige opruiming
+   (2026-08-20, hierboven) haalde de 90px-afklemming helemaal weg vanuit de
+   aanname dat elke popup toch altijd schermvullend bekeken wordt. Dat klopt
+   niet: Leaflet's eigen kléíne popup (.leaflet-popup-content) toont exact
+   dezelfde HTML als de schermvullende overlay (zie kaart.on('popupopen', ...)
+   in app.js, die 'm daar 1-op-1 uit kopieert) — dus zonder afklemming werd
+   een lang NHC-bulletin daar ook in volle lengte getoond, i.p.v. een korte
+   melding. Fix: de 90px-afklemming + "tik voor volledig bericht"-hint komt
+   terug, maar nu bewust ALLEEN gescoped op de kleine Leaflet-popup — puur
+   decoratief/visueel, want de klik-listener die naar het schermvullende
+   scherm opent zit al globaal op .leaflet-popup-content (dezelfde tik werkt
+   dus meteen als "open dit bulletin schermvullend"). In de schermvullende
+   overlay zelf (.label-popup-inhoud hieronder) blijft de tekst gewoon
+   onafgeklemd, met de eigen tekstgrootte-stepper. */
+.leaflet-popup-content .popup-advies { max-height: 90px; overflow: hidden; position: relative; padding-bottom: 13px; }
+.leaflet-popup-content .popup-advies::after {
+  content: 'tik voor volledig bericht ▾'; position: absolute; left: 0; right: 0; bottom: 0; padding-top: 3px;
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #6d7ff0; text-align: center;
+  background: linear-gradient(to bottom, rgba(14,17,28,0) 0%, #0e111c 60%);
+}
+.popup-surge { font-size: 10.5px; color: #ffb454; }
+.popup-link { display: block; font-size: 10.5px; color: #3ec6ff; text-decoration: none; }
+.popup-link:hover { text-decoration: underline; }
+
+/* meldingen — verticale lijst i.p.v. horizontale sleepbalk; tik centreert de kaart */
+/* De bodemruimte zit nu op .view (zie hierboven) — hier alleen nog een
+   kleine marge voor visuele lucht. */
+.meldingen-lijst { padding: 0 16px 12px; display:flex; flex-direction:column; gap:8px; }
+.meldingen-leeg, .hemel-leeg { margin: 0 16px; padding: 26px 14px; text-align:center; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#565c70; border:1px dashed rgba(255,255,255,0.1); border-radius:12px; }
+.melding-item { display:flex; align-items:center; gap:11px; padding:13px 14px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-left:3px solid #7d8399; cursor:pointer; text-align:left; width:100%; font:inherit; color:inherit; }
+/* ernst bepaalt nu alleen nog opacity (minder urgent = iets gedimd), niet meer
+   de randkleur — dat gaf vooral rood/oranje te zien omdat de meeste actieve
+   meldingen toch al kritiek/waarschuwing zijn, dus optisch weinig onderscheid. */
+.melding-item.ernst-let-op { opacity:0.92; }
+/* 2026-08-19: eerste versie was een transparante kleurwas over het hele
+   kaartje bij ernst (alleen weerwaarschuwing) — Lex vond dat niet geweldig
+   ("ik vind dit niet geweldig"). Na een paar alternatieven laten zien koos
+   hij voor "de pil": een klein gekleurd label vóór de titel met GEEL/ORANJE/
+   ROOD erin (zie maakMeldingItem() in app.js, gebruikt detail.kleur). Geen
+   wash meer over het kaartje, het kaartje zelf blijft dus gewoon neutraal. */
+/* 2026-08-24: selector verbreed van ".melding-item .pil" naar gewoon ".pil"
+   — op verzoek van Lex moet dezelfde pil nu ook in de kaart-popup-titel
+   kunnen (.popup-titel, geen .melding-item-voorouder), zie popupHtml() in
+   app.js. ".pil" is specifiek genoeg als klassenaam om niet ergens anders
+   per ongeluk te matchen. */
+.pil { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700; letter-spacing:0.03em; padding:1px 6px; border-radius:20px; color:#0a0c12; margin-right:6px; vertical-align:middle; }
+.pil.geel { background:#ffe614; }
+.pil.oranje { background:#ff8a3d; }
+.pil.rood { background:#ff2e6d; }
+/* 2026-08-21, op verzoek van Lex ("PDS-meldingen en tornado op de grond...
+   onderscheiden in de lijst, met een icon en PDS of zo") — hergebruik van
+   dezelfde pil voor de tornado-dreigingsniveaus (zie maakMeldingItem() in
+   app.js). "OP DE GROND" krijgt bewust een ander kleur (blauw, zelfde tint
+   als .ernst-info) dan geel/oranje/rood — dat is een detectie-zekerheid,
+   geen schade-escalatie, dus geen verwarring met de ernst-kleurenschaal. */
+.pil.blauw { background:#3ec6ff; }
+/* 2026-08-24, op verzoek van Lex ("kunnen we nog iets met deze meldingen,
+   een ietwat afwijkende kleur of zo?") bij Tornado bevestigd (IEM Local
+   Storm Report — een achteraf-rapportage, geen lopende NWS Warning zoals
+   de tornado/tornado-watch-pil hierboven). Bewust neutraal grijs, geen
+   geel/oranje/rood/blauw: dit is geen schade-escalatie en geen
+   detectie-zekerheid zoals de bestaande pillen, maar puur "dit is achteraf
+   bevestigd geschiedenis, geen actieve dreiging". De randkleur (cat-
+   tornado-bevestigd hieronder) blijft ongewijzigd volgens het bestaande
+   categorie-kleurprincipe. */
+.pil.grijs { background:#9aa0b4; }
+/* 2026-08-24, op verzoek van Lex ("ik kan niet makkelijk zien welke de
+   nieuwe berichten zijn" bij de groeiende NAVTEX-lijst) — losse groene pil
+   voor "nieuw", plus een afwijkende achtergrond/randkleur op de hele regel
+   (zie .melding-item.item-nieuw hieronder) zodat het ook in een lange lijst
+   meteen opvalt, niet alleen via het kleine pil-tekstje. Zie isNavtexNieuw()/
+   vervalNavtexNieuw() in app.js voor de vervallogica (dichtklappen van de
+   categorie, of na 10 minuten). */
+.pil.groen { background:#3dff8a; }
+/* 2026-08-24, op verzoek van Lex ("mag een marker meegeven... datum of
+   herkomst onbetrouwbaar, rode gloed of zo") — bewust een andere, mattere
+   roodtint dan .pil.rood hierboven (die betekent "EMERGENCY"/kritieke
+   ernst) zodat dit niet als een dreigingsniveau oogt maar als een
+   datakwaliteit-kanttekening. Zie .melding-item.item-onbetrouwbaar
+   hieronder voor de bijbehorende gloed op de hele regel. */
+.pil.roodvaag { background:#e08a8a; }
+/* 2026-08-26, zie navtexNummerBadge() in app.js -- eigen, prominente regel
+   bovenaan het NAVTEX-kaartje (stationnummer + eigen ontvangstteller, bv.
+   "PA45 · 8x"), bewust los van de kleine pilletjes hierboven en van de
+   titeltekst zelf: eigen kleur (violet, nog nergens anders als pil/badge-
+   kleur gebruikt) en een groter lettertype, op Lex' eigen verzoek. */
+.melding-item .navtex-nummerbadge {
+  display: block;
+  width: fit-content;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #c9a2ff;
+  background: rgba(201, 162, 255, 0.14);
+  border: 1px solid rgba(201, 162, 255, 0.35);
+  border-radius: 8px;
+  padding: 1px 8px;
+  margin-bottom: 4px;
+}
+/* Categorie bepaalt de randkleur — 2026-08-19, op Lex' verzoek ("veel rood").
+   Elke categorie heeft een eigen, vaste kleur, verdeeld over het hele
+   kleurenwiel (gelijke tussenstappen) zodat ze onderling goed te onderscheiden
+   zijn. Volgorde hieronder is thematisch gegroepeerd (aarde/vuur → onweer →
+   tornado → orkaan → water/overig), niet alfabetisch. */
+.melding-item.cat-aardbeving { border-left-color:#f04c4c; }
+.melding-item.cat-vulkaan { border-left-color:#f0924c; }
+.melding-item.cat-natuurbrand { border-left-color:#f0d94c; }
+.melding-item.cat-droogte { border-left-color:#c1f04c; }
+.melding-item.cat-onweer { border-left-color:#7bf04c; }
+.melding-item.cat-onweercomplex { border-left-color:#4cf063; }
+.melding-item.cat-severe-outlook { border-left-color:#4cf0aa; }
+.melding-item.cat-severe-thunderstorm { border-left-color:#4cd9f0; }
+.melding-item.cat-tornado-watch { border-left-color:#4cf0f0; }
+.melding-item.cat-tornado { border-left-color:#4caaf0; }
+.melding-item.cat-tornado-bevestigd { border-left-color:#4c63f0; }
+.melding-item.cat-cycloonvorming { border-left-color:#7b4cf0; }
+.melding-item.cat-orkaan { border-left-color:#c14cf0; }
+.melding-item.cat-overstroming { border-left-color:#f04cd9; }
+.melding-item.cat-weerwaarschuwing { border-left-color:#f04c92; }
+.melding-item.cat-hulpdiensten { border-left-color:#f04c6f; }
+/* 2026-08-19: tsunami/tsunami-watch toegevoegd (zie sources/nws.js) — het
+   kleurenwiel hierboven was al vol met 14 gelijk verdeelde stappen, dus deze
+   twee passen niet meer zuiver in dat schema zonder alle bestaande kleuren
+   opnieuw te verdelen (wat de kleuren die Lex al kent overal zou verschuiven
+   — niet gevraagd, dus niet gedaan). In plaats daarvan bewust duidelijk
+   afwijkende, "oceaanblauwe" tinten i.p.v. een subtiele tussenstap. */
+.melding-item.cat-tsunami { border-left-color:#1e88e5; }
+.melding-item.cat-tsunami-watch { border-left-color:#64b5f6; }
+/* 2026-08-24, zie .pil.groen hierboven — bewust NA de .cat-* regels in het
+   bestand (gelijke specificiteit als bv. .melding-item.cat-navtex, dus wint
+   de latere regel in de bron) zodat item-nieuw altijd de randkleur overneemt,
+   ook al heeft navtex zelf geen eigen cat-kleur (valt anders terug op het
+   standaard grijs van .melding-item). Subtiele groene achtergrondwas erbij
+   (niet alleen de rand) zodat het in een lange lijst met 99 items meteen
+   opvalt, ook zonder de pil-tekst te lezen. */
+.melding-item.item-nieuw { border-left-color:#3dff8a; background:rgba(61,255,138,0.09); }
+/* 2026-08-24, zie .pil.roodvaag hierboven — bewust GEEN achtergrondwas zoals
+   .item-nieuw (die twee kunnen tegelijk voorkomen: een navtex-bericht zonder
+   datum krijgt zowel "NIEUW" als "DATUM ONZEKER", en twee concurrerende
+   achtergrondtints zouden vies mengen). In plaats daarvan een losse gloed
+   via box-shadow (Lex: "rode gloed of zo") rond de rand van het kaartje,
+   die naast een eventuele groene achtergrond gewoon zichtbaar blijft.
+   Statisch — geen vervaltimer zoals bij item-nieuw. */
+.melding-item.item-onbetrouwbaar { box-shadow: 0 0 0 1px rgba(224,138,138,0.45), 0 0 10px rgba(224,60,60,0.25); }
+.melding-item .em { font-size:18px; flex-shrink:0; }
+.melding-item .txt { flex:1; min-width:0; }
+/* Categorie-label boven de titel, 2026-08-19 — zie maakMeldingItem() in app.js
+   voor de aanleiding. Bewust klein/grijs (ondergeschikt aan de titel zelf). */
+.melding-item .categorie-label { font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:0.03em; text-transform:uppercase; color:#7d8399; margin-bottom:1px; }
+.melding-item .titel { font-family:'Inter',sans-serif; font-size:12.5px; color:#f4f6fb; font-weight:500; }
+.melding-item .sub { font-family:'JetBrains Mono',monospace; font-size:10px; color:#7d8399; margin-top:2px; display:flex; align-items:center; gap:6px; }
+.melding-item .chev { color:#4b5164; font-size:15px; flex-shrink:0; }
+.melding-item.niet-op-kaart { cursor:default; }
+/* 2026-08-19: lege-categorie-kaartje, op Lex' verzoek — elke categorie staat
+   altijd in de lijst, ook zonder actieve melding, i.p.v. gewoon te verdwijnen. */
+.melding-item.leeg { opacity:0.45; cursor:default; }
+/* 2026-08-20: uitklapbare "🕓 verlopen"-sectie per categorie (zie
+   renderMeldingen/maakVerlopenMeldingItem in app.js) — een iets stillere
+   variant van de gewone .melding-meer-toggle (grijs i.p.v. paars/blauw), en
+   de losse verlopen-rijen zelf gedimd met een cursief tijdlabel, zodat ze
+   optisch duidelijk "geschiedenis" zijn en niet als een actuele melding
+   ogen. */
+.melding-meer.melding-meer-verlopen { color:#7d8399; }
+.melding-item.verlopen-item { opacity:0.6; }
+.melding-item.verlopen-item .sub { color:#6b7280; font-style:italic; }
+/* text-transform:capitalize hier weggehaald (2026-08-19) — de titel kwam
+   vroeger uit de rauwe (lowercase) categorie-sleutel, nu uit NAAM_PER_CATEGORIE
+   in app.js, die al correct gekapitaliseerd is. Capitalize zou bij meerwoordige
+   namen ("Zwaar weer-vooruitzicht", "Tornado (bevestigd)") juist een tweede,
+   ongewenste hoofdletter toevoegen. */
+.melding-item:active { background:rgba(255,255,255,0.08); }
+.melding-meer { align-self:flex-start; margin:-2px 0 4px 4px; background:none; border:none; color:#6d7ff0; font-family:'JetBrains Mono',monospace; font-size:10.5px; cursor:pointer; padding:4px 2px; }
+.melding-meer:active { opacity:0.7; }
+/* 2026-08-20: sublevel "per locatie" voor aardbevingen (op verzoek van Lex) —
+   groep-kaartje krijgt een iets ingetogener achtergrond dan een gewone
+   melding (het is een verzamelpunt, geen losse waarschuwing), en de
+   individuele bevingen die eronder verschijnen bij het uitklappen worden
+   licht ingesprongen zodat de hiërarchie (locatie > losse beving) duidelijk
+   blijft. */
+.melding-item.melding-locatie-groep { background:rgba(255,255,255,0.02); }
+.melding-item.melding-locatie-groep .titel { display:flex; align-items:center; gap:5px; }
+.melding-item.melding-locatie-groep .titel::before { content:'📍'; font-size:11px; }
+.melding-item-genest { margin-left:20px; width:calc(100% - 20px); }
+.chip .tier-dot, .legenda-item .tier-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; display:inline-block; }
+.tier-dot.officieel { background:#3ec6ff; }
+.tier-dot.community { background:#ff8a3d; }
+.tier-dot.lokaal { background:#9dffdf; }
+
+/* 2026-08-20, op verzoek van Lex ("de knop Aarde nu mag verhuizen ergens
+   onder de hemelknop") — verhuisd vanuit de radar-controls-balk op de kaart.
+   Standaardstijl (.radar-controls .satelliet-toggle) was scoped aan die balk,
+   dus hier een eigen, iets ruimere variant voor een knop die nu los op de
+   Hemel-tab staat i.p.v. samengeknepen tussen radarbediening. */
+.hemel-acties { padding:0 16px 12px; }
+.aarde-nu-knop { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#c7cbdb; border-radius:9px; padding:8px 14px; font-family:'JetBrains Mono',monospace; font-size:12px; cursor:pointer; }
+.aarde-nu-knop.actief { background:#3ec6ff; border-color:#3ec6ff; color:#05060a; }
+.aarde-nu-knop:active { opacity:0.75; }
+
+/* sky card */
+/* 2026-08-20, op verzoek van Lex ("niet alles onder elkaar in een lange
+   lijst, er komt nog meer aan") — horizontaal scrollbare rij filter-chips
+   boven de Hemel-lijst, zie SKY_RUBRIEKEN in app.js. Zelfde horizontale-
+   scroll-chip-aanpak als elders in de app (geen verticale ruimte kwijt,
+   werkt vanzelf met meer rubrieken zonder layout-aanpassing). */
+.sky-rubrieken { display:flex; gap:8px; padding:0 16px 12px; overflow-x:auto; scrollbar-width:none; }
+.sky-rubrieken::-webkit-scrollbar { display:none; }
+.sky-rubriek { flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 12px; border-radius:20px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#9199b5; cursor:pointer; white-space:nowrap; }
+.sky-rubriek.actief { background:rgba(110,127,240,0.22); border-color:rgba(110,127,240,0.55); color:#f4f6fb; }
+.sky-rubriek:active { opacity:0.75; }
+.sky-lijst { display:flex; flex-direction:column; gap:10px; padding:0 16px 20px; }
+/* 2026-08-21: subkopjes binnen de Ruimte-rubriek (Meteorieten/ISS/Flares,
+   zie RUIMTE_SUBGROEPEN in app.js). Eerst een statisch tekstkopje — Lex wilde
+   ze echt klikbaar: "Meteorieten wordt knop, ik klik erop, Bam! lijst
+   verschijnt. Zo voor alle verzamelingen". Nu een echte <button> (volle
+   breedte, zelfde grotere/wittere Space Grotesk-stijl + lijntje eronder als
+   duidelijke sectiescheiding), met een pijltje rechts (▸ dicht/▾ open) dat
+   omdraait via app.js' uitgeklapteRuimteGroepen-Set. Lijst eronder staat
+   standaard dicht — pas na een tik verschijnt-ie. */
+/* 2026-08-22: elke subkop-knop zit nu in een .sky-subkop-rij — nodig om
+   ISS/Starlink daarnaast een eigen "📍 Live op kaart"-knopje te kunnen geven
+   (zie startKaartVolgen() in app.js), zonder dat te mengen met de open/dicht-
+   knop zelf. margin-top/border-bottom die vroeger op .sky-subkop zelf stonden
+   zijn daarom verhuisd naar de rij. */
+.sky-subkop-rij { display:flex; align-items:center; gap:8px; margin-top:22px; border-bottom:1px solid rgba(255,255,255,0.12); }
+/* 2026-08-23, op verzoek van Lex ("Het kopje Meteorieten en ISS moet wat
+   zakken") — stond voorheen op margin-top:0, dus de eerste subkop-rij zat
+   vlak tegen de rubriek-chips-balk erboven aan (die zelf alleen zijn eigen
+   12px padding-bottom heeft). Nu een kleinere marge dan de 22px tussen twee
+   subgroepen onderling (dat zou een te grote sprong t.o.v. hiervoor zijn),
+   maar wel duidelijk los van de balk erboven. */
+.sky-subkop-rij:first-child { margin-top:12px; }
+.sky-subkop { display:flex; align-items:center; justify-content:space-between; flex:1; min-width:0; background:none; border:none; text-align:left; font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600; color:#f4f6fb; padding:0 2px 6px; cursor:pointer; }
+.sky-subkop:active { opacity:0.7; }
+.sky-subkop-pijl { font-family:'JetBrains Mono',monospace; font-size:11px; color:#9199b5; flex-shrink:0; margin-left:8px; }
+.sky-subkop-volg { flex-shrink:0; margin-bottom:6px; background:rgba(93,255,197,0.14); border:1px solid rgba(93,255,197,0.35); color:#5dffc5; font-family:'JetBrains Mono',monospace; font-size:10px; padding:5px 8px; border-radius:6px; cursor:pointer; white-space:nowrap; }
+.sky-subkop-volg:active { opacity:0.7; }
+.sky-subkop-volg.actief { background:#1c2030; color:#f4f6fb; border-color:rgba(255,255,255,0.25); }
+/* 2026-08-23, op verzoek van Lex ("Ik wil er een melding bij: De volgende
+   zichtbare baan is op <# dagen> - <datumtijd>") — altijd-zichtbare regel
+   direct onder de ISS-subkop (ook dichtgeklapt), zie renderSky() in app.js.
+   Negatieve margin-top trekt 'm dicht tegen de kop/lijntje erboven aan
+   (zelfde "hoort er duidelijk bij"-effect als .sky-card .t2 onder .t1). */
+.sky-subkop-melding { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#9199b5; padding:0 2px; margin-top:-2px; }
+.sky-card { padding: 14px; border-radius: 14px; background: linear-gradient(120deg, rgba(93,255,197,0.10), rgba(110,127,240,0.14), rgba(196,110,255,0.10)), #0c0f1a; border:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; gap:12px; }
+.sky-card .sky-icoon { font-size:20px; flex-shrink:0; }
+.sky-card .maan-icoon { flex-shrink:0; filter: drop-shadow(0 0 6px rgba(238,241,255,0.25)); }
+.sky-card .t1 { font-family:'Inter',sans-serif; font-size:13px; font-weight:600; }
+.sky-card .t2 { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#9199b5; margin-top:2px; }
+
+/* weather card — algemeen weer, los van de hazard-kaart */
+/* 2026-08-19: marge/padding verkleind op Lex' verzoek ("compacter verticaal
+   zodat zon/maan op 1 iphone-scherm past") — was 12px 16px 20px / 16px. */
+.weather-card { margin: 10px 16px 10px; padding: 11px 14px; border-radius: 14px; background:#0c0f1a; border:1px solid rgba(255,255,255,0.08); }
+/* 2026-08-20: op verzoek van Lex ("de zon en de tekst helder meteen naast
+   Oud-Beijerland" + "Gevoel kan weg, staat al als temp in de header") —
+   het icoon+conditie-rijtje (.top/.weer-icoon-wrap/.conditie) dat hier stond
+   is verhuisd naar .app-header .loc (zie boven, .weer-icoon-wrap-klein/
+   .conditie-klein) en de "Gevoel"-tegel is uit de grid gehaald: was
+   6 kolommen (incl. Gevoel), nu 5. */
+.weather-card .grid { display:grid; grid-template-columns:repeat(6,1fr); gap:6px 3px; }
+/* 2026-08-19: op verzoek van Lex ("icons voor de titels... het moet
+   thematisch") — elke tegel toont een zelfgetekend icoontje boven de waarde,
+   zie statIconSvg-familie in app.js. Het tekstlabel (bijv. "LUCHTDRUK") onder
+   de waarde is op 2026-08-20 weggehaald op Lex' verzoek ("tekst onder de
+   icons mag ook weg") — icoon + waarde is genoeg. */
+.weather-card .stat { display:flex; flex-direction:column; align-items:center; text-align:center; }
+.weather-card .stat .stat-icoon { line-height:0; margin-bottom:3px; }
+.weather-card .stat .stat-icoon svg { width:16px; height:16px; }
+.weather-card .stat .waarde { font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#e8eaed; white-space:nowrap; }
+.weather-card .knmi-station { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#9199b5; text-align:center; margin-top:8px; }
+
+/* 2026-08-19: van een simpele tekststrook naar een uitgebreidere zon/maan-
+   kaart op Lex' verzoek ("mag spectaculair worden"). Later diezelfde dag op
+   zijn feedback in tweeën gesplitst: deze kaart (Kaart-tab) toont alleen nog
+   de dagboog + compacte maanop-/ondergangtijden ("kunnen hier blijven"); de
+   uitvergrote maan-illustratie + fase/verlichting/aftelling ("de rest")
+   verhuisde naar een eigen kaart op de Hemel-tab, zie .sky-card--maan
+   hieronder en renderSky()/maanKaartVoorHemel() in app.js. */
+/* 2026-08-19: marge/padding verkleind, zelfde reden als .weather-card
+   hierboven (Lex: "compacter verticaal zodat zon/maan op 1 iphone-scherm
+   past"). */
+/* 2026-08-20: padding verder verkleind — Lex zag na het platter maken van de
+   boog nog restruimte eronder ("ik heb nog wat ruimte onder de boog"). */
+.zonmaan-kaart { margin: 0 16px 10px; padding: 8px 14px 6px; border-radius: 14px; background:#0c0f1a; border:1px solid rgba(255,255,255,0.08); }
+
+.zon-boog { display:block; width:100%; height:auto; overflow:visible; }
+/* De gloed/marker-cirkels krijgen ook een CSS-glow (naast de radiale
+   gradient-fill zelf) — twee lagen geven een zachtere, minder harde rand. */
+#zonMarkerGloed { filter: blur(1px); }
+#zonMarker { filter: drop-shadow(0 0 6px rgba(255,232,163,0.9)); }
+
+/* 2026-08-20: was -6px — de platte boog (viewBox nu 300x60 i.p.v. 300x80)
+   laat minder lege ruimte onder de baseline over, dus deze negatieve marge
+   moest verder omhoog om de zon-tijden-regel weer strak tegen de boog te
+   krijgen (zelfde restruimte-klacht als bij de kaart-padding hierboven). */
+.zon-tijden { display:flex; justify-content:space-between; align-items:center; margin-top:-14px; padding: 0 2px; }
+.zon-tijd-item { display:flex; align-items:center; gap:5px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#c7cbe0; white-space:nowrap; }
+.zon-tijd-item .zt-icoon { line-height:1; display:inline-flex; }
+.zon-tijd-status { font-family:'JetBrains Mono',monospace; font-size:10px; color:#7d8399; text-align:center; }
+
+/* Maanop-/ondergangtijden — eigen rij onder de zonboog, zelfde compacte
+   stijl als .zon-tijden erboven (Lex: "de maan op- en ondertijden kunnen
+   hier blijven"). Losse getekende iconen i.p.v. het 🌙/🌘-emoji, zie
+   opOnderIconSvg() in app.js — met name 🌘 (laatste kwartier) was
+   verwarrend als "maan onder"-symbool. */
+.maan-tijden { display:flex; justify-content:space-between; align-items:center; margin-top:5px; padding: 5px 2px 0; border-top: 1px solid rgba(255,255,255,0.06); }
+
+/* 2026-08-19: verplaatst van de Kaart-tab naar de Hemel-tab (Lex: "de rest
+   moet onder de knop hemel komen") — een los kaartje in de sky-lijst,
+   bovenop de standaard .sky-card-stijl. */
+.sky-card--maan { position: relative; overflow: hidden; }
+/* Klein, statisch sterrenveld achter het maanpaneel — bewust geen animatie
+   (twinkelen oogt snel goedkoop), puur een stille achtergrondlaag die het
+   paneel wat diepte geeft. */
+.maan-sterren {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1.5px 1.5px at 8% 25%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 20% 65%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 32% 15%, rgba(255,255,255,0.45), transparent),
+    radial-gradient(1px 1px at 46% 75%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 58% 35%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 82% 20%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 92% 70%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 65% 88%, rgba(255,255,255,0.4), transparent);
+  pointer-events: none;
+}
+.maan-icoon-groot {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  line-height: 0;
+  /* Zachte gloed rond de maan-illustratie zelf — dezelfde getekende
+     twee-bogen-vorm als de kleine Hemel-tab-iconen elders, nu alleen groter
+     én (op deze grootte) met een gradient-belichting + kratertextuur i.p.v.
+     een platte tweekleurige vorm ("net zo mooi als Apple op de iPhone").
+     Als frontend/icons/maan-foto.jpg bestaat wordt die er bovenop getoond
+     (zie MAAN_FOTO_URL in app.js) — zonder die foto blijft dit de
+     zichtbare (getekende) versie, geen kapot-plaatje-icoontje. */
+  filter: drop-shadow(0 0 18px rgba(238,241,255,0.35));
+}
+.maan-info { position: relative; z-index: 1; }
+.maan-fase-naam { font-family:'Space Grotesk',sans-serif; font-size:15px; color:#f4f6fb; }
+.maan-illuminatie { font-family:'JetBrains Mono',monospace; font-size:12px; color:#9199b5; margin-top:3px; }
+.maan-countdown { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#6b7280; margin-top:5px; }
+
+/* 2026-08-22, op verzoek van Lex ("planetarium-achtige setting") — eigen
+   kaart voor de nieuwe Planeten-rubriek (zie planetenKaartVoorHemel() in
+   app.js): een kompas (azimuth rondom, elevatie als afstand tot het midden)
+   boven een azimuth/elevatie-raster, in plaats van de standaard
+   .sky-card-rij-layout (vandaar column i.p.v. de geërfde flex-row van
+   .sky-card). */
+.sky-card--planeten { flex-direction: column; align-items: stretch; gap: 14px; }
+.planeten-kompas-wrap { display:flex; justify-content:center; }
+.planeten-kompas { width: 168px; height: 168px; display:block; overflow: visible; }
+.planeten-kompas-label { font-family:'JetBrains Mono',monospace; font-size:9px; fill:#7d8399; }
+/* 2026-08-22-fix, op verzoek van Lex ("er moet ook een y-as met
+   gradenverdeling bij, ik wil 1 raster dat voor elke planeet wordt
+   gebruikt") — vervangt de eerdere per-planeet uitklap-strook door één
+   gedeeld assenstelsel, altijd zichtbaar, met alle vijf planeten er samen
+   op (alleen stippen — een tussentijdse poging om naam/stand-tekst IN de
+   grafiek te zetten ("dan winnen we ruimte") bleek niet de bedoeling: "Nee
+   niet IN het raster. De lijst eronder in 2 kolommen" — dus de tekst staat
+   in de tweekoloms-legenda hieronder, niet in de SVG zelf). */
+.planeten-raster-wrap { display:flex; justify-content:center; }
+.planeten-raster { display:block; width:100%; height:auto; max-width:340px; }
+.planeten-raster-label { font-family:'JetBrains Mono',monospace; font-size:9px; fill:#7d8399; }
+
+/* 2026-08-22-fix, op verzoek van Lex ("1e kolom de naam, 2e kolom de info")
+   — een echte naam/info-tabel i.p.v. het eerdere 2-koloms-blokken-grid (zie
+   planetenLegendaRijen() in app.js: elke planeet levert nu twee losse
+   grid-cellen — naam-cel en info-cel — i.p.v. één samengesteld blok, zodat
+   ze hier netjes in twee kolommen uitlijnen). auto/1fr: de naamkolom is zo
+   breed als de langste naam nodig heeft ("Mercurius"/"Saturnus"), de
+   infokolom vult de rest. */
+.planeten-legenda { display:grid; grid-template-columns:auto 1fr; column-gap:14px; row-gap:7px; align-items:baseline; }
+.planeet-naam-cel { display:flex; align-items:center; gap:7px; white-space:nowrap; }
+.planeet-stip { width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
+.planeet-naam { font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600; color:#f4f6fb; }
+.planeet-stand { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#9199b5; }
+/* Planeten die nu onder de horizon staan: gedimd, blijven wel zichtbaar in de
+   legenda (met hun eerstvolgende opkomsttijd) — bewust niet verborgen, zodat
+   de lijst altijd alle vijf toont i.p.v. te "verspringen" als er eentje op-
+   of ondergaat. */
+.planeet-item--onzichtbaar { opacity: 0.45; }
+
+/* ---- ISS-kaarttracking, 2026-08-22 ---------------------------------------
+   Zelfde kolomstijl als .sky-card--planeten hierboven (eigen kaart i.p.v.
+   het generieke sky-card-rijtje) — zie issKaartVoorHemel()/issKompasSvg() in
+   app.js. .iss-kompas erft de afmeting/overflow van .planeten-kompas (zelfde
+   SVG-geometrie hergebruikt), alleen de stip-kleur wijkt af (cyaan i.p.v. per-
+   planeet-kleur) zodat 'm meteen als "iets anders dan Planeten" herkenbaar is. */
+.sky-card--iss { flex-direction: column; align-items: stretch; gap: 10px; }
+.iss-badge { font-family:'Inter',sans-serif; font-size:11.5px; font-weight:700; letter-spacing:0.02em; color:#5df7ff; text-transform:uppercase; }
+.iss-live-tekst { font-family:'Inter',sans-serif; font-size:14px; font-weight:600; color:#f4f6fb; text-align:center; }
+.iss-live-sub { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#9199b5; text-align:center; }
+/* 2026-08-22, op verzoek van Lex ("de sterretjes zijn erg klein, kan iets
+   groter en goud/geel") — sterrenTekst() in app.js zet de ★/☆-tekens in deze
+   span, zowel in de generieke ISS-rij (hemelSub) als op de aanbevolen-kaart
+   hierboven. Losse span i.p.v. gewoon in de .t2-tekst laten staan, want die
+   is standaard grijsblauw (#9199b5, zie .sky-card .t2) — dat zou de sterren
+   ook grijs maken. */
+.iss-sterren { font-size: 15px; color: #ffd75e; letter-spacing: 1px; }
+/* 2026-08-22, op verzoek van Lex ("maak die kaart maar hoor met tracking") —
+   het wereldkaartje, zie zorgIssWereldkaart() in app.js. Vaste hoogte nodig
+   (Leaflet kan zijn container-afmeting niet zelf afleiden uit omliggende
+   flex/grid-regels) — 140px past qua schaal bij het kompas erboven zonder de
+   kaart te veel te laten domineren. overflow:hidden + border-radius omdat
+   Leaflet's eigen tegel-container geen radius respecteert. */
+.iss-wereldkaart-wrap { border-radius: 12px; overflow: hidden; }
+.iss-wereldkaart { height: 140px; width: 100%; background: #0c0f1a; }
+.iss-wereldkaart .leaflet-control-attribution { display: none; }
+/* Zelfde donkere-modus-filter als de hoofdkaart (#map .leaflet-tile-pane
+   hierboven) — zonder dit zou dit kaartje de rauwe, lichte OSM-tegels tonen
+   en niet bij de rest van de (donkere) app passen. */
+.iss-wereldkaart .leaflet-tile-pane { filter: invert(1) hue-rotate(200deg) brightness(0.95) contrast(0.9) saturate(1.4); }
+
+/* instellingen */
+/* 2026-08-21-fix: de "🔴 Alarmen"-sectie is nu een inklap-knop i.p.v. een
+   vaste titel (zie ALARM_SECTIE_KNOP_EL/renderAlarmInstellingen() in
+   app.js) — zelfde grotere Space Grotesk-stijl als .view-titel (dit
+   VERVANGT die titel voor deze sectie, vandaar zelfde font/size/padding),
+   nu als volle-breedte knop met pijltje rechts. */
+.instellingen-sectie-knop { display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; text-align:left; font-family:'Space Grotesk',sans-serif; font-size:15px; color:#f4f6fb; padding:14px 16px 10px; cursor:pointer; }
+.instellingen-sectie-knop:active { opacity:0.7; }
+.instellingen-sectie-pijl { font-family:'JetBrains Mono',monospace; font-size:12px; color:#9199b5; }
+.instellingen-lijst { margin: 0 16px; border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,0.08); }
+/* Uitleg-regel bovenaan de uitgeklapte alarmlijst ("Dit toont of verbergt
+   het rode alarmscherm.") — bewust géén .instelling-item (dat is de
+   toggle-rij-stijl), een aparte, iets zachtere regel zodat 'ie duidelijk als
+   toelichting leest en niet als nóg een instelbaar item. */
+.instellingen-uitleg { padding:11px 14px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#7d8399; background:rgba(255,255,255,0.02); border-bottom:1px solid rgba(255,255,255,0.06); }
+.instelling-item { display:flex; justify-content:space-between; align-items:center; padding:13px 14px; font-family:'JetBrains Mono',monospace; font-size:11.5px; background:rgba(255,255,255,0.03); border-bottom:1px solid rgba(255,255,255,0.06); }
+.instelling-item:last-child { border-bottom:none; }
+.instelling-item span { color:#7d8399; }
+.instelling-item b { color:#e8eaed; font-weight:500; }
+.instelling-item a { color:#6d7ff0; }
+/* 2026-08-21: aan/uit-knop per alarmcategorie (zie renderAlarmInstellingen()
+   in app.js) — rode tint als 'ie AAN staat (matcht het rode alarmscherm
+   waar de knop over gaat), grijs/neutraal als UIT. Zelfde pil-vorm als
+   .sky-rubriek elders in de app, voor consistentie. */
+.alarm-toggle { font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:600; padding:5px 12px; border-radius:20px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#7d8399; cursor:pointer; }
+.alarm-toggle.aan { background:rgba(255,90,90,0.18); border-color:rgba(255,90,90,0.55); color:#ffb3b3; }
+.alarm-toggle:active { opacity:0.7; }
+.legenda { display:flex; gap:16px; margin: 16px 16px 0; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#9199b5; }
+.legenda-item { display:flex; align-items:center; gap:6px; }
+
+/* bottom-navigatie — vervangt losse ticker/strip door vaste tabbladen */
+.bottom-nav { position:fixed; bottom:0; left:0; right:0; max-width:480px; margin:0 auto; display:flex; background:rgba(12,15,26,0.96); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border-top:1px solid rgba(255,255,255,0.08); padding:6px 0 calc(6px + env(safe-area-inset-bottom, 0px)); z-index:2000; }
+.nav-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; background:none; border:none; color:#6b7280; font-family:'JetBrains Mono',monospace; font-size:9.5px; padding:6px 0 2px; position:relative; cursor:pointer; }
+.nav-btn .icon { font-size:19px; line-height:1; filter:grayscale(1); opacity:0.6; }
+.nav-btn.actief { color:#3ec6ff; }
+.nav-btn.actief .icon { filter:none; opacity:1; }
+.nav-badge { position:absolute; top:0; right:26%; background:#ff2e6d; color:#fff; font-size:9px; font-family:'JetBrains Mono',monospace; min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; box-shadow:0 0 6px rgba(255,46,109,0.6); }
+
+.error-banner { margin: 12px 16px; padding: 10px 14px; border-radius: 10px; background: rgba(255,46,109,0.1); border:1px solid rgba(255,46,109,0.35); color:#ff9db8; font-family:'JetBrains Mono',monospace; font-size:11px; display:none; }
+.error-banner.show { display:block; }
+
+/* Tornado-alarm: volledig-scherm rode gloedflits ("ACTIE!") bij een nieuwe
+   Tornado Warning/Watch. pointer-events:none zodat 'm nooit klikken blokkeert;
+   opacity 0 in rust, de .flits-klasse (opnieuw toegevoegd per alarm, zie
+   flitsAlarmGloed() in app.js) speelt de animatie één keer af. */
+.alarm-gloed { position:fixed; inset:0; z-index:5000; pointer-events:none; opacity:0; }
+.alarm-gloed.flits { animation: alarmGloedFlits 1s ease-out; }
+@keyframes alarmGloedFlits {
+  0%   { opacity:0; box-shadow: inset 0 0 0 0 rgba(255,46,109,0); background: rgba(255,46,109,0); }
+  15%  { opacity:1; box-shadow: inset 0 0 140px 50px rgba(255,46,109,0.9); background: rgba(255,46,109,0.22); }
+  100% { opacity:0; box-shadow: inset 0 0 40px 10px rgba(255,46,109,0); background: rgba(255,46,109,0); }
+}
+
+/* Tornado-alarm pop-up — los van de gloedflits (die is decoratief/kort), dit
+   blijft staan tot Lex 'm wegtikt of naar de kaart doorklikt. Boven alles
+   (incl. de bottom-nav) en met een eigen halftransparante achtergrond zodat
+   'm niet per ongeluk met de rest van het scherm verward wordt. */
+.alarm-popup { position:fixed; inset:0; z-index:6000; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(5,6,10,0.72); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
+.alarm-popup.verborgen { display:none; }
+.alarm-popup-kaart { width:100%; max-width:340px; background:#0e111c; border:1.5px solid rgba(255,46,109,0.55); border-radius:16px; padding:22px 20px; text-align:center; box-shadow:0 0 30px rgba(255,46,109,0.35), 0 8px 24px rgba(0,0,0,0.5); animation: alarmPopupOp 0.25s ease-out; }
+@keyframes alarmPopupOp { from { transform:scale(0.92); opacity:0; } to { transform:scale(1); opacity:1; } }
+.alarm-popup-icoon { font-size:34px; margin-bottom:6px; }
+.alarm-popup-titel { font-family:'Space Grotesk',sans-serif; font-size:17px; color:#f4f6fb; margin-bottom:4px; }
+.alarm-popup-sub { font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#9199b5; margin-bottom:18px; }
+.alarm-popup-knoppen { display:flex; flex-direction:column; gap:8px; }
+.alarm-popup-knoppen button { border:none; border-radius:10px; padding:12px; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+#alarmPopupBekijk { background:#ff2e6d; color:#0e111c; }
+#alarmPopupSluit { background:rgba(255,255,255,0.08); color:#e8eaed; }

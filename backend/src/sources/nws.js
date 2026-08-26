@@ -1,0 +1,430 @@
+// NWS — api.weather.gov actieve tornado-waarschuwingen én -watches. Officieel,
+// gratis, geen sleutel nodig — wel verplicht een herkenbare User-Agent header
+// mee te sturen (staat in NWS' API-etiquette). Documentatie:
+// https://www.weather.gov/documentation/services-web-api
+//
+// Let op: dekt uitsluitend de Verenigde Staten (NWS heeft geen mandaat
+// elders) — dit is dus de VS-tegenhanger van "tornado", niet wereldwijd.
+// Geometrie in de API is een polygon (of soms null), geen los punt; we
+// berekenen zelf het zwaartepunt van de polygon voor de kaartpin, én sturen
+// de volledige polygon mee (detail.gebiedPolygon) zodat de frontend 'm als
+// omtrek kan tekenen zodra iemand de melding aantikt.
+//
+// Tornado Warning (imminent, klein gebied, van het lokale NWS-kantoor) en
+// Tornado Watch (preventief, groot gebied — vaak een hele "watch box" van
+// meerdere staten, uitgegeven door het Storm Prediction Center) zijn bewust
+// twee aparte categorieën: heel ander karakter (nu vs. "houd dit gebied in
+// de gaten"), dus ook een andere ernst-inschatting en een andere manier van
+// tonen op de kaart (warning: gewone hazard-pin; watch: pin + polygon-omtrek).
+import { makeSignal } from '../normalize.js';
+import { stuurAlarm, kaartTekst } from './pushover.js';
+import { stuurMailAlarm } from './email.js';
+import { stuurWebPushAlarm } from './webpush.js';
+import { metHistorie } from '../historie.js';
+import { verversMedia } from '../mediaHistorie.js';
+
+// 2026-08-19: Lex vroeg "hebben we al tsunami warnings?" — nog niet, terwijl
+// dit dezelfde api.weather.gov/alerts-infrastructuur is als tornado hierboven
+// (zelfde endpoint-vorm, zelfde polygon/severity-velden), dus tegen
+// verwaarloosbare extra complexiteit toe te voegen. Zelfde VS-only-beperking
+// als tornado (NWS heeft geen mandaat elders) — een wereldwijde tsunami-bron
+// (bijv. PTWC voor de hele Stille Oceaan) zou een aparte, nog niet uitgezochte
+// bron vergen.
+// 2026-08-20: Severe Thunderstorm Warning erbij op verzoek van Lex ("met
+// polygonen is ook handig om te hebben") — zelfde NWS-alerts-infrastructuur,
+// dus ook hier weer verwaarloosbare extra complexiteit. Triggerde bewust GEEN
+// Pushover/mail-alarm (zie de for-lus onderaan fetchNws) — Lex vroeg daar
+// niet om, en severe thunderstorms komen te vaak voor om als telefoonalarm
+// te willen (i.t.t. tornado warning/watch, die dat wel al deden).
+// 2026-08-20, weer uitgezet, óók op verzoek van Lex ("veeeeeels te veel") —
+// severe thunderstorms zijn in de VS gewoon te talrijk om als losse rubriek
+// prettig te blijven, anders dan tornado/tsunami. Simpelweg de regel
+// hieronder terugzetten (en frontend/app.js's EMOJI_PER_CATEGORIE/
+// NAAM_PER_CATEGORIE/DOPPLER_CATEGORIEEN weer aanvullen met
+// 'severe-thunderstorm', zie de git-historie van dit bestand) is genoeg om
+// 'm weer aan te zetten, mocht dat ooit weer gewenst zijn.
+const EVENT_TYPES = [
+  { event: 'Tornado Warning', categorie: 'tornado' },
+  { event: 'Tornado Watch', categorie: 'tornado-watch' },
+  { event: 'Tsunami Warning', categorie: 'tsunami' },
+  { event: 'Tsunami Watch', categorie: 'tsunami-watch' },
+];
+
+// 2026-08-22: voor de media-zoekterm (zie verversMedia hieronder) — alleen
+// p.areaDesc gebruiken (bv. kaal "Putnam, IL") bleek bij een live test met
+// Lex te generiek: "Putnam" bestaat als county-naam in meerdere staten, dus
+// zonder een woord als "tornado" erbij kregen we net zo makkelijk een oude
+// Putnam County-tornado uit Tennessee of Ohio terug i.p.v. de bedoelde. Deze
+// lookup zet een categorie terug om naar hetzelfde event-label dat
+// EVENT_TYPES hierboven al gebruikt, zodat ook de verlopen-nabewerking in
+// fetchNws() (die alleen de categorie van het bevroren signaal heeft, geen
+// event-string) dezelfde specifiekere zoekterm kan opbouwen.
+const EVENT_PER_CATEGORIE = Object.fromEntries(EVENT_TYPES.map(({ event, categorie }) => [categorie, event]));
+
+const ERNST_PER_SEVERITY = { Extreme: 'kritiek', Severe: 'waarschuwing', Moderate: 'let-op', Minor: 'info' };
+
+// 2026-08-20, op verzoek van Lex — de volledige tornado-ernstladder in
+// beeld: naast de gewone Tornado Watch/Warning ook de twee "verzwaarde"
+// niveaus PDS (Particularly Dangerous Situation, kan bij zowel watch als
+// warning) en Tornado Emergency (het hoogste niveau, alleen bij warnings).
+// NWS heeft hier GEEN los event-type of CAP-severity-waarde voor — dit
+// wordt uitsluitend aangegeven via de letterlijke frase in de
+// waarschuwingstekst zelf. Zelfde aanpak als de Iowa Environmental Mesonet
+// hanteert voor hun PDS-detectie ("this phrasing is the only key used to
+// identify such events", zie mesonet.agron.iastate.edu/vtec/pds.php).
+// Tornado Emergency heeft sinds 2017 daarnaast ook een gestructureerd
+// IBW-veld op warning-niveau (parameters.tornadoDamageThreat=CATASTROPHIC)
+// — die controleren we als extra, betrouwbaardere check naast de tekst,
+// voor het geval de letterlijke frase een keer ontbreekt.
+const TORNADO_CATEGORIEEN = new Set(['tornado', 'tornado-watch']);
+
+function bevatFrase(tekst, frase) {
+  return typeof tekst === 'string' && tekst.toUpperCase().includes(frase);
+}
+
+// 2026-08-20, op verzoek van Lex ("Tornado on the Ground vs Tornado
+// confirmed") — het officiële, gestructureerde NWS-veld
+// parameters.tornadoDetection, exact twee mogelijke waarden volgens NWS' eigen
+// CAP-documentatie (CAP_v12_guide): "RADAR INDICATED" (rotatie gezien op
+// radar, geen visuele/schade-bevestiging) of "OBSERVED" (visueel bevestigd
+// door getrainde spotter/hulpdiensten, óf een debris-signature op radar) —
+// dit vertegenwoordigt NWS' eigen "hoe zeker weten we dit"-niveau, los van
+// PDS/Emergency (die gaan over verwachte SCHADE, niet detectie-zekerheid) én
+// los van de categorie tornado-bevestigd hieronder (dat zijn achteraf
+// ingediende IEM Local Storm Reports, een heel andere bron/timing — dáár
+// bestaat vooralsnog maar 1 niveau, EF-schaal komt pas dagen later na een
+// schade-onderzoek). Alleen relevant bij een Warning (categorie 'tornado'):
+// een Watch heeft geen tornadoDetection-veld, er is nog niets waargenomen.
+function tornadoWaargenomen(p, categorie) {
+  if (categorie !== 'tornado') return false;
+  return (p.parameters?.tornadoDetection ?? []).includes('OBSERVED');
+}
+
+function tornadoDreigingsniveau(p, categorie) {
+  if (!TORNADO_CATEGORIEEN.has(categorie)) return { pds: false, emergency: false };
+  const volledigeTekst = `${p.headline ?? ''} ${p.description ?? ''}`;
+  const pds = bevatFrase(volledigeTekst, 'PARTICULARLY DANGEROUS SITUATION');
+  const catastrofaal = (p.parameters?.tornadoDamageThreat ?? []).includes('CATASTROPHIC');
+  // Tornado Emergency bestaat per definitie alleen op warning-niveau (nooit
+  // bij een watch) — ook al zou een watch-tekst toevallig "tornado
+  // emergency" noemen (bv. als verwijzing naar een eerdere gebeurtenis),
+  // dan telt dat hier bewust niet mee.
+  const emergency = categorie === 'tornado' && (catastrofaal || bevatFrase(volledigeTekst, 'TORNADO EMERGENCY'));
+  return { pds, emergency };
+}
+
+function ernstVoor(categorie, severity) {
+  const isWatch = categorie.endsWith('-watch');
+  const basis = ERNST_PER_SEVERITY[severity] ?? (isWatch ? 'let-op' : 'waarschuwing');
+  // Een "watch" is preventief — nooit zo dringend als een actieve warning,
+  // ook niet als NWS 'm zelf als "Extreme" classificeert. Gegeneraliseerd van
+  // alleen tornado-watch naar elke *-watch-categorie (nu ook tsunami-watch).
+  if (isWatch && basis === 'kritiek') return 'waarschuwing';
+  return basis;
+}
+
+function ringen(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return [geometry.coordinates[0]];
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.map((polygon) => polygon[0]);
+  return [];
+}
+
+function zwaartepunt(geometry) {
+  const punten = ringen(geometry).flat();
+  if (!punten.length) return [null, null];
+  const lon = punten.reduce((som, p) => som + p[0], 0) / punten.length;
+  const lat = punten.reduce((som, p) => som + p[1], 0) / punten.length;
+  return [lat, lon];
+}
+
+// GeoJSON-ringen zijn [lon, lat] — Leaflet wil [lat, lon].
+function ringenAlsLatLon(geometry) {
+  return ringen(geometry).map((ring) => ring.map(([lon, lat]) => [lat, lon]));
+}
+
+// 2026-08-19: community-media (zie sources/media.js), op verzoek van Lex
+// ("voor elke categorie akkoord"). NWS-alerts hebben geen eigen naam zoals
+// een orkaan — areaDesc (getroffen county's/staten) is de beste beschikbare
+// zoekterm.
+// 2026-08-22: was hier een simpele one-shot cache per alert-id (zoekt precies
+// één keer, bij het eerst zien van een alert) — vervangen door
+// mediaHistorie.js se verversMedia(), die periodiek (elke 3 uur, tot 48 uur
+// na ontstaan) opnieuw zoekt én naar schijf persisteert. Aanleiding: de
+// tornado in Putnam County, IL bleek pas uren later goed gedocumenteerd met
+// nieuws/video, ruim na het moment waarop de oude cache al voorgoed had
+// besloten "niks gevonden". Zie ook de nabewerking onderaan fetchNws() die
+// hetzelfde doet voor inmiddels-verlopen signalen (die hier niet meer
+// binnenkomen, want ze zitten niet meer in de live NWS-feed).
+async function fetchEventType({ event, categorie }) {
+  const res = await fetch(`https://api.weather.gov/alerts/active?event=${encodeURIComponent(event)}`, {
+    headers: {
+      'User-Agent': 'weer-app-persoonlijk (contact: lokaal project)',
+      Accept: 'application/geo+json',
+    },
+  });
+  if (!res.ok) throw new Error(`NWS feed (${event}) gaf status ${res.status}`);
+  const body = await res.json();
+
+  return Promise.all(
+    (body.features ?? []).map(async (f) => {
+      const p = f.properties;
+      const [lat, lon] = zwaartepunt(f.geometry);
+      const gebiedPolygon = ringenAlsLatLon(f.geometry);
+      const id = `nws-${p.id}`;
+
+      const { pds, emergency } = tornadoDreigingsniveau(p, categorie);
+      // 2026-08-20: waargenomen ("op de grond") toegevoegd als vierde
+      // titel-niveau — ná Emergency/PDS (die gaan over verwachte schade, dus
+      // zwaarder) maar vóór de kale titelBasis (radar-indicated, het
+      // stille/impliciete default-niveau, geen prefix nodig — dat zijn
+      // verreweg de meeste warnings).
+      const waargenomen = tornadoWaargenomen(p, categorie);
+      const titelBasis = p.headline ?? p.event ?? event;
+      const titel = emergency
+        ? `🚨 TORNADO EMERGENCY — ${titelBasis}`
+        : pds
+        ? `⚠️ PDS — ${titelBasis}`
+        : waargenomen
+        ? `🎯 TORNADO OP DE GROND — ${titelBasis}`
+        : titelBasis;
+      // Tornado Emergency is per definitie het hoogste niveau — ongeacht wat
+      // NWS' eigen severity-veld toevallig zegt, forceren we hier 'kritiek'
+      // (in de praktijk zal severity vrijwel altijd al Extreme zijn, maar dit
+      // maakt het geen toeval).
+      const ernst = emergency ? 'kritiek' : ernstVoor(categorie, p.severity);
+
+      return makeSignal({
+        id,
+        categorie,
+        titel,
+        ernst,
+        lat,
+        lon,
+        tijd: p.effective ?? p.sent,
+        detail: {
+          gebied: p.areaDesc ?? null,
+          geldigTot: p.expires ?? null,
+          instructie: p.instruction ?? null,
+          bronUrl: 'https://alerts.weather.gov/',
+          gebiedPolygon: gebiedPolygon.length ? gebiedPolygon : null,
+          communityMedia: await verversMedia({
+            id,
+            zoekterm: p.areaDesc ? `${event} ${p.areaDesc}` : null,
+            ontstaanIso: p.effective ?? p.sent,
+          }),
+          pds,
+          tornadoEmergency: emergency,
+          tornadoWaargenomen: waargenomen,
+        },
+      });
+    })
+  );
+}
+
+// ---- Testfixture: gesimuleerde watch om de gebied-omtrek-weergave te
+// bekijken zonder te wachten op een echte actieve VS-tornado-watch. Alleen
+// actief met WEER_TEST_TORNADO_WATCH=1 in backend/.env — zet 'm daarna weer
+// terug naar 0 (of verwijder de regel) en herstart, anders blijft er
+// permanent een nep-melding tussen de echte data staan. Titel is expres
+// onmiskenbaar als "TEST" gemarkeerd, precies omdat het hele punt van deze
+// app eerlijke, vertrouwde signalering is — een nep-alarm mag nooit op een
+// echte lijken.
+function testTornadoWatchSignaal() {
+  const nu = Date.now();
+  // Ruwe, plausibele "watch box"-vorm over Kansas/Oklahoma (klassiek Tornado
+  // Alley-gebied) — geen echte NWS-coördinaten, puur om de polygon-tekening
+  // en fitBounds-gedrag te kunnen bekijken.
+  const gebiedPolygon = [
+    [
+      [37.6, -99.4],
+      [37.9, -96.0],
+      [34.1, -95.2],
+      [33.8, -98.6],
+      [37.6, -99.4],
+    ],
+  ];
+  const [lat, lon] = [35.85, -97.3];
+  return makeSignal({
+    id: 'nws-test-tornado-watch',
+    categorie: 'tornado-watch',
+    titel: 'TEST — Tornado Watch (gesimuleerd, geen echt alarm)',
+    ernst: 'waarschuwing',
+    lat,
+    lon,
+    tijd: new Date(nu).toISOString(),
+    detail: {
+      gebied: 'TEST-gebied — Kansas/Oklahoma (gesimuleerd)',
+      geldigTot: new Date(nu + 3 * 60 * 60 * 1000).toISOString(),
+      instructie: null,
+      bronUrl: 'https://alerts.weather.gov/',
+      gebiedPolygon,
+    },
+  });
+}
+
+// ---- Testfixture: gesimuleerde tornado-melding op de ECHTE locatie van de
+// tornado in Putnam County, IL (nacht van 21 op 22 augustus 2026) — om de
+// nieuwe media-historie-laag hierboven (mediaHistorie.js) end-to-end te
+// kunnen controleren zonder op een nieuwe, actieve VS-tornado te hoeven
+// wachten. Anders dan de watch-testfixture hierboven is dit GEEN nep-locatie:
+// zoekterm/gebied is een echte NWS-areaDesc-vorm ("Putnam, IL"), dus
+// verversMedia() doet hier een ECHTE SearXNG-zoekopdracht en zou (zolang er
+// nog nieuwsartikelen/video's over die tornado vindbaar zijn) gewoon
+// relevante resultaten moeten teruggeven — dat is precies wat dit test.
+// Alleen actief met WEER_TEST_PUTNAM_TORNADO=1, zelfde "duidelijk als TEST"-
+// aanpak als WEER_TEST_TORNADO_WATCH hieronder, om dezelfde reden (een nep-
+// alarm mag nooit op een echte lijken). Async omdat 'm meteen een media-
+// zoekopdracht uitvoert i.p.v. pas bij de eerstvolgende pollcyclus.
+async function testPutnamTornadoSignaal() {
+  const nu = Date.now();
+  const id = 'nws-test-putnam-tornado';
+  // Hennepin, IL — de county seat van Putnam County, ongeveer het midden van
+  // het echte getroffen gebied.
+  const [lat, lon] = [41.19, -89.09];
+  // 2026-08-22: gebied in dezelfde vorm als een echte NWS areaDesc ("Putnam,
+  // IL"), en de zoekterm opgebouwd via dezelfde EVENT_PER_CATEGORIE-aanpak
+  // als fetchEventType/de verlopen-nabewerking hierboven — bewust NIET meer
+  // het bredere "Putnam County Illinois tornado" van de eerste versie: die
+  // bleek bij een live test met Lex resultaten op te leveren over een
+  // gelijknamige Putnam County-tornado in Tennessee/Ohio, precies het
+  // probleem dat de event-prefix + time_range=week (zie sources/searxng.js)
+  // hierboven moeten verhelpen — dus dit testsignaal moet dat ook echt testen
+  // i.p.v. het per ongeluk omzeilen met een handmatig verrijkte zoekterm.
+  const gebied = 'Putnam, IL';
+  const zoekterm = `${EVENT_PER_CATEGORIE.tornado} ${gebied}`;
+  return makeSignal({
+    id,
+    categorie: 'tornado',
+    titel: 'TEST — Tornado Warning Putnam County, IL (gesimuleerd, geen echt alarm)',
+    ernst: 'kritiek',
+    lat,
+    lon,
+    tijd: new Date(nu).toISOString(),
+    detail: {
+      gebied,
+      geldigTot: new Date(nu + 60 * 60 * 1000).toISOString(),
+      instructie: null,
+      bronUrl: 'https://alerts.weather.gov/',
+      gebiedPolygon: null,
+      communityMedia: await verversMedia({ id, zoekterm, ontstaanIso: nu }),
+    },
+  });
+}
+
+export async function fetchNws() {
+  // Beide event-types los ophalen i.p.v. één gecombineerde query — als één
+  // van de twee hapert, valt de hele bron niet meteen stil (bv. alleen
+  // warnings tonen als watches tijdelijk mislukken is beter dan niets).
+  const resultaten = await Promise.allSettled(EVENT_TYPES.map(fetchEventType));
+  const gelukt = resultaten.filter((r) => r.status === 'fulfilled');
+  if (!gelukt.length) throw resultaten[0].reason;
+  resultaten
+    .filter((r) => r.status === 'rejected')
+    .forEach((r) => console.error('[weer] nws: één event-type mislukte,', r.reason?.message ?? r.reason));
+  const signalen = gelukt.flatMap((r) => r.value);
+  if (process.env.WEER_TEST_TORNADO_WATCH === '1') {
+    console.log('[weer] nws: WEER_TEST_TORNADO_WATCH=1 — gesimuleerde tornado-watch toegevoegd (niet echt!)');
+    signalen.push(testTornadoWatchSignaal());
+  }
+  if (process.env.WEER_TEST_PUTNAM_TORNADO === '1') {
+    console.log(
+      '[weer] nws: WEER_TEST_PUTNAM_TORNADO=1 — gesimuleerde Putnam County-tornado toegevoegd (test mediaHistorie/SearXNG met een echte zoekopdracht, niet echt!)'
+    );
+    signalen.push(await testPutnamTornadoSignaal());
+  }
+
+  // 2026-08-19: op verzoek van Lex — bij tornado warning én -watch een
+  // Pushover-alarm (zie pushover.js), ook als de app niet openstaat. Bewust
+  // hier centraal ná het samenvoegen (i.p.v. binnen fetchEventType) zodat
+  // ook de testfixture hierboven 'm meekrijgt — die bleek er eerst buiten te
+  // vallen, waardoor WEER_TEST_TORNADO_WATCH=1 wél een testsignaal op de
+  // kaart gaf maar géén Pushover-melding stuurde. Warning is acuut
+  // (emergency-prioriteit, blijft herhalen), watch is preventief
+  // (high-prioriteit, geen herhaling). Bewust niet awaiten: mag de
+  // signalen-opbouw nooit vertragen, stuurAlarm vangt eigen fouten al af.
+  //
+  // 2026-08-20: bericht is nu kaartTekst(s) i.p.v. alleen s.titel — Lex zag
+  // bij een echte tornado warning dat de kaart-popup wél de county's
+  // ("Delaware, IN") toonde maar de Pushover-melding niet duidelijk (die zat
+  // verstopt in de titel, die op het lockscreen werd afgekapt). Op zijn
+  // verzoek ("kaart is leidend") komt de titel nu overeen met wat de kaart
+  // laat zien, mét de county's gegarandeerd zichtbaar in de hoofdtekst.
+  // 2026-08-20: mail-alarm (zie email.js) ernaast, op verzoek van Lex — zelfde
+  // trigger/tekst als Pushover hierboven (kaartTekst(s), "kaart is leidend"),
+  // los aan/uit-schakelbaar (EMAIL_INGESCHAKELD) en met een eigen dedup, dus
+  // onafhankelijk van of Pushover aan- of uitstaat.
+  for (const s of signalen) {
+    if (s.categorie === 'tornado' || s.categorie === 'tornado-watch') {
+      // 2026-08-20: de alarm-titel (het vetgedrukte deel op het lockscreen)
+      // volgt nu ook het dreigingsniveau (zie tornadoDreigingsniveau
+      // hierboven) — bij Tornado Emergency, het hoogste niveau, moet dát
+      // meteen bovenaan staan i.p.v. de generieke "Tornado Warning"-titel.
+      const titel = s.detail?.tornadoEmergency
+        ? '🚨 TORNADO EMERGENCY'
+        : s.detail?.pds
+        ? `⚠️ PDS ${s.categorie === 'tornado' ? 'Tornado Warning' : 'Tornado Watch'}`
+        : s.detail?.tornadoWaargenomen
+        ? '🎯 Tornado op de grond'
+        : s.categorie === 'tornado'
+        ? '🌪️ Tornado Warning'
+        : 'Tornado Watch';
+      const bericht = kaartTekst(s);
+      stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tornado' ? 2 : 1 });
+      // 2026-08-20: lat/lon/gebiedPolygon erbij op verzoek van Lex ("kaartje
+      // met de boundary in de mail") — zie kaartUrlVoor() in email.js.
+      stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
+      // 2026-08-22: derde, rustige (niet-herhalende) alarmkanaal naast
+      // Pushover/mail hierboven — zie webpush.js voor de aanleiding.
+      // lat/lon/gebiedPolygon erbij (2026-08-22, tweede toevoeging) zodat
+      // de melding zelf ook het kaartje kan tonen, zelfde bron als de mail.
+      // url erbij (2026-08-22, derde toevoeging, na Lex' "klikken opent wel
+      // de app maar niet de melding zelf") — /?signaal=<id> laat app.js bij
+      // het laden de kaart op precies dit signaal centreren, zie verversen().
+      stuurWebPushAlarm({
+        id: s.id,
+        titel,
+        bericht,
+        url: `/?signaal=${encodeURIComponent(s.id)}`,
+        lat: s.lat,
+        lon: s.lon,
+        gebiedPolygon: s.detail?.gebiedPolygon,
+      });
+    }
+  }
+
+  // 2026-08-20: historie (zie historie.js) NA de alarm-lus hierboven —
+  // Pushover/mail moeten alleen ooit op echt-live signalen reageren, nooit op
+  // een teruggehaald "verlopen"-signaal van hieronder (die zouden toch al
+  // gededupliceerd worden via de gemeld-Set in pushover.js/email.js, maar dit
+  // voorkomt sowieso elke twijfel daarover).
+  const totaal = metHistorie('nws', signalen);
+
+  // 2026-08-22: verlopen signalen zitten niet meer in `signalen` hierboven
+  // (ze staan niet meer in de live NWS-feed), dus fetchEventType() heeft er
+  // dit keer geen verversMedia() voor aangeroepen. Zonder deze aparte pas zou
+  // een tornado die inmiddels "verlopen" is nooit meer nieuw materiaal
+  // krijgen — precies het gat dat Lex signaleerde na de Putnam County-tornado
+  // (het beste materiaal, nieuws/storm-chaser-video, verschijnt vaak pas
+  // uren tot dagen ná afloop van de waarschuwing zelf). Bewust ná
+  // metHistorie() (die geeft zowel live als verlopen signalen terug) i.p.v.
+  // hier zelf een aparte cache bij te houden — mediaHistorie.js is de enige
+  // plek die weet wát/wanneer er laatst gezocht is. Muteert detail.
+  // communityMedia rechtstreeks op de door metHistorie() teruggegeven
+  // (verse, elke cyclus opnieuw opgebouwde) signaal-kopieën, dus geen risico
+  // op state die tussen cycli blijft hangen.
+  await Promise.all(
+    totaal
+      .filter((s) => s.detail?.verlopen)
+      .map(async (s) => {
+        // Zelfde opbouw als in fetchEventType hierboven (event + areaDesc) —
+        // het bevroren signaal heeft geen eigen "event"-string meer, dus via
+        // EVENT_PER_CATEGORIE terugvertaald vanuit s.categorie.
+        const gebied = s.detail?.gebied;
+        const zoekterm = gebied ? `${EVENT_PER_CATEGORIE[s.categorie] ?? ''} ${gebied}`.trim() : null;
+        s.detail.communityMedia = await verversMedia({ id: s.id, zoekterm, ontstaanIso: s.tijd });
+      })
+  );
+
+  return totaal;
+}

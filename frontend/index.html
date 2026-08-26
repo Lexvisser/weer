@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#05060a">
+<title>Weer</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body class="kaart-actief">
+
+<div class="statusbar">
+  <span id="klok">--:--</span>
+  <span id="verbinding">verbinden…</span>
+</div>
+
+<div class="app-header">
+  <div class="loc">
+    <div class="name" id="locNaam">—</div>
+    <div class="sub" id="bijgewerkt">nog niet bijgewerkt</div>
+  </div>
+  <!-- 2026-08-20: het weericoon + conditietekst ("Bewolkt") stonden eerst
+       naast de plaatsnaam links (op Lex' eerdere verzoek), maar zijn nu op
+       zijn verzoek verhuisd naar rechts, naast de temperatuur — icoon-links-
+       van-de-tekst, iets groter dan de eerdere kleine variant. Zie
+       renderWeer() in app.js — vult nog steeds gewoon dezelfde twee
+       elementen (weerIcoonWrap/weerConditie), alleen hun plek in de HTML is
+       veranderd. -->
+  <div class="temp-groep">
+    <span class="weer-icoon-wrap-klein" id="weerIcoonWrap"></span>
+    <span class="conditie-klein" id="weerConditie">—</span>
+    <div class="temp" id="headerTemp">—</div>
+  </div>
+</div>
+
+<div class="error-banner" id="errorBanner"></div>
+
+<!-- KAART -->
+<div class="view" id="viewKaart">
+  <div class="map-wrap">
+    <div class="map" id="map"></div>
+    <!-- Gevaren/Weer-schakelaar is op 2026-08-18 weggehaald: die deed toch
+         alleen de radar-controls-balk hieronder tonen/verbergen, niet welke
+         gevaren-iconen je zag — dus pure overhead. Radar en Satelliet staan
+         nu altijd los bereikbaar, ongeacht kaartstand. -->
+    <div class="map-toggle">
+      <button id="toggleDoppler" style="display:none;">Doppler</button>
+    </div>
+    <!-- 2026-08-22, op verzoek van Lex — vervangt de losse "Zoek ISS"/
+         "Starlink"-knoppen die hier eerder stonden. Verschijnt alleen zolang
+         kaartVolgType actief is (zie startKaartVolgen()/stopKaartVolgen() in
+         app.js) en navigeert bij een tik terug naar Hemel, met alle
+         hazard-iconen weer terug en de kaart terug naar Home. -->
+    <div class="kaart-volg-stop" id="kaartVolgStopWrap" style="display:none;">
+      <button id="kaartVolgStopKnop">⏹ Stop <span id="kaartVolgStopLabel"></span></button>
+    </div>
+    <div class="doppler-producten" id="dopplerProducten" style="display:none;">
+      <button class="doppler-product-btn actief" data-product="reflectiviteit">Reflectiviteit</button>
+      <button class="doppler-product-btn" data-product="rotatie">Rotatie</button>
+    </div>
+    <div class="radar-controls" id="radarControls">
+      <!-- 2026-08-21, op verzoek van Lex ("Vlucht op de eerste regel, als het
+           krap wordt mag de tekst eraf") — elke knoptekst hieronder staat nu
+           in een eigen <span class="knop-tekst">, zodat styles.css die op
+           smalle schermen kan verbergen (alleen het emoji-icoon blijft dan
+           over) zonder de knoppen zelf of hun logica aan te raken. Zie de
+           media query bij .knop-tekst in styles.css. -->
+      <!-- 2026-08-19: van passief label naar aan/uit-knop, standaard UIT — de
+           regenradar (RainViewer) gaf herhaaldelijk kapotte/lege plaatjes
+           ("Zoom Level Not Supported") boven Nederland, oorzaak nog niet
+           gevonden. Tijdelijk uitgezet voor de POC, maar de knop blijft staan
+           zodat 'ie zo weer aan te zetten is zodra dat is opgelost. -->
+      <button id="toggleRegenradar" class="radar-label satelliet-toggle">🌧️<span class="knop-tekst"> Regenradar</span></button>
+      <button id="radarSpeel">▶</button>
+      <span id="radarTijd">—</span>
+      <button id="toggleSatelliet" class="satelliet-toggle">🛰️<span class="knop-tekst"> Satelliet</span></button>
+      <!-- 2026-08-20, op verzoek van Lex ("elke icons uitzetten, of een heel
+           andere zeekaart") — schakelt om naar een nautische weergave:
+           gewone hazard-pins verdwijnen, een OpenSeaMap-vaarwaterlaag komt
+           over de kaart, en NAVTEX-berichten (backend/src/sources/navtex.js)
+           worden getoond. Zie toggleZeeModus() in app.js. -->
+      <button id="toggleZee" class="satelliet-toggle">🌊<span class="knop-tekst"> Zee</span></button>
+      <!-- 2026-08-21, op verzoek van Lex ("kunnen we een laag flight- en
+           vaarradar toevoegen?") — twee "modus"-knoppen, zelfde soort
+           aan/uit-gedrag als Zee hierboven maar dan voor live verkeer i.p.v.
+           een statische zeekaart. Op Lex' verzoek wederzijds uitsluitend
+           ("of boten of vliegtuigen"): kiezen voor Vliegradar/Vaarradar
+           verbergt alle andere kaart-iconen, en Vaarradar zet automatisch
+           ook Zee-modus aan. Icoon-keuze (✈️/⛴️) is bewust simpel gehouden
+           ("TBD" volgens Lex) — kan later vervangen worden door een eigen
+           SVG zoals bij Lifeliner, zonder dat de rest van de logica
+           verandert. Zie toggleVliegradar()/toggleVaarradar() in app.js. -->
+      <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
+      <!-- 2026-08-21: Vaart-knop verborgen, geen functionaliteit verwijderd.
+           aisstream.io (de databron in backend/src/sources/vaarradar.js)
+           levert structureel geen data — bevestigd met twee onafhankelijke
+           live-tests (deze app + los Python-scriptje) en een bekend, open,
+           onopgelost issue bij aisstream.io zelf
+           (github.com/aisstream/aisstream/issues/15). De backend blijft
+           gewoon draaien/proberen; zodra er weer echt een scheepspositie
+           binnenkomt stuurt vaarradar.js automatisch een Pushover/mail-
+           melding (zie eersteDataMelden() daar). Kom je die melding tegen:
+           haal dan gewoon de style="display:none" hieronder weg. -->
+      <button id="toggleVaarradar" class="satelliet-toggle" style="display:none">⛴️<span class="knop-tekst"> Vaart</span></button>
+      <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
+           Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS
+           knop ook niet. Die zouden gewoon vanaf hemel naar de kaart moeten
+           navigeren waarna er een knop Stop zichtbaar is.") — de trigger zit
+           nu bij de ISS/Starlink-subgroepen op Hemel (renderSky() in
+           app.js), niet meer hier. Zie #kaartVolgStopWrap hieronder voor de
+           knop die daarvoor in de plaats komt. -->
+      <!-- 2026-08-21, op verzoek van Lex ("de kaart standaard groot altijd
+           groot... het wisselen tussen klein en groot mag dus vervallen") —
+           de groot/klein-driehoekknop (en de hele toggleKaartUitvergroot()-
+           logica in app.js) is hiermee vervallen: de kaart staat nu
+           permanent in de vergrote weergave, zie #viewKaart in styles.css
+           (niet meer conditioneel op een .kaart-uitvergroot-klasse). -->
+    </div>
+  </div>
+</div>
+
+<!-- MELDINGEN -->
+<div class="view verborgen" id="viewMeldingen">
+  <div class="view-titel">Meldingen</div>
+  <div class="meldingen-lijst" id="meldingenLijst">
+    <div class="meldingen-leeg">Geen actieve meldingen</div>
+  </div>
+</div>
+
+<!-- HEMEL -->
+<div class="view verborgen" id="viewHemel">
+  <!-- 2026-08-22, op verzoek van Lex ("de titel verbergt winnen we ruimte")
+       — de bottom-nav-knop toont al "Hemel" (en staat actief-gemarkeerd),
+       dus deze titel erboven was dubbelop. Alleen hier weggehaald, niet bij
+       de andere tabs (#viewMeldingen/#viewInstellingen) — dat is niet
+       gevraagd. -->
+  <!-- 2026-08-20, op verzoek van Lex ("de knop Aarde nu mag verhuizen ergens
+       onder de hemelknop, dat is logischer toch?") — stond eerst als knop
+       bovenop de kaart, tussen de radar/satelliet-bediening. Inhoudelijk hoort
+       de live EUMETSAT Earth-view-stream (net als maan/ISS/getij) bij "dingen
+       aan de hemel", niet bij kaartbediening — vandaar hierheen verhuisd. De
+       overlay zelf (#aardeOverlay) staat nu los aan het eind van de pagina als
+       schermvullende laag (position:fixed, zie styles.css) i.p.v. genest in
+       .map-wrap, zodat 'm ook vanaf hier openen gewoon werkt. Geen wijziging
+       nodig in app.js — alles gaat via dezelfde element-id's.
+       2026-08-22-fix: op verzoek van Lex ("Aarde nu alleen in het
+       hoofdscherm Hemel") alleen nog zichtbaar op de Maan-rubriek — zelfde
+       rubriek-scoping als .weather-card/.zonmaan-kaart, zie
+       pasHemelActiesZichtbaarheidAan() in app.js. #hemelActies-id erbij
+       zodat app.js 'm kan pakken (had er nog geen). -->
+  <div class="hemel-acties" id="hemelActies">
+    <button id="toggleAarde" class="aarde-nu-knop">🌍 Aarde nu</button>
+  </div>
+  <div class="sky-rubrieken" id="skyRubrieken"></div>
+  <div class="sky-lijst" id="skyLijst"></div>
+  <div class="hemel-leeg" id="hemelLeeg" style="display:none;">Geen hemelgegevens beschikbaar</div>
+
+  <!-- 2026-08-21, op verzoek van Lex ("de kaart standaard groot altijd groot...
+       de zonbaan mag naar Hemel onder de maan en daaronder de weericonen") —
+       de zon/maan-kaart en het weerkaartje stonden eerst op de Kaart-tab,
+       onder de kaart. Nu de kaart daar altijd de volle beschikbare ruimte
+       gebruikt (geen klein/groot-wissel meer), is hier verhuisd naar onder
+       de Maan-rubriek hierboven. Zelfde elementen/id's, dus geen wijziging
+       nodig in app.js — renderZonMaan()/renderWeer() vullen ze op precies
+       dezelfde manier. -->
+  <!-- 2026-08-19: van een simpele tekststrook naar een "spectaculaire"
+       zon/maan-kaart op Lex' verzoek. Zonneboog: een gestileerde dagboog
+       tussen zonsopkomst en zonsondergang met een gloeiende zon-marker die
+       de actuele voortgang van de dag toont (buiten daglicht: marker
+       verborgen, zie renderZonMaan). Daaronder alleen nog de compacte
+       maanop-/ondergangtijden (backend/sources/moon.js, eigen
+       lage-precisie ephemeris-berekening) — de uitvergrote illustratie +
+       fase/verlichting/aftelling staat hierboven al op de Hemel-tab (Lex:
+       "de rest moet onder de knop hemel komen"). Alle vier
+       op-/ondergangiconen zijn zelfgetekend (opOnderIconSvg() in app.js)
+       i.p.v. emoji — Lex vond de 🌅/🌇/🌙/🌘-emoji "niet mooi" en het
+       laatste-kwartier-uiterlijk van 🌘 verwarrend als "maan onder"-symbool. -->
+  <div class="zonmaan-kaart" id="zonmaanKaart" style="display:none;">
+    <div class="zon-boog-wrap">
+      <svg class="zon-boog" viewBox="0 0 300 60" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id="zonBoogGradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#ff9d5c"/>
+            <stop offset="45%" stop-color="#3ec6ff"/>
+            <stop offset="100%" stop-color="#ff6b9d"/>
+          </linearGradient>
+          <radialGradient id="zonGloed" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#ffe8a3" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#ffe8a3" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <line x1="14" y1="52.5" x2="286" y2="52.5" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <!-- Ellipsboog i.p.v. een echte cirkelboog: bij rx=136 (breed genoeg
+             om de volle 300-breedte viewBox te gebruiken) zou een cirkelboog
+             (rx=ry) een top van 136px hoog geven — ver buiten de viewBox.
+             ry=42.75 houdt de top (52.5-42.75=9.75) ruim binnen beeld.
+             viewBox-hoogte (was 108, toen 80, nu 60) en ry (was 76, toen 57,
+             nu 42.75 — exact 0.75x, evenredig meegeschaald) op 2026-08-20
+             opnieuw verkleind op Lex' verzoek ("de kaart zo groot mogelijk,
+             6 kolommen en platte boog proberen"). Zie ZON_BOOG in app.js —
+             de marker-positieberekening moet exact dezelfde rx/ry gebruiken,
+             anders loopt de marker niet meer over de getekende lijn. -->
+        <path d="M 14 52.5 A 136 42.75 0 0 1 286 52.5" fill="none" stroke="url(#zonBoogGradient)" stroke-width="2" stroke-dasharray="1 5" stroke-linecap="round" opacity="0.6"/>
+        <circle id="zonMarkerGloed" cx="14" cy="52.5" r="16" fill="url(#zonGloed)" style="display:none;"></circle>
+        <circle id="zonMarker" cx="14" cy="52.5" r="5.5" fill="#ffe8a3" style="display:none;"></circle>
+      </svg>
+      <div class="zon-tijden">
+        <div class="zon-tijd-item"><span class="zt-icoon" id="zmOpIcoon"></span><span id="zmOp">—</span></div>
+        <div class="zon-tijd-status" id="zmStatus">—</div>
+        <div class="zon-tijd-item"><span class="zt-icoon" id="zmOnderIcoon"></span><span id="zmOnder">—</span></div>
+      </div>
+    </div>
+
+    <!-- 2026-08-19: alleen nog de op-/ondergangtijden hier (Lex: "kunnen hier
+         blijven") — de uitvergrote illustratie + fase/verlichting/aftelling
+         staan hierboven al op de Hemel-tab, zie .sky-card--maan /
+         maanKaartVoorHemel() in app.js. -->
+    <div class="maan-tijden">
+      <div class="zon-tijd-item"><span class="zt-icoon" id="zmMaanOpIcoon"></span><span id="zmMaanOp">—</span></div>
+      <div class="zon-tijd-item"><span class="zt-icoon" id="zmMaanOnderIcoon"></span><span id="zmMaanOnder">—</span></div>
+    </div>
+  </div>
+
+  <!-- 2026-08-20: op verzoek van Lex — het weericoon + conditietekst staan
+       in de app-header naast de plaatsnaam; en "Gevoel" is weggehaald omdat
+       de echte temperatuur al in de header staat, dat was dubbelop. De
+       labels ("Wind", "Luchtdruk", ...) onder elke tegel zijn ook weg —
+       icoon + waarde is genoeg, scheelt ruimte. Was 6 kolommen incl. Gevoel,
+       nu 5. -->
+  <div class="weather-card" id="weatherCard" style="display:none;">
+    <div class="grid">
+      <div class="stat"><span class="stat-icoon" id="statIcoonWind"></span><div class="waarde" id="weerWind">—</div></div>
+      <div class="stat"><span class="stat-icoon" id="statIcoonStoten"></span><div class="waarde" id="weerStoten">—</div></div>
+      <div class="stat"><span class="stat-icoon" id="statIcoonVocht"></span><div class="waarde" id="weerVocht">—</div></div>
+      <div class="stat"><span class="stat-icoon" id="statIcoonDruk"></span><div class="waarde" id="weerDruk">—</div></div>
+      <div class="stat"><span class="stat-icoon" id="statIcoonBewolking"></span><div class="waarde" id="weerBewolking">—</div></div>
+      <!-- 2026-08-22, op verzoek van Lex ("zet daar dan de temp maar weer bij (icons)")
+           — KNMI-precisietemperatuur (sources/knmi.js) als 6e tegel, zelfde stijl
+           als de andere 5. Hergebruikt statThermoSvg() (voorheen het "Gevoel"-icoon,
+           dat op 2026-08-20 uit deze grid is gehaald). Alleen zichtbaar als de bron
+           data heeft, zie renderWeer() in app.js. -->
+      <div class="stat" id="statKnmiTemp" style="display:none;"><span class="stat-icoon" id="statIcoonKnmiTemp"></span><div class="waarde" id="weerKnmiTemp">—</div></div>
+    </div>
+    <!-- 2026-08-22-fix, op Lex' verzoek ("iOS hover is lastig") — station+afstand
+         niet meer als title-tooltip (werkt niet fatsoenlijk op iOS), gewoon
+         zichtbaar tekstregeltje onder de grid. -->
+    <div class="knmi-station" id="weerKnmiStation" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- INSTELLINGEN -->
+<div class="view verborgen" id="viewInstellingen">
+  <div class="view-titel">Instellingen</div>
+  <div class="instellingen-lijst">
+    <div class="instelling-item"><span>Locatie</span><b id="instLocatie">—</b></div>
+    <div class="instelling-item"><span>Ververst elke</span><b>20 sec</b></div>
+    <div class="instelling-item"><span>Status</span><b><a href="/api/status" target="_blank">/api/status</a></b></div>
+    <div class="instelling-item"><span>Signalen</span><b><a href="/api/signals" target="_blank">/api/signals</a></b></div>
+  </div>
+  <div class="legenda">
+    <div class="legenda-item"><span class="tier-dot officieel"></span> Officieel</div>
+    <div class="legenda-item"><span class="tier-dot community"></span> Community</div>
+    <div class="legenda-item"><span class="tier-dot lokaal"></span> Lokaal</div>
+  </div>
+
+  <!-- 2026-08-21, op verzoek van Lex ("ik wil een knop waarmee ik de
+       alarmen zelf kan aan- en uitzetten") — per-categorie aan/uit-knoppen
+       voor het rode volledig-scherm-alarm (zie ALARM_CATEGORIE_DEFINITIES/
+       renderAlarmInstellingen()/magAlarmeren() in app.js). Rijen worden
+       dynamisch gevuld i.p.v. hier hardcoded, want de labels/volgorde staan
+       al in app.js (geen dubbele bron van waarheid). Standaard staat alles
+       AAN (bestaand gedrag) — de knoppen zetten alleen dingen UIT die nu nog
+       aanstaan, opgeslagen in localStorage (dit is een client-side voorkeur
+       per toestel/browser, geen serverinstelling).
+       2026-08-21-fix, op verzoek van Lex ("wil je deze alarmopties onder een
+       knop Alarmen zetten, zodra ik daarop klik zie ik bovenaan de lijst de
+       subtekst...") — de vaste titel werd een echte inklap-knop, staat
+       standaard dicht. Pas na een tik verschijnt de uitleg-regel + de 7
+       aan/uit-knoppen eronder, zelfde uitklap-idioom als de Ruimte-subkopjes
+       op de Hemel-tab. -->
+  <button type="button" class="instellingen-sectie-knop" id="alarmSectieKnop">
+    <span>🔴 Alarmen</span><span class="instellingen-sectie-pijl" id="alarmSectiePijl">▸</span>
+  </button>
+  <div class="instellingen-lijst" id="alarmInstellingenLijst" style="display:none;"></div>
+
+  <!-- 2026-08-22, op verzoek van Lex — Web Push (zie backend/src/sources/
+       webpush.js) als derde, rustige (niet-herhalende) alarmkanaal naast
+       Pushover, specifiek omdat hij Pushover's herhalende prioriteit-2-
+       meldingen storend vindt. Zelfde knop-idioom als #alarmSectieKnop
+       hierboven, maar geen inklapbare lijst — één knop + één statusregel
+       (renderMeldingenKnop() in app.js vult/verbergt de statustekst). -->
+  <button type="button" class="instellingen-sectie-knop" id="meldingenKnop">
+    <span>🔔 Meldingen aanzetten</span>
+  </button>
+  <div class="instellingen-lijst" id="meldingenStatus" style="display:none;"></div>
+</div>
+
+<!-- 2026-08-20: verhuisd hierheen vanuit .map-wrap toen de "Aarde nu"-knop
+     naar de Hemel-tab verhuisde (zie hierboven bij #viewHemel) — deze overlay
+     is nu een losstaande, schermvullende laag (position:fixed in styles.css)
+     i.p.v. genest in de kaart, zodat 'm ongeacht welke tab actief is netjes
+     over het hele scherm opent. -->
+<div class="aarde-overlay" id="aardeOverlay" style="display:none;">
+  <button id="aardeSluiten" class="aarde-sluiten" aria-label="Sluiten">✕</button>
+  <div class="aarde-video" id="aardeVideo"></div>
+  <!-- 2026-08-19: dekt de eerste ~5,5 sec van het opstarten af (waarin
+       YouTube/EUMETSAT hun eigen titel-overlay/branding tonen), zodat je
+       die niet te zien krijgt — zie laadAardePlayer() in app.js. -->
+  <div class="aarde-laden" id="aardeLaden"></div>
+</div>
+
+<!-- 2026-08-20, op verzoek van Lex ("als ik op een label in de kaart klik...
+     hele venster daarvoor gebruiken, knop om eruit te gaan is dan handig"),
+     bijgesteld na zijn klacht dat een eerdere versie vanzelf leek te sluiten
+     en te vroeg (al bij "Kijk op Kaart") opende — schermvullende weergave
+     van ELKE kaart-popup (hazard-signalen én de zeegebied-namen), maar pas
+     ná een tik op Leaflet's eigen kleine popup (die blijft verder ongewijzigd
+     werken zoals voorheen). Zie toonVolledigSchermPopup() + de klik-listener
+     in kaart.on('popupopen', ...) in app.js. Vervangt de eerdere per-tekstblok
+     "tik om te vergroten"-truc; de A－/A＋-stepper ("trapje", Lex' eigen
+     woord) regelt de tekstgrootte nu voor de hele popup-inhoud ineens.
+     Sluiten verbergt alleen deze overlay — Leaflet's eigen popup daaronder
+     blijft gewoon open. -->
+<div class="label-popup-overlay verborgen" id="labelPopupOverlay">
+  <div class="label-popup-balk">
+    <div class="label-popup-tekstgrootte">
+      <button id="labelPopupKleiner" aria-label="Tekst kleiner">A－</button>
+      <button id="labelPopupGroter" aria-label="Tekst groter">A＋</button>
+    </div>
+    <button id="labelPopupSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
+  </div>
+  <div class="label-popup-inhoud" id="labelPopupInhoud"></div>
+</div>
+
+<nav class="bottom-nav" id="bottomNav">
+  <button class="nav-btn actief" data-view="kaart"><span class="icon">🗺️</span><span>Kaart</span></button>
+  <button class="nav-btn" data-view="meldingen"><span class="icon">🔔</span><span>Meldingen</span><span class="nav-badge" id="meldingenBadge" style="display:none;">0</span></button>
+  <button class="nav-btn" data-view="hemel"><span class="icon">🌙</span><span>Hemel</span></button>
+  <button class="nav-btn" data-view="instellingen"><span class="icon">⚙️</span><span>Instellingen</span></button>
+</nav>
+
+<!-- TORNADO-ALARM: volledig-scherm rode gloedflits + pop-up, bij een nieuwe
+     Tornado Warning/Watch (zie verwerkTornadoAlarm() in app.js). De gloed is
+     pointer-events:none zodat 'm nooit de rest van de app blokkeert; de
+     pop-up erboven is wél klikbaar. -->
+<div class="alarm-gloed" id="alarmGloed"></div>
+<div class="alarm-popup verborgen" id="alarmPopup">
+  <div class="alarm-popup-kaart">
+    <div class="alarm-popup-icoon" id="alarmPopupIcoon">🌪️</div>
+    <div class="alarm-popup-titel" id="alarmPopupTitel">—</div>
+    <div class="alarm-popup-sub" id="alarmPopupSub">—</div>
+    <div class="alarm-popup-knoppen">
+      <button id="alarmPopupBekijk">Bekijk op kaart</button>
+      <button id="alarmPopupSluit">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

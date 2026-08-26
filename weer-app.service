@@ -1,0 +1,18 @@
+[Unit]
+Description=Weer app (persoonlijke hazard-signaal PWA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Pas dit pad aan naar waar je de map op de Minisforum hebt uitgepakt:
+WorkingDirectory=/home/%i/weer-app/backend
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+# Geen EnvironmentFile nodig: backend/src/index.js leest backend/.env zelf al
+# in (eigen kleine .env-loader, zie loadEnvFile() daar) — geen extra
+# dependency of systemd-configuratie voor nodig.
+
+[Install]
+WantedBy=multi-user.target

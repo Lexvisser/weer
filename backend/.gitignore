@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+# 2026-08-20: verlopen-historie (zie src/historie.js) — puur runtime-state
+# van de lopende server, hoort niet in git, net als .env hierboven.
+data/

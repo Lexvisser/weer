@@ -1,0 +1,22 @@
+{
+  "name": "weer-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aggregator-service voor de Weer-app: pollt externe hazard/hemel-bronnen, normaliseert en cachet ze, en serveert alles via één API over Tailscale.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "cheerio": "^1.1.2",
+    "nodemailer": "^9.0.5",
+    "satellite.js": "^5.0.0",
+    "web-push": "^3.6.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
