@@ -116,13 +116,28 @@ function datumIn(tekst) {
 // verbeteren tussen twee lezingen van dezelfde referentie.
 const EVENT_REGELS = [
   { type: 'riglijst', label: 'Boorplatform(s)', re: /\bRIG\s*(LIST|MOVE)\b|MOBILE OFFSHORE DRILLING UNIT|\bMODU\b/i },
+  // 2026-08-26, zelfde afsplitsing als navtexLokaal.js -- zie de toelichting
+  // daar. Deze bron heeft (nog) geen eigen classificeerRiglijstStatus()-
+  // achtige per-platform statusherkenning, dus valt hier altijd terug op dit
+  // generieke label + NAVTEX_PLATFORM_SVG in app.js -- beter dan het
+  // booreiland-icoon, ook zonder per-platform detail.
+  { type: 'platform-defect', label: 'Platform(s) met defect', re: /FOLLOWING\s+PLATFORMS?\b/i },
   { type: 'boei-vermist', label: 'Boei vermist/beschadigd', re: /BUOY[^.]{0,20}\bMISSING\b|BUOY[^.]{0,25}\b(TOPMARK|DAMAGED?)\b/i },
   // 2026-08-24, zelfde verbreding als navtexLokaal.js op verzoek van Lex.
   // 2026-08-24, zelfde verbreding als navtexLokaal.js op verzoek van Lex
   // ("Navaids inoperative kom ik ook nog tegen").
   // 2026-08-24, zelfde verbreding als navtexLokaal.js op verzoek van Lex
   // ("BOUY + UNLIT").
-  { type: 'licht-onbetrouwbaar', label: 'Licht onbetrouwbaar/uit', re: /(LIGHT|NAVAIDS?|BUOY)[^.]{0,60}\b(UNRELIABLE|EXTINGUISHED|UNLIT|INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE)\b/i },
+  { type: 'licht-onbetrouwbaar', label: 'Licht onbetrouwbaar/uit', re: /(LIGHT|NAV\s*AIDS?|BUOY)[^.]{0,60}\b(UNRELIABLE|EXTINGUISHED|UNLIT|INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE)\b/i },
+  // 2026-08-26, op verzoek van Lex (MSI 214/26, Scheveningen: meerdere
+  // platforms met "FOGHORN INOPERATIVE"/"FOGHORN...NOT WORKING" naast de
+  // bestaande licht-defecten) -- eigen categorie/icoon i.p.v. dat dit met
+  // een licht-storing op één hoop gegooid wordt: een misthoorn is een
+  // akoestisch signaal (relevant bij slecht zicht/mist), geen licht, dus een
+  // ander soort gevaar voor een heel andere situatie. VOOR
+  // 'licht-onbetrouwbaar' gezet (specifieker eerst) zodat "FOGHORN
+  // INOPERATIVE" niet per ongeluk als lichtstoring wegvalt.
+  { type: 'foghorn', label: 'Misthoorn defect', re: /FOGHORN[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT)\b/i },
   { type: 'boei-nieuw', label: 'Boei geplaatst/gewijzigd', re: /(LIGHT)?BUOY[^.]{0,25}\bESTABLISHED\b|BUOY\s+DEPLOYED|WAVERIDER BUOY/i },
   { type: 'safety-zone', label: 'Veiligheidszone', re: /SAFETY ZONE|AREA PROHIBITED/i },
   { type: 'kabel', label: 'Kabelwerkzaamheden', re: /\bCABLE\b/i },
@@ -376,7 +391,7 @@ export async function fetchUkho(env = {}) {
       // Lex ("alle rigs meenemen ongeacht hoe ver... ik wil ze allemaal
       // zien") slaat een riglijst-bericht het bereik-filter hieronder
       // (binnenBereik) sowieso over -- zie daar.
-      if (eventInfo.type === 'riglijst') {
+      if (eventInfo.type === 'riglijst' || eventInfo.type === 'platform-defect') {
         const rigs = splitsRiglijst(w.description).map((rig) => ({ ...rig, afstandTotJouKm: afstandKm(homeLat, homeLon, rig.lat, rig.lon) }));
         const afstandTotJouKm = rigs.length ? Math.min(...rigs.map((r) => r.afstandTotJouKm)) : null;
         return { ...w, coords: [], positie: rigs[0] ?? null, rigs, afstandTotJouKm, datum, eventInfo, referentie, zelfVervalDatum };
@@ -400,7 +415,7 @@ export async function fetchUkho(env = {}) {
   // 2026-08-25, op verzoek van Lex ("alle rigs meenemen ongeacht hoe ver...
   // ik wil ze allemaal zien") — riglijst-berichten slaan het afstandsfilter
   // hier helemaal over, zelfde als navtexLokaal.js.
-  const binnenBereik = metPositie.filter((w) => w.eventInfo.type === 'riglijst' || (w.afstandTotJouKm != null && w.afstandTotJouKm <= straalKm));
+  const binnenBereik = metPositie.filter((w) => w.eventInfo.type === 'riglijst' || w.eventInfo.type === 'platform-defect' || (w.afstandTotJouKm != null && w.afstandTotJouKm <= straalKm));
   const nietVervallen = binnenBereik.filter((w) => {
     if (w.zelfVervalDatum && w.zelfVervalDatum.getTime() < nu) return false; // "CANCEL THIS MSG <datum>" al gepasseerd
     if (w.referentie && GEANNULEERDE_REFERENTIES.has(w.referentie)) return false; // door een later bericht ingetrokken
@@ -458,7 +473,7 @@ export async function fetchUkho(env = {}) {
     // uit de metPositie-stap hierboven -- geen eigen bereik-filter meer hier
     // (zie de toelichting daar), de afstand blijft alleen nog informatief in
     // de detail staan.
-    if (w.eventInfo.type === 'riglijst') {
+    if (w.eventInfo.type === 'riglijst' || w.eventInfo.type === 'platform-defect') {
       const rigs = w.rigs ?? [];
       if (rigs.length === 0) return [];
       return rigs.map((rig, i) =>

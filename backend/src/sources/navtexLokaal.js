@@ -166,7 +166,22 @@ const TYPE_OMSCHRIJVING = {
 // bestond al wel uit die klasse. Genormaliseerd (komma/streepje -> punt)
 // vóór Number() in coordinatenIn()/splitsRiglijst() hieronder, want
 // Number("21-663") zelf is NaN.
-const COORD_REGEX = /(\d{1,2})[°\-., ]?(\d{1,2}(?:[.,\-]\d+)?)?\s*([NS])\s*(\d{1,3})[°\-., ]?(\d{1,2}(?:[.,\-]\d+)?)?\s*([EW])/gi;
+// 2026-08-26-fix, gevonden tijdens het testen van de riglijst-naam-vóór-
+// coördinaat-splitsing (MSI 214/26, platform "N7-FA-1 53-30N 006-14E"):
+// zonder onderstaande lookbehind matchte dit patroon per ongeluk vanaf de
+// LOSSE "1" aan het eind van de platformnaam ("...FA-1"), gevolgd door een
+// spatie en toen "53-30" — waarbij het "-30"-stuk werd gelezen als het
+// minuten-decimaal (dezelfde constructie als bij "51-21-663N" hierboven,
+// zie de toelichting bij normaliseerMinuten()). Resultaat: platform
+// N7-FA-1 kreeg lat≈1.9 (Golf van Guinea) i.p.v. het echte 53-30N (Noordzee)
+// — een verkeerde match, geen corrupte ontvangst. Lookbehind zorgt dat een
+// coördinaat alleen kan BEGINNEN als het niet direct aan een letter/cijfer/
+// koppelteken vastplakt (dus wel na spatie, aanhalingsteken, dubbele punt,
+// komma, etc. — precies zoals elk echt coördinaat in de praktijkvoorbeelden
+// hierboven al staat); de bestaande "51-21-663N"/"49-8.43N"-corruptiegevallen
+// blijven onaangetast, want die staan altijd los (na spatie/aanhalingsteken),
+// nooit direct tegen een ander alfanumeriek teken aan.
+const COORD_REGEX = /(?<![A-Za-z0-9-])(\d{1,2})[°\-., ]?(\d{1,2}(?:[.,\-]\d+)?)?\s*([NS])\s*(\d{1,3})[°\-., ]?(\d{1,2}(?:[.,\-]\d+)?)?\s*([EW])/gi;
 // Normaliseert een minuten-string als "21-663" of "17,352" naar "21.663"/
 // "17.352" zodat Number() 'm goed leest — zie de comment bij COORD_REGEX.
 function normaliseerMinuten(tekst) {
@@ -763,6 +778,18 @@ const VANGNET_MAX_OUDERDOM_MS = 60 * 24 * 60 * 60 * 1000;
 // specifiek-eerst-algemeen; de eerste match wint.
 const EVENT_REGELS = [
   { type: 'riglijst', label: 'Boorplatform(s)', re: /\bRIG\s*(LIST|MOVE)\b|MOBILE OFFSHORE DRILLING UNIT|\bMODU\b/i },
+  // 2026-08-26, afgesplitst van 'riglijst' hierboven op vraag van Lex, na
+  // MSI 214/26 ("FOLLOWING PLATFORMS HAVE DEFECTS: ..."): de platforms in
+  // zo'n bericht (bv. K6-PC, L10-M, N7-FA-1 -- Nederlandse/Duitse
+  // blokaanduidingen) zijn VASTE productieplatforms met een defect aan hun
+  // navigatiehulpmiddelen, geen boorplatforms/riglijst-posities. Eerst
+  // per ongeluk onder 'riglijst' meegenomen (nodig voor dezelfde
+  // splits-per-positie-behandeling, zie splitsRiglijst() hieronder), maar
+  // dat gaf zo'n bericht het verkeerde generieke label ("Boorplatform(s)")
+  // en, waar geen specifieke status herkend wordt, het verkeerde icoon (een
+  // booreiland-derrick) -- zie classificeerRiglijstStatus()/de call-site
+  // hieronder en NAVTEX_PLATFORM_SVG/NAVTEX_EVENT_ICOON in app.js.
+  { type: 'platform-defect', label: 'Platform(s) met defect', re: /FOLLOWING\s+PLATFORMS?\b/i },
   { type: 'boei-vermist', label: 'Boei vermist/beschadigd', re: /BUOY[^.]{0,20}\bMISSING\b|BUOY[^.]{0,25}\b(TOPMARK|DAMAGED?)\b/i },
   // 2026-08-24, op verzoek van Lex (NAV WARN 454, GERMAN BIGHT: "OFFSHORE
   // WIND FARM 'AMRUMBANK'... LIGHTING INOPERATIVE" viel nog in "overig") —
@@ -780,7 +807,16 @@ const EVENT_REGELS = [
   // volstaat kennelijk ook. BUOY toegevoegd als trigger-woord, en het venster
   // van 20 naar 60 tekens — bij dit concrete bericht zat er een hele
   // coördinaat (32 tekens) tussen BUOY en UNLIT in, ruimer dan de oude 20.
-  { type: 'licht-onbetrouwbaar', label: 'Licht onbetrouwbaar/uit', re: /(LIGHT|NAVAIDS?|BUOY)[^.]{0,60}\b(UNRELIABLE|EXTINGUISHED|UNLIT|INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE)\b/i },
+  { type: 'licht-onbetrouwbaar', label: 'Licht onbetrouwbaar/uit', re: /(LIGHT|NAV\s*AIDS?|BUOY)[^.]{0,60}\b(UNRELIABLE|EXTINGUISHED|UNLIT|INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE)\b/i },
+  // 2026-08-26, op verzoek van Lex (MSI 214/26, Scheveningen: meerdere
+  // platforms met "FOGHORN INOPERATIVE"/"FOGHORN...NOT WORKING" naast de
+  // bestaande licht-defecten) -- eigen categorie/icoon i.p.v. dat dit met
+  // een licht-storing op één hoop gegooid wordt: een misthoorn is een
+  // akoestisch signaal (relevant bij slecht zicht/mist), geen licht, dus een
+  // ander soort gevaar voor een heel andere situatie. VOOR
+  // 'licht-onbetrouwbaar' gezet (specifieker eerst) zodat "FOGHORN
+  // INOPERATIVE" niet per ongeluk als lichtstoring wegvalt.
+  { type: 'foghorn', label: 'Misthoorn defect', re: /FOGHORN[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT)\b/i },
   { type: 'boei-nieuw', label: 'Boei geplaatst/gewijzigd', re: /(LIGHT)?BUOY[^.]{0,25}\bESTABLISHED\b|BUOY\s+DEPLOYED|WAVERIDER BUOY/i },
   { type: 'safety-zone', label: 'Veiligheidszone', re: /SAFETY ZONE|AREA PROHIBITED/i },
   { type: 'kabel', label: 'Kabelwerkzaamheden', re: /\bCABLE\b/i },
@@ -886,30 +922,127 @@ function classificeerGeometrie(body, coords, eventType) {
 // niet elke sectiekop, maar is beter dan niks. d.positie.naam kan nog steeds
 // null zijn/mis zijn; de kaart-popup toont dan "Onbekend platform" i.p.v. een
 // gegokt tekstfragment (zie riglijstTitelHtml() in app.js).
+// 2026-08-26, op verzoek van Lex, na MSI 214/26 (Scheveningen Radio:
+// "FOLLOWING PLATFORMS HAVE DEFECTS: L10-M 53-34N 004-01E UNLIT G16B
+// 54-07N 005-15E UNLIT AND FOGHORN INOPERATIVE N7-FA-1 53-30N 006-14E
+// FOGHORN INOPERATIVE ..."): dit bericht gebruikt de OMGEKEERDE volgorde
+// t.o.v. het HAEVA-voorbeeld hierboven — de platformnaam staat hier VOOR
+// de coördinaat, de status (UNLIT/FOGHORN INOPERATIVE/NAV AIDS
+// UNRELIABLE/...) erna. Zonder onderscheid werd de "naam" dan de
+// statustekst van het VOLGENDE platform (verkeerd) en werden alle 7
+// platforms als één polygoon getekend i.p.v. losse punten ("Ik zie maar 1
+// icon er aan vast", meldde Lex) — dat laatste kwam doordat de oude
+// riglijst-trigger (RIG LIST/MOVE/MODU) deze formulering niet herkende en
+// het bericht dus als generieke meerdere-coördinaten-vorm bij
+// classificeerGeometrie() belandde; zie de bijgewerkte 'riglijst'-regel in
+// EVENT_REGELS hierboven.
+//
+// Onderscheid: als het woord vlak NA de EERSTE coördinaat een statuswoord
+// is, kan dat onmogelijk een platformnaam zijn — dus staat de naam in dat
+// geval vóór de coördinaat (dit format), anders erna (HAEVA-format).
+const RIGLIJST_STATUSWOORD_REGEX = /^\s*(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|FOGHORN|DEFECTIVE|NOT\s+WORKING|OUT\s+OF\s+ORDER|SILENT)\b/i;
+
+// Los, per-platform statuslabel (UNLIT/FOGHORN INOPERATIVE/NAV AIDS
+// UNRELIABLE/...) — bewust NIET via de EVENT_REGELS hierboven: die
+// vereisen een triggerwoord (LIGHT/NAV AIDS/BUOY) binnen 60 tekens van een
+// statuswoord, en dat triggerwoord ontbreekt vaak in zo'n kort, geïsoleerd
+// statuszinnetje per platform (bv. gewoon " UNLIT " tussen twee
+// coördinaten). FOGHORN eerst gecheckt (specifieker) zodat bv. "UNLIT AND
+// FOGHORN INOPERATIVE" (platform G16B in MSI 214/26) het foghorn-icoon
+// krijgt — inhoudelijk kloppen hier eigenlijk beide labels, maar Lex vroeg
+// expliciet om foghorn-defecten een eigen icoon te geven ("voor foghorns
+// inoperative zou ik aparte icons willen trouwens").
+function classificeerRiglijstStatus(statusTekst) {
+  if (!statusTekst) return null;
+  if (/FOGHORN[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT)\b/i.test(statusTekst)) {
+    return { type: 'foghorn', label: 'Misthoorn defect' };
+  }
+  if (/\b(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE)\b/i.test(statusTekst)) {
+    return { type: 'licht-onbetrouwbaar', label: 'Licht onbetrouwbaar/uit' };
+  }
+  return null;
+}
+
 function splitsRiglijst(body) {
-  const entries = [];
   const regex = new RegExp(COORD_REGEX.source, 'gi');
   const matches = [...body.matchAll(regex)];
+  if (matches.length === 0) return [];
+
+  const naamStaatVoorCoordinaat = RIGLIJST_STATUSWOORD_REGEX.test(
+    body.slice(matches[0].index + matches[0][0].length)
+  );
+
+  if (!naamStaatVoorCoordinaat) {
+    // Bestaande logica (HAEVA-format): naam NA de coördinaat, ongewijzigd.
+    const entries = [];
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const vanaf = match.index + match[0].length;
+      const tot = i + 1 < matches.length ? matches[i + 1].index : body.length;
+      const naamKandidaat = body
+        .slice(vanaf, tot)
+        .split(/[.,;]|\bIN\s+POSITION\b|\bPOSITION\b/i)[0];
+      // "NEW " hoort bij het VOLGENDE platform (markeert een nieuwe
+      // toevoeging t.o.v. de vorige riglijst, zie Lex' voorbeeld) en staat
+      // dus aan het EIND van dit stuk tekst, vlak voor de volgende
+      // coördinaat — platgeslagen (geen regeleinde om op te knippen, zie
+      // hierboven) lekt dat anders mee als staart van déze naam.
+      const naam = naamKandidaat ? naamKandidaat.trim().replace(/\s+NEW$/i, '').slice(0, 60) : null;
+      const lat = (Number(match[1]) + Number(normaliseerMinuten(match[2])) / 60) * (match[3].toUpperCase() === 'S' ? -1 : 1);
+      const lon = (Number(match[4]) + Number(normaliseerMinuten(match[5])) / 60) * (match[6].toUpperCase() === 'W' ? -1 : 1);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        entries.push({ naam: naam || null, lat: +lat.toFixed(6), lon: +lon.toFixed(6) });
+      }
+    }
+    return entries;
+  }
+
+  // "Naam VOOR de coördinaat"-format (MSI 214/26-stijl): het stuk tekst
+  // TUSSEN twee coördinaten bevat, platgeslagen zonder scheidingsteken,
+  // eerst het staartje van de statustekst van het VORIGE platform en dan
+  // de naam van DIT platform. Per tussenstuk wordt daarom eerst de naam
+  // (het laatste woord, of de laatste twee bij de "L13 -FE1"-glitch
+  // hieronder) eraf geknipt — de rest is de statustekst van het vorige
+  // platform.
+  const ruw = [];
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i];
-    const vanaf = match.index + match[0].length;
-    const tot = i + 1 < matches.length ? matches[i + 1].index : body.length;
-    const naamKandidaat = body
-      .slice(vanaf, tot)
-      .split(/[.,;]|\bIN\s+POSITION\b|\bPOSITION\b/i)[0];
-    // "NEW " hoort bij het VOLGENDE platform (markeert een nieuwe toevoeging
-    // t.o.v. de vorige riglijst, zie Lex' voorbeeld) en staat dus aan het
-    // EIND van dit stuk tekst, vlak voor de volgende coördinaat — plat-
-    // geslagen (geen regeleinde om op te knippen, zie hierboven) lekt dat
-    // anders mee als staart van déze naam.
-    const naam = naamKandidaat ? naamKandidaat.trim().replace(/\s+NEW$/i, '').slice(0, 60) : null;
+    const vanafVorige = i === 0 ? 0 : matches[i - 1].index + matches[i - 1][0].length;
+    const segment = body.slice(vanafVorige, match.index);
+    const woorden = segment.trim().split(/\s+/).filter(Boolean);
+    let naam = null;
+    let statusVanVorige = '';
+    if (woorden.length > 0) {
+      const laatste = woorden[woorden.length - 1];
+      // Ontvangstglitch (gezien bij "L13 -FE1" i.p.v. "L13-FE1" — een
+      // stray spatie vlak voor het koppelteken): dan hoort het woord
+      // ERVOOR ook nog bij de naam.
+      if (/^-/.test(laatste) && woorden.length > 1) {
+        naam = `${woorden[woorden.length - 2]}${laatste}`;
+        statusVanVorige = woorden.slice(0, -2).join(' ');
+      } else {
+        naam = laatste;
+        statusVanVorige = woorden.slice(0, -1).join(' ');
+      }
+    }
+    if (i > 0 && ruw.length > 0) ruw[ruw.length - 1].statusTekst = statusVanVorige;
     const lat = (Number(match[1]) + Number(normaliseerMinuten(match[2])) / 60) * (match[3].toUpperCase() === 'S' ? -1 : 1);
     const lon = (Number(match[4]) + Number(normaliseerMinuten(match[5])) / 60) * (match[6].toUpperCase() === 'W' ? -1 : 1);
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      entries.push({ naam: naam || null, lat: +lat.toFixed(6), lon: +lon.toFixed(6) });
+      ruw.push({ naam: naam ? naam.slice(0, 60) : null, lat: +lat.toFixed(6), lon: +lon.toFixed(6), statusTekst: '' });
     }
   }
-  return entries;
+  // Laatste platform: geen volgende coördinaat om op te knippen, dus de
+  // statustekst loopt door tot het einde van het bericht.
+  if (ruw.length > 0) {
+    const laatsteMatch = matches[matches.length - 1];
+    ruw[ruw.length - 1].statusTekst = body.slice(laatsteMatch.index + laatsteMatch[0].length);
+  }
+
+  return ruw.map(({ statusTekst, ...rest }) => {
+    const status = classificeerRiglijstStatus(statusTekst);
+    return status ? { ...rest, eventType: status.type, eventLabel: status.label } : rest;
+  });
 }
 
 // 2026-08-26, op verzoek van Lex, na PA37 (HINDERPLAAT: "THE FOLLOWING
@@ -1262,19 +1395,33 @@ export async function fetchNavtexLokaal(env = {}) {
 
     // Riglijst: los puntsignaal per gevonden platformpositie i.p.v. één
     // gebiedssignaal (zie splitsRiglijst() hierboven).
-    if (b.eventInfo.type === 'riglijst') {
+    if (b.eventInfo.type === 'riglijst' || b.eventInfo.type === 'platform-defect') {
       const rigs = splitsRiglijst(b.body);
       if (rigs.length === 0) return []; // frase herkend maar geen enkele positie erin gevonden -- niks te plotten
       return rigs.map((rig, i) =>
         makeSignal({
           id: `${baseId}-rig${i}`,
           categorie: 'navtex',
-          titel: `NAVTEX — ${b.eventInfo.label}${rig.naam ? ` — ${rig.naam}` : ''} — ${stationNaam}`,
+          // Per-platform status (bv. "Misthoorn defect" i.p.v. het
+          // generieke "Boorplatform(s)") als splitsRiglijst() die kon
+          // classificeren, zie classificeerRiglijstStatus() hierboven.
+          titel: `NAVTEX — ${rig.eventLabel ?? b.eventInfo.label}${rig.naam ? ` — ${rig.naam}` : ''} — ${stationNaam}`,
           ernst: 'waarschuwing',
           lat: rig.lat,
           lon: rig.lon,
           tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(`${baseId}-rig${i}`),
-          detail: { ...gedeeldeDetail, positie: rig, riglijstIndex: i, riglijstTotaal: rigs.length },
+          detail: {
+            ...gedeeldeDetail,
+            positie: rig,
+            riglijstIndex: i,
+            riglijstTotaal: rigs.length,
+            // eventType blijft bewust 'riglijst' (via gedeeldeDetail) zodat
+            // riglijstTitelHtml()/de teller in app.js gewoon blijven
+            // werken — het per-platform icoon/label loopt via deze eigen
+            // velden, zie hazardIconHtml() in app.js.
+            rigStatusType: rig.eventType ?? null,
+            rigStatusLabel: rig.eventLabel ?? null,
+          },
         })
       );
     }

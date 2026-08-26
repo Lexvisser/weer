@@ -1880,7 +1880,7 @@ function popupHtml(s) {
 // dus opnieuw op uit s.detail (dezelfde velden als de backend gebruikte om
 // s.titel te maken), puur voor déze popup-weergave.
 function riglijstTitelHtml(s) {
-  if (s.categorie !== 'navtex' || s.detail?.eventType !== 'riglijst') return null;
+  if (s.categorie !== 'navtex' || (s.detail?.eventType !== 'riglijst' && s.detail?.eventType !== 'platform-defect')) return null;
   const d = s.detail;
   // navtexLokaal.js zet titel altijd met het vaste woord "NAVTEX" vooraan;
   // ukho.js gebruikt daar w.type (bv. "NAVAREA 1") — zie detail.bron.
@@ -1889,7 +1889,7 @@ function riglijstTitelHtml(s) {
     ? `<span class="popup-rig-naam">${escapeHtml(d.positie.naam)}</span>`
     : `<span class="popup-rig-naam popup-rig-naam-onbekend">Onbekend platform</span>`;
   const tellerHtml = d.riglijstTotaal > 1 ? ` <span class="popup-rig-teller">(${d.riglijstIndex + 1}/${d.riglijstTotaal})</span>` : '';
-  return `${escapeHtml(kop ?? '')} — ${escapeHtml(d.eventLabel ?? '')} — ${naamHtml}${tellerHtml} — ${escapeHtml(d.station ?? '')}`;
+  return `${escapeHtml(kop ?? '')} — ${escapeHtml(d.rigStatusLabel ?? d.eventLabel ?? '')} — ${naamHtml}${tellerHtml} — ${escapeHtml(d.station ?? '')}`;
 }
 
 // Simpele HTML-escape voor tekst die in een attribuut (title="...") belandt —
@@ -2177,6 +2177,32 @@ const NAVTEX_RIG_SVG = `
   </svg>
 `.trim();
 
+// 2026-08-26, op vraag van Lex ("wat zijn dat voor platforms (niet uit de
+// riglist toch?)" / "we willen niet het boorplatform icon dan toch?"): een
+// "FOLLOWING PLATFORMS HAVE DEFECTS"-bericht (zie 'platform-defect' in
+// EVENT_REGELS, navtexLokaal.js/ukho.js) gaat over VASTE productieplatforms
+// met een navigatiehulpmiddel-defect, geen boorplatforms/riglijst-posities
+// -- verdient dus een eigen, generiek icoon i.p.v. NAVTEX_RIG_SVG hierboven
+// (die booreiland-derrick/antennebal suggereert actief boren, wat hier niet
+// aan de orde is). Plat dek op rechte poten + een fakkelmast i.p.v. de
+// derrick/kruisverband -- bewust GEEN antennebal/driehoekstoren, zodat het
+// verschil met NAVTEX_RIG_SVG ook zonder de titel te lezen duidelijk is.
+// Alleen de FALLBACK voor een platform zonder herkende specifieke status --
+// zie classificeerRiglijstStatus() in navtexLokaal.js: een UNLIT/FOGHORN-
+// defect krijgt gewoon zijn eigen specifieke icoon (NAVTEX_LICHT_UIT_SVG/
+// NAVTEX_MISTHOORN_SVG), dit icoon is voor de rest.
+const NAVTEX_PLATFORM_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <g fill="none" stroke="#f4f6fb" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="9" width="12" height="4" rx="0.6"/>
+      <path d="M7.5 13 L5 21 M16.5 13 L19 21 M10.5 13 L9 21 M13.5 13 L15 21"/>
+      <path d="M4 21 H20"/>
+      <path d="M17 9 V4.3"/>
+    </g>
+    <circle cx="17" cy="3.3" r="0.95" fill="#ff8a3d"/>
+  </svg>
+`.trim();
+
 // 2026-08-24, meerdere iteraties op verzoek van Lex. Eerste versie volgde
 // een referentie-afbeelding letterlijk (uitrafelende aders), bleek op het
 // echte iconformaat (16px op de kaart) te fijn/onduidelijk. Tweede versie
@@ -2265,6 +2291,44 @@ const NAVTEX_LICHT_UIT_SVG = `
       <line x1="8.4" y1="6.4" x2="15.6" y2="12.6"/>
       <line x1="15.6" y1="6.4" x2="8.4" y2="12.6"/>
     </g>
+  </svg>
+`.trim();
+
+// 2026-08-26, op verzoek van Lex, na MSI 214/26 ("voor foghorns
+// inoperative zou ik aparte icons willen trouwens") -- eigen icoon voor
+// een defecte misthoorn i.p.v. hetzelfde generieke riglijst/licht-icoon,
+// zie classificeerRiglijstStatus() in navtexLokaal.js/EVENT_REGELS
+// ('foghorn') voor de herkenning.
+//
+// Eerste versie: kleine hoorn-silhouet + dubbel kruis (dezelfde aanpak als
+// NAVTEX_LICHT_UIT_SVG hierboven) -- Lex' feedback na het zien van de
+// echte kaart: "iets groter denk ik, met het kruis er doorheen is het
+// onherkenbaar. Misschien een enkele diagonale streep er doorheen" (met
+// referentiebeelden van herkenbare misthoorn/geluidssignaal-iconen erbij).
+// Tweede versie: groter/vollere hoorn-vorm (mondstuk + bel) met
+// geluidsboogjes, en één diagonale streep i.p.v. een kruis -- bij een
+// langwerpige hoorn-vorm oogt een dubbel kruis al snel rommelig/onleesbaar
+// (anders dan bij het compacte ronde lampje hierboven).
+// Lex daarna nogmaals: "ik vind het icon van de foghorn niet goed... met
+// rode streep er doorheen" (i.p.v. de subtiele donkere streep) en "de hoorn
+// minder dik wat smaller en breder" en tenslotte "Meer dit aspect / lean"
+// (met zijn referentiebeeld als voorbeeld) -- definitieve versie: een
+// slanke, weinig geflareerde hoorn-cone (klein mondstuk-blokje + lage,
+// langgerekte bel) met 4 rechte geluidslijnen i.p.v. boogjes, en een
+// felrode (#ff3b3b) diagonale streep. Visueel geverifieerd op 22/90px.
+const NAVTEX_MISTHOORN_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <g fill="#e8eaed">
+      <rect x="1" y="10.6" width="2.2" height="2.8" rx="0.35"/>
+      <path d="M3.2,9.7 L13.5,7.6 L13.5,16.4 L3.2,14.3 Z"/>
+    </g>
+    <g stroke="#e8eaed" stroke-width="1.1" stroke-linecap="round" fill="none">
+      <line x1="15.8" y1="7.4" x2="20.3" y2="4.6"/>
+      <line x1="16.3" y1="9.8" x2="21.6" y2="8.3"/>
+      <line x1="16.3" y1="14.2" x2="21.6" y2="15.7"/>
+      <line x1="15.8" y1="16.6" x2="20.3" y2="19.4"/>
+    </g>
+    <line x1="1.8" y1="19.2" x2="21.5" y2="4.8" stroke="#ff3b3b" stroke-width="1.9" stroke-linecap="round"/>
   </svg>
 `.trim();
 
@@ -2514,6 +2578,8 @@ const NAVTEX_EVENT_ICOON = {
   oefening: '🎯',
   'anker-verloren': NAVTEX_ANKER_SVG,
   'boei-nieuw': NAVTEX_BOEI_NIEUW_SVG,
+  foghorn: NAVTEX_MISTHOORN_SVG,
+  'platform-defect': NAVTEX_PLATFORM_SVG,
 };
 function hazardIconHtml(s) {
   if (isLifeliner(s)) return LIFELINER_HELI_SVG;
@@ -2528,7 +2594,8 @@ function hazardIconHtml(s) {
     // andere boei-nieuw-signalen (geen kardinaalteken) houden gewoon het
     // bestaande groene icoon via de normale NAVTEX_EVENT_ICOON-lookup.
     const kardinaal = s.detail?.eventType === 'boei-nieuw' ? NAVTEX_BOEI_CARDINAAL_SVG[s.detail?.boeiRichting] : null;
-    return kardinaal ?? NAVTEX_EVENT_ICOON[s.detail?.eventType] ?? NAVTEX_BOEI_SVG;
+    const rigStatus = (s.detail?.eventType === 'riglijst' || s.detail?.eventType === 'platform-defect') ? NAVTEX_EVENT_ICOON[s.detail?.rigStatusType] : null;
+    return kardinaal ?? rigStatus ?? NAVTEX_EVENT_ICOON[s.detail?.eventType] ?? NAVTEX_BOEI_SVG;
   }
   if (s.categorie === 'tornado' || s.categorie === 'tornado-watch') {
     if (s.detail?.tornadoEmergency) return '🚨';
