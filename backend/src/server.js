@@ -32,7 +32,7 @@ import { fetchLifeliner, lifelinerRapportTekst } from './sources/lifeliner.js';
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -663,6 +663,20 @@ export function createApp(env) {
     }
     if (url === '/api/radarstations') {
       return sendJson(res, 200, { stations: nexradStations, bijgewerkt: nexradStationsBijgewerkt });
+    }
+    // 2026-08-26, op verzoek van Lex ("kan ik dit schema niet ergens handig
+    // in de app beschikbaar hebben") -- statische naslag-data (geen eigen
+    // ophaal-cyclus nodig, dit verandert nooit vanzelf): stationsnaam, land
+    // en zendschema per NAVTEX-station, voor het uitklapbare overzicht in
+    // Instellingen en de "eerstvolgende uitzending"-regel in de NAVTEX-
+    // popup (zie STATIONS in sources/navtexLokaal.js voor de brondata en
+    // eerstvolgendeUitzending()/renderNavtexUitlegSectie() in app.js voor
+    // het gebruik). Alleen de velden die de frontend nodig heeft -- lat/lon/
+    // navarea/kleur zijn hier niet relevant.
+    if (url === '/api/navtex-stations') {
+      return sendJson(res, 200, {
+        stations: NAVTEX_STATIONS.map((s) => ({ id: s.id, naam: s.naam, land: s.land, zendschema: s.zendschema })),
+      });
     }
     if (url === '/api/zee-synopsis') {
       return sendJson(res, 200, zeeForecast);

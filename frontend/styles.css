@@ -1111,6 +1111,17 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .instelling-item span { color:#7d8399; }
 .instelling-item b { color:#e8eaed; font-weight:500; }
 .instelling-item a { color:#6d7ff0; }
+
+/* 2026-08-26, op verzoek van Lex (NAVTEX-schema/lettertabel naslag in
+   Instellingen) -- .instelling-item is standaard een links/rechts-rij van
+   twee grijze spans (prima voor korte label/waarde-paren zoals de
+   alarm-knoppen), maar station-namen + een hele tijdenlijst (of een lange
+   lettertype-omschrijving) zijn te lang om naast elkaar te blijven passen op
+   een telefoonbreedte. Eigen variant: onder elkaar i.p.v. naast elkaar, met
+   de naam/letter iets lichter dan de detailregel eronder. */
+.navtex-naslag-rij { flex-direction:column; align-items:flex-start; gap:3px; }
+.navtex-naslag-rij span:first-child { color:#e8eaed; font-weight:500; }
+.navtex-naslag-tijden { color:#7d8399; font-size:10.5px; }
 /* 2026-08-21: aan/uit-knop per alarmcategorie (zie renderAlarmInstellingen()
    in app.js) — rode tint als 'ie AAN staat (matcht het rode alarmscherm
    waar de knop over gaat), grijs/neutraal als UIT. Zelfde pil-vorm als

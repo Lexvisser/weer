@@ -63,6 +63,9 @@ const ALARM_INSTELLINGEN_LIJST_EL = document.getElementById('alarmInstellingenLi
 // rustige (niet-herhalende) alarmkanaal naast Pushover.
 const MELDINGEN_KNOP_EL = document.getElementById('meldingenKnop');
 const MELDINGEN_STATUS_EL = document.getElementById('meldingenStatus');
+const NAVTEX_UITLEG_KNOP_EL = document.getElementById('navtexUitlegKnop');
+const NAVTEX_UITLEG_PIJL_EL = document.getElementById('navtexUitlegPijl');
+const NAVTEX_UITLEG_LIJST_EL = document.getElementById('navtexUitlegLijst');
 const BOTTOM_NAV_EL = document.getElementById('bottomNav');
 const ZONMAAN_KAART_EL = document.getElementById('zonmaanKaart');
 const ZM_OP_EL = document.getElementById('zmOp');
@@ -768,6 +771,144 @@ async function laadRadarstations() {
     // NEXRAD_STATIONS_FALLBACK zolang NEXRAD_STATIONS_VOLLEDIG leeg blijft.
   }
 }
+
+// 2026-08-26, op verzoek van Lex ("kan ik dit schema niet ergens handig in
+// de app beschikbaar hebben") — stationsnaam/land/zendschema per NAVTEX-
+// station, opgehaald bij het opstarten (zie laadNavtexStations() hieronder,
+// bron: STATIONS in backend/src/sources/navtexLokaal.js via
+// /api/navtex-stations). Blijft `null` zolang die fetch nog niet is geweest
+// of is mislukt — de popup-regel en de Instellingen-sectie tonen dan
+// gewoon niets extra i.p.v. een foutmelding.
+let NAVTEX_STATIONS_DATA = null;
+
+async function laadNavtexStations() {
+  try {
+    const body = await fetch('/api/navtex-stations').then((r) => r.json());
+    if (Array.isArray(body?.stations) && body.stations.length) {
+      NAVTEX_STATIONS_DATA = body.stations;
+      renderNavtexUitlegSectie(); // ververst meteen als de sectie toevallig al openstond
+    }
+  } catch {
+    // Stil falen, zelfde reden als laadRadarstations() hierboven.
+  }
+}
+
+// Puur informatieve naslagtabel (berichttype-letter -> betekenis), zelf
+// aangeleverd door Lex ("wat zijn de varianten voor A") — losstaand van de
+// functionele TYPE_OMSCHRIJVING-map in navtexLokaal.js/ukho.js (die kent
+// alleen de letters die daadwerkelijk voorkomen en classificeert echte
+// berichten; dit is puur voor het overzicht hieronder in Instellingen, geen
+// enkele signal-classificatie hangt hiervan af). M–U en V–Y als reeks i.p.v.
+// losse letters, want dat zijn geen individueel toegewezen letters.
+const NAVTEX_TYPE_NASLAG = [
+  { letters: 'A', omschrijving: 'Navigatiewaarschuwingen' },
+  { letters: 'B', omschrijving: 'Meteorologische waarschuwingen' },
+  { letters: 'C', omschrijving: 'IJsberichten' },
+  { letters: 'D', omschrijving: "Opsporing en redding (SAR), piraterij, tsunami's en andere natuurrampen" },
+  { letters: 'E', omschrijving: 'Weersverwachtingen' },
+  { letters: 'F', omschrijving: 'Loods- en VTS-berichten' },
+  { letters: 'G', omschrijving: 'AIS-berichten' },
+  { letters: 'H', omschrijving: 'LORAN-berichten' },
+  { letters: 'I', omschrijving: 'Niet meer gebruikt (vroeger OMEGA)' },
+  { letters: 'J', omschrijving: 'Waarschuwingen over satellietnavigatie (GPS/GLONASS)' },
+  { letters: 'K', omschrijving: 'Andere elektronische navigatiehulpmiddelen' },
+  { letters: 'L', omschrijving: 'Extra navigatiewaarschuwingen (als de reeks onder A vol is)' },
+  { letters: 'M–U', omschrijving: 'Niet standaard toegewezen' },
+  { letters: 'V–Y', omschrijving: 'Speciale diensten, alleen na toewijzing' },
+  { letters: 'Z', omschrijving: 'Geen berichten aanwezig' },
+];
+
+// Geeft "HH:MM UTC (HH:MM NL-tijd)" voor de eerstvolgende uitzending van dit
+// station, of null als het zendschema van dit station (nog) niet bekend is
+// (zie de toelichting bij STATIONS in navtexLokaal.js — bewust niet voor
+// elk station gegokt). Europe/Amsterdam i.p.v. een handmatige +1/+2-som,
+// zodat dit vanzelf klopt ongeacht zomer-/wintertijd.
+function eerstvolgendeUitzendingTekst(stationId) {
+  const station = NAVTEX_STATIONS_DATA?.find((s) => s.id === stationId);
+  if (!station || !Array.isArray(station.zendschema) || !station.zendschema.length) return null;
+  const nu = new Date();
+  const nuMinuten = nu.getUTCHours() * 60 + nu.getUTCMinutes();
+  const minutenLijst = station.zendschema.map((t) => {
+    const [u, m] = t.split(':').map(Number);
+    return u * 60 + m;
+  });
+  const eerstvolgende = minutenLijst.find((m) => m > nuMinuten) ?? (minutenLijst[0] + 24 * 60);
+  const uur = Math.floor(eerstvolgende / 60) % 24;
+  const dagErna = eerstvolgende >= 24 * 60;
+  const utcTekst = `${String(uur).padStart(2, '0')}:${String(eerstvolgende % 60).padStart(2, '0')}`;
+  const volgendeDatum = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate() + (dagErna ? 1 : 0), uur, eerstvolgende % 60));
+  const nlTekst = volgendeDatum.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Amsterdam' });
+  return `${utcTekst} UTC (${nlTekst} NL-tijd)`;
+}
+
+// 2026-08-26: zelfde dicht-tot-je-erop-tikt uitklap-idioom (booleaanse vlag
+// + pijltje dat omdraait) als alarmSectieUitgeklapt hierboven — zie de
+// toelichting daar. Lex expliciet: "niet altijd zichtbaar maar wel op te
+// roepen (ook op iOS)", dus geen <details>-element (iOS-Safari-styling
+// daarvan is lastig consistent te krijgen met de rest van deze knoppen) maar
+// hetzelfde bestaande knop-mechanisme.
+let navtexUitlegSectieUitgeklapt = false;
+
+function renderNavtexUitlegSectie() {
+  if (NAVTEX_UITLEG_PIJL_EL) NAVTEX_UITLEG_PIJL_EL.textContent = navtexUitlegSectieUitgeklapt ? '▾' : '▸';
+  if (!NAVTEX_UITLEG_LIJST_EL) return;
+  NAVTEX_UITLEG_LIJST_EL.style.display = navtexUitlegSectieUitgeklapt ? '' : 'none';
+  NAVTEX_UITLEG_LIJST_EL.innerHTML = '';
+  if (!navtexUitlegSectieUitgeklapt) return;
+
+  const uitleg = document.createElement('div');
+  uitleg.className = 'instellingen-uitleg';
+  uitleg.textContent = 'De tweede letter in de berichtcode (bv. de "A" in PA11) is het station, de rest het berichttype.';
+  NAVTEX_UITLEG_LIJST_EL.appendChild(uitleg);
+
+  const stationsKop = document.createElement('div');
+  stationsKop.className = 'instellingen-uitleg';
+  stationsKop.textContent = 'Stations (zendschema UTC):';
+  NAVTEX_UITLEG_LIJST_EL.appendChild(stationsKop);
+
+  const stations = NAVTEX_STATIONS_DATA ?? [];
+  if (!stations.length) {
+    const leeg = document.createElement('div');
+    leeg.className = 'instellingen-uitleg';
+    leeg.textContent = '(nog aan het laden...)';
+    NAVTEX_UITLEG_LIJST_EL.appendChild(leeg);
+  }
+  stations.forEach((station) => {
+    const rij = document.createElement('div');
+    rij.className = 'instelling-item navtex-naslag-rij';
+    const label = document.createElement('span');
+    label.textContent = `${station.id}  ${station.naam}${station.land ? ` (${station.land})` : ''}`;
+    const tijden = document.createElement('span');
+    tijden.className = 'navtex-naslag-tijden';
+    tijden.textContent = station.zendschema?.length ? station.zendschema.join(', ') : 'onbekend';
+    rij.appendChild(label);
+    rij.appendChild(tijden);
+    NAVTEX_UITLEG_LIJST_EL.appendChild(rij);
+  });
+
+  const typeKop = document.createElement('div');
+  typeKop.className = 'instellingen-uitleg';
+  typeKop.textContent = 'Berichttype (2e letter van de code):';
+  NAVTEX_UITLEG_LIJST_EL.appendChild(typeKop);
+
+  NAVTEX_TYPE_NASLAG.forEach((regel) => {
+    const rij = document.createElement('div');
+    rij.className = 'instelling-item navtex-naslag-rij';
+    const letter = document.createElement('span');
+    letter.textContent = regel.letters;
+    const omschrijving = document.createElement('span');
+    omschrijving.className = 'navtex-naslag-tijden';
+    omschrijving.textContent = regel.omschrijving;
+    rij.appendChild(letter);
+    rij.appendChild(omschrijving);
+    NAVTEX_UITLEG_LIJST_EL.appendChild(rij);
+  });
+}
+
+NAVTEX_UITLEG_KNOP_EL?.addEventListener('click', () => {
+  navtexUitlegSectieUitgeklapt = !navtexUitlegSectieUitgeklapt;
+  renderNavtexUitlegSectie();
+});
 
 function dopplerTileInfo(product, signal) {
   if (product === 'reflectiviteit') {
@@ -1847,6 +1988,14 @@ function popupExtraHtml(s) {
     if (d.station) stats.push(d.station + (d.land ? ` (${d.land})` : ''));
     if (d.afstandTotJouKm != null) stats.push(`${d.afstandTotJouKm}km van jou`);
     if (stats.length) blokken.push(`<div class="popup-stats">${stats.join(' · ')}</div>`);
+    // 2026-08-26, op verzoek van Lex ("kan ik dit schema niet ergens handig
+    // in de app beschikbaar hebben") -- alleen tonen als het zendschema van
+    // dít station bekend is (zie NAVTEX_STATIONS_DATA/eerstvolgendeUitzending-
+    // Tekst() hierboven), anders niets i.p.v. een lege/misleidende regel.
+    const uitzendingTekst = d.stationId ? eerstvolgendeUitzendingTekst(d.stationId) : null;
+    if (uitzendingTekst) {
+      blokken.push(`<div class="popup-sub">🕓 eerstvolgende uitzending: ${escapeHtml(uitzendingTekst)}</div>`);
+    }
     // 2026-08-24: het ID/naam van een specifiek rig-platform staat sinds
     // vandaag al amber IN de titel zelf, zie popupHtml() — geen apart
     // blokje hier meer nodig (dat gaf dubbele info, zie de geschiedenis in
@@ -3365,10 +3514,23 @@ function groepeerStationSignalen(lijst) {
 // Compacte lijst van de overige berichten binnen een groepeerStationSignalen()
 // -groep (zie hierboven) -- lege string als er geen groep is, zodat dit
 // veilig altijd achter popupHtml() geplakt kan worden.
+// 2026-08-26-fix, op melding van Lex ("het is nu exact gelijk vaak" — 5
+// regels "25 aug 11:07 — Overige navigatiewaarschuwing" onder elkaar): deze
+// lijst toonde alleen tijd + generieke classificatie, dus verschillende
+// echte berichten (andere code/referentie, andere inhoud) die toevallig
+// zonder eigen coördinaat zaten (dus 'overig' geclassificeerd) en in
+// dezelfde pollcyclus binnenkwamen (dus dezelfde tijd) waren niet van elkaar
+// te onderscheiden. Berichtcode (bv. "PA11", alleen navtexLokaal.js — de
+// korte, herkenbare kenmerk) of anders het referentienummer (bv. "MSI
+// 130/26", beide bronnen) erbij, zodat elke regel een eigen kenmerk toont.
 function navtexGroepPopupHtml(s) {
   if (!Array.isArray(s._groepMeer) || !s._groepMeer.length) return '';
   const items = s._groepMeer
-    .map((e) => `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} — ${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`)
+    .map((e) => {
+      const kenmerk = e.detail?.code ?? e.detail?.referentie ?? null;
+      const kenmerkTekst = kenmerk ? `${escapeHtml(kenmerk)} — ` : '';
+      return `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} — ${kenmerkTekst}${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`;
+    })
     .join('');
   return `<div class="popup-groep"><div class="popup-groep-kop">+${s._groepMeer.length} ander(e) bericht(en) van dit station</div>${items}</div>`;
 }
@@ -5831,8 +5993,10 @@ updateKlok();
 setInterval(updateKlok, 15000);
 laadConfig().then(verversen);
 laadRadarstations();
+laadNavtexStations();
 setInterval(verversen, 20000);
 renderAlarmInstellingen(); // eenmalig — hangt alleen van localStorage af, niet van live signalen
+renderNavtexUitlegSectie(); // eenmalig -- staat standaard dicht, NAVTEX_STATIONS_DATA vult zich async
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () =>

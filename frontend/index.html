@@ -295,6 +295,17 @@
     <span>🔔 Meldingen aanzetten</span>
   </button>
   <div class="instellingen-lijst" id="meldingenStatus" style="display:none;"></div>
+
+  <!-- 2026-08-26, op verzoek van Lex ("kan ik dit schema niet ergens handig
+       in de app beschikbaar hebben") — naslag-overzicht van NAVTEX-stations
+       (zendschema UTC) + de A-Z berichttype-lettertabel. Niet altijd
+       zichtbaar maar wel op te roepen (ook op iOS): zelfde dicht-tot-je-
+       erop-tikt uitklap-idioom als #alarmSectieKnop hierboven, gevuld door
+       renderNavtexUitlegSectie() in app.js. -->
+  <button type="button" class="instellingen-sectie-knop" id="navtexUitlegKnop">
+    <span>📡 NAVTEX-stations &amp; berichttypes</span><span class="instellingen-sectie-pijl" id="navtexUitlegPijl">▸</span>
+  </button>
+  <div class="instellingen-lijst" id="navtexUitlegLijst" style="display:none;"></div>
 </div>
 
 <!-- 2026-08-20: verhuisd hierheen vanuit .map-wrap toen de "Aarde nu"-knop
