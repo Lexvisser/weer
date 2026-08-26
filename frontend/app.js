@@ -2321,6 +2321,29 @@ const NAVTEX_MUNITIE_SVG = `
   </svg>
 `.trim();
 
+// 2026-08-26, op verzoek van Lex (Oostende MSI 130/26: "OBSTACLES ON THE
+// SEABED..." — zie de verbrede 'obstructie'-regel in navtexLokaal.js/
+// ukho.js) — eigen icoon i.p.v. het generieke ⚠️-emoji, in dezelfde stijl
+// als NAVTEX_MUNITIE_SVG/NAVTEX_ANKER_SVG hierboven: een gebroken/jagged
+// rots-silhouet (donkere vulling, lichte contourlijn) met een golflijn
+// erover heen -- vergelijkbaar met het officiele zeekaart-symbool voor een
+// "rots die bij laag water droogvalt/net onder water staat" (rots
+// gedeeltelijk zichtbaar boven de golflijn) -- plus een klein rood
+// uitroepteken op de hoogste piek als gevaar-accent (zelfde rode tint
+// #ff5c5c als bij NAVTEX_ANKER_SVG/NAVTEX_MUNITIE_SVG).
+const NAVTEX_OBSTRUCTIE_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2,20 L4,11 L6.5,15 L9,7 L11.5,14 L14,6 L16.5,13 L19,9.5 L22,20 Z"
+          fill="#1a1c22" stroke="#f4f6fb" stroke-width="0.8" stroke-linejoin="round"/>
+    <path d="M1,15.5 C4,13.5 6,13.5 8,15.5 C10,17.5 12,17.5 14,15.5 C16,13.5 18,13.5 20,15.5 C21,16.3 22,16.5 23,15.8"
+          fill="none" stroke="#4c9df0" stroke-width="1.4" stroke-linecap="round" opacity="0.9"/>
+    <g stroke="#ff5c5c" stroke-width="1.6" stroke-linecap="round">
+      <line x1="14" y1="4.4" x2="14" y2="1.6"/>
+      <circle cx="14" cy="0.4" r="0.75" fill="#ff5c5c" stroke="none"/>
+    </g>
+  </svg>
+`.trim();
+
 const NAVTEX_EVENT_ICOON = {
   riglijst: NAVTEX_RIG_SVG,
   'licht-onbetrouwbaar': NAVTEX_LICHT_UIT_SVG,
@@ -2329,7 +2352,7 @@ const NAVTEX_EVENT_ICOON = {
   survey: NAVTEX_SURVEY_SVG,
   wetenschappelijk: '🔬',
   wrak: '☠️',
-  obstructie: '⚠️',
+  obstructie: NAVTEX_OBSTRUCTIE_SVG,
   // 2026-08-24, op verzoek van Lex ("neem gelijk een bom/granaat icon mee
   // als er bij een gebied over ordinance of munitions, explosives wordt
   // gemeld") — zie 'munitie' in navtexLokaal.js/ukho.js EVENT_REGELS.

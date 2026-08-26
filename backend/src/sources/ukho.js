@@ -130,7 +130,12 @@ const EVENT_REGELS = [
   { type: 'survey', label: 'Survey/onderzoeksvaartuig', re: /SURVEY\s+(OPERATIONS?|VESSEL|BY|WORK|CONDUCTED)\b/i },
   { type: 'wetenschappelijk', label: 'Wetenschappelijke instrumenten', re: /SCIENTIFIC (INSTRUMENT|EQUIPMENT)/i },
   { type: 'wrak', label: 'Wrak', re: /\bWRECK\b/i },
-  { type: 'obstructie', label: 'Obstructie', re: /\bOBSTRUCTION\b/i },
+  // 2026-08-26, op melding van Lex (Oostende MSI 130/26: "OBSTACLES ON
+  // THE SEABED IN FOLLOWING POSITIONS...") -- "OBSTACLE(S)" is een
+  // net zo gangbare bewoording als "OBSTRUCTION" voor hetzelfde soort
+  // gevaar (iets op de bodem waar niet geankerd/gevist mag worden), dus
+  // dat viel voorheen nog in 'overig' i.p.v. als obstructie herkend.
+  { type: 'obstructie', label: 'Obstructie', re: /\bOBSTRUCTIONS?\b|\bOBSTACLES?\b/i },
   // 2026-08-24, zelfde uitbreiding als navtexLokaal.js, op verzoek van Lex
   // (MSI 293/26 Oostende: "ANCHOR AND CHAIN LOST IN POS ..."). Bewust NIET op
   // DRAGG(ED/ING) laten matchen, dat is een ander soort melding.
