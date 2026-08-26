@@ -84,8 +84,13 @@ const ALARM_POPUP_SUB_EL = document.getElementById('alarmPopupSub');
 const ALARM_POPUP_BEKIJK_EL = document.getElementById('alarmPopupBekijk');
 const ALARM_POPUP_SLUIT_EL = document.getElementById('alarmPopupSluit');
 
+// 2026-08-26-fix, op melding van Lex ("de pil bij de navtexberichten geeft
+// AM/PM tijden dat moet 24h zijn"): 'nl-NL' als locale is kennelijk niet
+// genoeg om altijd een 24-uursklok af te dwingen (op zijn toestel gaf het
+// AM/PM) -- overal waar toLocaleTimeString hieronder gebruikt wordt nu
+// expliciet hour12: false erbij, niet alleen hier.
 function updateKlok() {
-  KLOK_EL.textContent = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  KLOK_EL.textContent = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function geledenTekst(ts) {
@@ -113,7 +118,7 @@ function tijdstempelTekst(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const tijd = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  const tijd = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
   const vandaag = d.toDateString() === new Date().toDateString();
   if (vandaag) return tijd;
   const datum = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
@@ -146,7 +151,7 @@ function nieuwSindsTekst(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   const datum = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
-  const tijd = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  const tijd = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${datum} ${tijd}`;
 }
 
@@ -1139,7 +1144,7 @@ function toonRadarFrame(index) {
   if (!radarFrames.length) return Promise.resolve();
   radarIndex = ((index % radarFrames.length) + radarFrames.length) % radarFrames.length;
   const frame = radarFrames[radarIndex];
-  const label = new Date(frame.time * 1000).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  const label = new Date(frame.time * 1000).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
   RADAR_TIJD_EL.textContent = radarIndex < radarNuIndex ? label : radarIndex === radarNuIndex ? `${label} · nu` : `${label} · verwacht`;
 
   if (!radarLagen) {
