@@ -105,7 +105,7 @@ export async function fetchMeteors() {
       let ernst = 'let-op';
       if (dagenTotPiek === 0) {
         status = 'piek';
-        titel = `${zwerm.naam} — vannacht op zijn piek`;
+        titel = `${zwerm.naam} - vannacht op zijn piek`;
       } else if (dagenTotPiek != null && dagenTotPiek > 0) {
         status = 'aanloop';
         titel = `Nog ${dagenTekst(dagenTotPiek)} tot: ${zwerm.naam}`;
@@ -115,8 +115,8 @@ export async function fetchMeteors() {
         ernst = 'info';
         titel =
           dagenTotEind <= 0
-            ? `${zwerm.naam} — vannacht de laatste kans`
-            : `${zwerm.naam} — nog ${dagenTekst(dagenTotEind)} actief`;
+            ? `${zwerm.naam} - vannacht de laatste kans`
+            : `${zwerm.naam} - nog ${dagenTekst(dagenTotEind)} actief`;
       }
 
       actief.push({

@@ -299,7 +299,7 @@ export async function fetchGetij(env = {}) {
       makeSignal({
         id: `getij-${kandidaat.code}`,
         categorie: 'hemel',
-        titel: `Getij — ${kandidaat.naam}`,
+        titel: `Getij - ${kandidaat.naam}`,
         ernst: 'info',
         tijd: new Date().toISOString(),
         detail: {

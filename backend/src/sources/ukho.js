@@ -480,7 +480,7 @@ export async function fetchUkho(env = {}) {
         makeSignal({
           id: `ukho-${idVeilig}-rig${i}`,
           categorie: 'navtex',
-          titel: `${w.type} — ${w.eventInfo.label}${rig.naam ? ` — ${rig.naam}` : ''} — ${w.reference}`,
+          titel: `${w.type} - ${w.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''} - ${w.reference}`,
           ernst: 'waarschuwing',
           lat: rig.lat,
           lon: rig.lon,
@@ -495,7 +495,7 @@ export async function fetchUkho(env = {}) {
       makeSignal({
         id: `ukho-${idVeilig}`,
         categorie: 'navtex',
-        titel: `${w.type} — ${w.reference}`,
+        titel: `${w.type} - ${w.reference}`,
         ernst: 'waarschuwing',
         lat: w.positie.lat,
         lon: w.positie.lon,

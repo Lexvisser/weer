@@ -102,11 +102,11 @@ export function lifelinerRapportTekst() {
   const histogram =
     [...perUur.entries()]
       .sort()
-      .map(([uur, n]) => `  ${uur}:00 UTC — ${n} poll(s)`)
+      .map(([uur, n]) => `  ${uur}:00 UTC - ${n} poll(s)`)
       .join('\n') || '  (geen polls in dit venster)';
 
   return [
-    `Lifeliner-poll-rapport — rollend venster van de laatste 24 uur.`,
+    `Lifeliner-poll-rapport - rollend venster van de laatste 24 uur.`,
     ``,
     `${polls.length} credit(s) verbruikt bij OpenSky (dagbudget: ${OPENSKY_DAG_BUDGET}/dag, reset 00:00 UTC).`,
     `${budgetVol.length} tik(ken) overgeslagen omdat het dagbudget al op was.`,
@@ -139,7 +139,7 @@ function stuurRapportBijNood(statusCode) {
   schrijfStaatNaarSchijf();
   stuurMailAlarm({
     id: `lifeliner-rapport-${vandaag}`,
-    titel: `Lifeliner: OpenSky gaf ${statusCode} — poll-rapport bijgevoegd`,
+    titel: `Lifeliner: OpenSky gaf ${statusCode} - poll-rapport bijgevoegd`,
     bericht: lifelinerRapportTekst(),
     to: 'lexvisser@gmail.com',
   });

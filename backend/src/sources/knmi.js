@@ -157,7 +157,7 @@ export async function fetchKnmi(env) {
     makeSignal({
       id: 'knmi-nu',
       categorie: 'algemeen-weer',
-      titel: `KNMI ${dichtstbijzijndStation.naam}${temperatuurC != null ? ` — ${temperatuurC}°C` : ''}`,
+      titel: `KNMI ${dichtstbijzijndStation.naam}${temperatuurC != null ? ` - ${temperatuurC}°C` : ''}`,
       ernst: 'info',
       lat: dichtstbijzijndStation.lat,
       lon: dichtstbijzijndStation.lon,

@@ -52,9 +52,9 @@ export async function fetchSwpc({ homeLat, homeLon }) {
         schaal: '0-11 (NOAA OVATION)',
         toelichting:
           punt.waarde >= 9
-            ? 'Sterke activiteit — kans op zichtbaarheid, ook met blote oog'
+            ? 'Sterke activiteit - kans op zichtbaarheid, ook met blote oog'
             : punt.waarde >= 7
-              ? 'Verhoogde activiteit — probeer een camera met lange sluitertijd'
+              ? 'Verhoogde activiteit - probeer een camera met lange sluitertijd'
               : 'Lichte activiteit, alleen bij heldere, donkere hemel richting het noorden',
         bronUrl: 'https://www.swpc.noaa.gov/products/aurora-forecast',
       },

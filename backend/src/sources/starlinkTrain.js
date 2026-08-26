@@ -222,7 +222,7 @@ export async function fetchStarlinkTrein({ homeLat, homeLon }) {
       makeSignal({
         id: `starlink-trein-status-${trein.lancering}`,
         categorie: 'hemel',
-        titel: `Starlink-trein (${trein.naam}) — geen hoge passage binnenkort`,
+        titel: `Starlink-trein (${trein.naam}) - geen hoge passage binnenkort`,
         ernst: 'info',
         tijd: new Date().toISOString(),
         detail: {

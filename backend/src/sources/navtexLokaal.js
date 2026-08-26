@@ -1077,9 +1077,46 @@ function splitsRiglijst(body) {
 // verwarren met andere lettercombinaties in de tekst, bv. boei-namen).
 const CARDINAAL_REGEX = /\b(NORTH|EAST|SOUTH|WEST)\s+CARDINAL\b/i;
 const CARDINAAL_RICHTING_PER_WOORD = { NORTH: 'noord', EAST: 'oost', SOUTH: 'zuid', WEST: 'west' };
+// 2026-08-26, op verzoek van Lex (ZINK-N: geen letterlijk "CARDINAL" in de
+// tekst, maar wel "Q/W" als lichtkarakteristiek): fallback die de
+// windrichting afleidt uit de lichtkarakteristiek zelf i.p.v. het woord
+// CARDINAL. IALA-standaard, door Lex zelf met bronnen bevestigd: continu
+// snelflitsend wit licht (Q/VQ, geen groepsgetal) is wereldwijd EXCLUSIEF
+// gereserveerd voor noord-kardinaal; met groepsgetal (3)/(9) voor oost/west
+// en (6)+lange flits voor zuid. Vaste tabel-vertaling, geen gok op de
+// boeinaam alleen (die is formeel niet sluitend -- ZINK-A..ZINK-N-achtige
+// reeksen bestaan ook voor gewone gele speciale boeien). Alleen het
+// Noord-geval (kale Q/VQ zonder groep) is tot nu toe tegen een echt
+// ontvangen bericht geverifieerd (ZINK-N); Oost/Zuid/West volgen dezelfde
+// IALA-tabel maar zijn nog niet in een live ontvangen bericht gezien --
+// bij twijfel of een onbekende combinatie levert dit bewust null (geen
+// icoon) i.p.v. een verkeerde windrichting.
+function cardinaalRichtingUitLicht(lichtMatch) {
+  if (!lichtMatch) return null;
+  const type = lichtMatch[1].toUpperCase();
+  if (type !== 'Q' && type !== 'VQ') return null;
+  const kleur = lichtMatch[4] ? lichtMatch[4].toUpperCase() : null;
+  if (kleur && kleur !== 'W') return null; // expliciet een andere kleur -> geen kardinaal-conclusie
+  const groep = lichtMatch[2] ?? '';
+  const langeFlits = Boolean(lichtMatch[3]);
+  if (groep === '' && !langeFlits) return 'noord';
+  if (groep === '3' && !langeFlits) return 'oost';
+  if (groep === '6' && langeFlits) return 'zuid';
+  if (groep === '9' && !langeFlits) return 'west';
+  return null; // onbekende combinatie -> bewust geen gok
+}
 function cardinaalRichtingUit(tekst) {
-  const match = CARDINAAL_REGEX.exec(tekst);
-  return match ? CARDINAAL_RICHTING_PER_WOORD[match[1].toUpperCase()] : null;
+  const woordMatch = CARDINAAL_REGEX.exec(tekst);
+  if (woordMatch) return CARDINAAL_RICHTING_PER_WOORD[woordMatch[1].toUpperCase()];
+  // Geen letterlijk "CARDINAL" gevonden -> licht-gebaseerde fallback
+  // hierboven, op dezelfde naam+lichtcode als boeiDetailsUit() hieronder
+  // gebruikt (BOEI_ENKEL_NAAM_REGEX/BOEI_LICHT_REGEX zijn verderop in dit
+  // bestand gedefinieerd maar zijn er tegen de tijd dat deze functie
+  // daadwerkelijk aangeroepen wordt, gewoon beschikbaar).
+  const naamMatch = BOEI_ENKEL_NAAM_REGEX.exec(tekst);
+  if (!naamMatch) return null;
+  const naTekst = tekst.slice(naamMatch.index + naamMatch[0].length, naamMatch.index + naamMatch[0].length + 30);
+  return cardinaalRichtingUitLicht(BOEI_LICHT_REGEX.exec(naTekst));
 }
 
 const BOEI_NAAM_REGEX = /\b([A-Z])\s*-\s*([\s\S]{1,90}?)\s+ESTABLISHED\s+IN\s+POS(?:ITION)?\s*:?\s*$/i;
@@ -1122,6 +1159,89 @@ function splitsBoeiLijst(body) {
 // Alleen toegepast op eventType 'boei-nieuw' (zie hieronder) -- andere types
 // tonen nog gewoon het volledige bericht, dit was specifiek Lex' wens voor
 // boeien.
+// 2026-08-26, op verzoek van Lex, na een ZINK-N-lichtboei-melding
+// ("COASTAL ZONE NEAR GOEREE/STELLENDAM APPROACH LIGHTBUOY ZINK-N Q/W
+// ESTABLISHED"): dit soort berichten heeft GEEN coördinaat (dus
+// positieIsStation blijft van toepassing, zie hierboven), maar wel een
+// naam en een lichtkarakteristiek in een vast NAVTEX-formaat -- die kunnen
+// wél netjes uitgelezen worden, ook zonder positie. Bewust GEEN poging om
+// hier alsnog een positie bij te verzinnen of op te zoeken (bevestigd met
+// Lex: alleen naam/lichtkarakteristiek tonen, de kaartpositie blijft het
+// zendstation zoals bij elk ander coördinaatloos bericht).
+//
+// Lichtkarakteristiek-afkortingen volgen de internationale IALA-notatie
+// (bv. "Q" = quick flashing, "Fl" = flashing, "Iso" = isophase) gevolgd
+// door een kleurletter (W/R/G/Y) -- hier alleen de meest voorkomende
+// afkortingen, niet de volledige IALA-lijst (geen aanwijzing dat de
+// zeldzamere varianten in dit lokale-ontvangstgebied ooit voorkomen; een
+// onherkende afkortig levert gewoon lichtKarakteristiek zonder
+// lichtOmschrijving op, geen gegokte vertaling).
+// Hoofdletter-genormaliseerde sleutels -- NAVTEX-tekst zelf is altijd
+// HOOFDLETTERS (telegrafie-achtige transmissie), dus de regex hieronder is
+// case-insensitive (/i) en het gematchte type/kleur wordt vóór opzoeken
+// naar hoofdletters genormaliseerd.
+const BOEI_LICHT_TYPE_OMSCHRIJVING = {
+  VQ: 'zeer snel knipperend',
+  LFL: 'lang flikkerend',
+  FL: 'flikkerend',
+  ISO: 'isofase',
+  OC: 'onderbroken',
+  Q: 'snel knipperend',
+  F: 'vast',
+};
+const BOEI_LICHT_KLEUR_OMSCHRIJVING = { W: 'wit', R: 'rood', G: 'groen', Y: 'geel' };
+// Licht-code direct ná de naam, bv. "Q/W", "Fl(2)W", "Iso.G" -- het
+// optionele groepje-getal ("(2)") is standaard IALA-notatie (aantal
+// flitsen), maar een eventuele tijdsduur erna (bv. ".10s") wordt bewust
+// NIET meegenomen: geen bevestigd echt voorbeeld van hoe dat in deze
+// bron precies genoteerd wordt, dus liever een kortere-maar-zekere
+// lichtKarakteristiek dan een gegokt langer patroon. \b ná elke
+// letter-afkorting voorkomt dat dit per ongeluk matcht op de eerste
+// letters van een gewoon woord erna (bv. "Fl" in "FLASHING" zonder
+// lichtcode-achtig vervolg) -- \b faalt daar want "l" en "A" zijn allebei
+// woordtekens, geen grens.
+const BOEI_LICHT_REGEX = /^\s*(VQ|LFl|Fl|Iso|Oc|Q|F)\b(?:\((\d+)\))?(\+\s*LFl)?[/.]?([WRGY])?\b/i;
+// Naam direct ná "(LIGHT)?BUOY" -- met een negative lookahead voor
+// ESTABLISHED/DEPLOYED, want bij "WAVERIDER BUOY DEPLOYED" (zie
+// boeiOmschrijvingUit hieronder, ander bestaand berichttype) staat er
+// geen naam, alleen die twee woorden, en zonder deze uitzondering zou
+// "DEPLOYED" zelf per ongeluk als "naam" gelezen worden.
+const BOEI_ENKEL_NAAM_REGEX = /(?:LIGHT)?BUOY\s+(?!(?:ESTABLISHED|DEPLOYED)\b)([A-Z0-9][A-Z0-9\-]{0,20})\b/i;
+
+function boeiDetailsUit(body) {
+  const naamMatch = BOEI_ENKEL_NAAM_REGEX.exec(body);
+  if (!naamMatch) return null;
+  const naam = naamMatch[1];
+  // 2026-08-26: tekst vóór "(LIGHT)?BUOY" is meestal de omschrijving van het
+  // gebied/de nadering (bv. "COASTAL ZONE NEAR GOEREE/STELLENDAM APPROACH"),
+  // die anders stilzwijgend verdween t.o.v. de vroegere platte weergave.
+  // Zelfde defensieve opschoning als boeiOmschrijvingUit() hierboven
+  // (referentiecode eruit, whitespace normaliseren) zodat de logica simpel
+  // en consistent blijft.
+  const voorTekst = body
+    .slice(0, naamMatch.index)
+    .replace(new RegExp(REFERENTIE_REGEX.source, 'gi'), '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/^[\s,.\-]+|[\s,.\-]+$/g, '')
+    .trim();
+  const gebied = voorTekst.length > 0 ? voorTekst : null;
+  // 20 -> 30 tekens: het "+LFl"-samenstelsuffix (zuid-kardinaal, zie
+  // cardinaalRichtingUitLicht() hierboven) plus een duur-aanduiding als
+  // ".15s" ervoor kunnen de kleurletter net buiten een kortere window duwen.
+  const naTekst = body.slice(naamMatch.index + naamMatch[0].length, naamMatch.index + naamMatch[0].length + 30);
+  const lichtMatch = BOEI_LICHT_REGEX.exec(naTekst);
+  if (!lichtMatch) return { naam, gebied, lichtKarakteristiek: null, lichtOmschrijving: null };
+  const type = BOEI_LICHT_TYPE_OMSCHRIJVING[lichtMatch[1].toUpperCase()] ?? null;
+  // 2026-08-26: groepsgetal (groep 2) en +LFl-samenstelsuffix (groep 3)
+  // kwamen erbij t.b.v. cardinaalRichtingUitLicht() hierboven -- kleur
+  // schoof daardoor van groep 2 naar groep 4.
+  const kleur = lichtMatch[4] ? BOEI_LICHT_KLEUR_OMSCHRIJVING[lichtMatch[4].toUpperCase()] : null;
+  // (bewust dezelfde .toUpperCase()-normalisatie als hierboven, nu de
+  // regex zelf ook case-insensitive is)
+  const omschrijving = type ? `${type}${kleur ? ` ${kleur}` : ''} licht` : null;
+  return { naam, gebied, lichtKarakteristiek: lichtMatch[0].trim(), lichtOmschrijving: omschrijving };
+}
+
 function boeiOmschrijvingUit(body) {
   return body
     .replace(new RegExp(REFERENTIE_REGEX.source, 'gi'), '')
@@ -1405,7 +1525,7 @@ export async function fetchNavtexLokaal(env = {}) {
           // Per-platform status (bv. "Misthoorn defect" i.p.v. het
           // generieke "Boorplatform(s)") als splitsRiglijst() die kon
           // classificeren, zie classificeerRiglijstStatus() hierboven.
-          titel: `NAVTEX — ${rig.eventLabel ?? b.eventInfo.label}${rig.naam ? ` — ${rig.naam}` : ''} — ${stationNaam}`,
+          titel: `NAVTEX - ${rig.eventLabel ?? b.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''} - ${stationNaam}`,
           ernst: 'waarschuwing',
           lat: rig.lat,
           lon: rig.lon,
@@ -1437,7 +1557,7 @@ export async function fetchNavtexLokaal(env = {}) {
         makeSignal({
           id: `${baseId}-boei${i}`,
           categorie: 'navtex',
-          titel: `NAVTEX (ATS Mini V4) — ${b.eventInfo.label}${boei.naam ? ` — ${boei.naam}` : ''} — ${stationNaam}`,
+          titel: `NAVTEX - ${b.eventInfo.label}${boei.naam ? ` - ${boei.naam}` : ''} - ${stationNaam}`,
           ernst: 'waarschuwing',
           lat: boei.lat,
           lon: boei.lon,
@@ -1453,12 +1573,13 @@ export async function fetchNavtexLokaal(env = {}) {
         id: baseId,
         categorie: 'navtex',
         // 2026-08-24, op verzoek van Lex: "(test-ontvangst)" tijdelijk
-        // vervangen door de concrete hardwarenaam (ATS Mini V4) — "het zal
-        // binnenkort weer veranderen" zodra de Airspy HF Discovery er is
-        // (verwacht 2026-08-25, zie het bestandshoofd). Dus bewust NIET als
-        // losse constante uitgetrokken, gewoon inline zodat de volgende
-        // wissel net zo'n kleine, voor de hand liggende diff is als deze.
-        titel: `NAVTEX (ATS Mini V4)${typeOmschrijving ? ` — ${typeOmschrijving}` : ''} — ${stationNaam}`,
+        // vervangen door de concrete hardwarenaam (ATS Mini V4) -- "het zal
+        // binnenkort weer veranderen" zodra de Airspy HF Discovery er is.
+        // 2026-08-26, op verzoek van Lex ("wil je ook ATS MINI V4 laten
+        // vervallen") weer weggehaald -- gewoon "NAVTEX", net als bij de
+        // andere titels hierboven/hieronder (riglijst/platform-defect/
+        // boei-lijst) die deze hardwarenaam nooit hebben gehad.
+        titel: `NAVTEX${typeOmschrijving ? ` - ${typeOmschrijving}` : ''} - ${stationNaam}`,
         ernst: 'waarschuwing',
         lat: b.positie.lat,
         lon: b.positie.lon,
@@ -1472,6 +1593,7 @@ export async function fetchNavtexLokaal(env = {}) {
           // bij een LOSSE boei (de gesplitste boei-lijst hierboven zet zijn
           // eigen boeiNaam al, dit is het pad voor 1 boei per bericht).
           boeiNaam: b.eventInfo.type === 'boei-nieuw' ? boeiOmschrijvingUit(b.body) : null,
+          boeiDetails: b.eventInfo.type === 'boei-nieuw' ? boeiDetailsUit(b.body) : null,
           // 2026-08-26, zie cardinaalRichtingUit() hierboven.
           boeiRichting: b.eventInfo.type === 'boei-nieuw' ? cardinaalRichtingUit(b.body) : null,
         },

@@ -248,7 +248,7 @@ export async function fetchNavtex(env = {}) {
     return makeSignal({
       id,
       categorie: 'navtex',
-      titel: `NAVTEX${typeOmschrijving ? ` — ${typeOmschrijving}` : ''} (${stationNaam})`,
+      titel: `NAVTEX${typeOmschrijving ? ` - ${typeOmschrijving}` : ''} (${stationNaam})`,
       ernst: 'waarschuwing',
       lat: b.positie.lat,
       lon: b.positie.lon,

@@ -65,7 +65,7 @@ export async function fetchSpcOutlook() {
         lon,
         tijd: parseSpcTijd(p.issue) ?? new Date().toISOString(),
         detail: {
-          subtitel: 'Storm Prediction Center — dag 1 categorical outlook',
+          subtitel: 'Storm Prediction Center - dag 1 categorical outlook',
           geldigTot: parseSpcTijd(p.expire),
           bronUrl: 'https://www.spc.noaa.gov/products/outlook/day1otlk.html',
           gebiedPolygon: gebiedPolygon.length ? gebiedPolygon : null,

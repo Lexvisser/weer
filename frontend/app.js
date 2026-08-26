@@ -922,7 +922,7 @@ function dopplerTileInfo(product, signal) {
   if (!station) return null;
   return {
     url: `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::${station.id}-N0S-0/{z}/{x}/{y}.png`,
-    attributie: `Radar: IEM — ${station.naam} (${station.id}), Storm-Relative Velocity`,
+    attributie: `Radar: IEM - ${station.naam} (${station.id}), Storm-Relative Velocity`,
   };
 }
 
@@ -1889,7 +1889,7 @@ function riglijstTitelHtml(s) {
     ? `<span class="popup-rig-naam">${escapeHtml(d.positie.naam)}</span>`
     : `<span class="popup-rig-naam popup-rig-naam-onbekend">Onbekend platform</span>`;
   const tellerHtml = d.riglijstTotaal > 1 ? ` <span class="popup-rig-teller">(${d.riglijstIndex + 1}/${d.riglijstTotaal})</span>` : '';
-  return `${escapeHtml(kop ?? '')} — ${escapeHtml(d.rigStatusLabel ?? d.eventLabel ?? '')} — ${naamHtml}${tellerHtml} — ${escapeHtml(d.station ?? '')}`;
+  return `${escapeHtml(kop ?? '')} - ${escapeHtml(d.rigStatusLabel ?? d.eventLabel ?? '')} - ${naamHtml}${tellerHtml} - ${escapeHtml(d.station ?? '')}`;
 }
 
 // Simpele HTML-escape voor tekst die in een attribuut (title="...") belandt —
@@ -2009,13 +2009,32 @@ function popupExtraHtml(s) {
     // de lijst samen, niet specifiek voor deze ene) -- alleen de eigen
     // naam/classificatie van DEZE boei, dezelfde tekst die ook al kort in de
     // titel staat (zie navtexLokaal.js), hier voluit.
-    if (d.boeiNaam) {
+    // 2026-08-26, op verzoek van Lex ("Details van de Boei... Kunnen we dit
+    // ook verbeteren"), na een ZINK-N-lichtboei-melding zonder coördinaat:
+    // naam + lichtkarakteristiek apart tonen i.p.v. de rauwe berichttekst,
+    // zie boeiDetailsUit() in navtexLokaal.js. Alleen bij een LOSSE boei uit
+    // die functie (boeiDetails), niet bij de boeiNaam uit een boei-LIJST
+    // (splitsBoeiLijst) hieronder -- die heeft geen lichtkarakteristiek-
+    // ontleding, alleen een naam, en toont dus gewoon zijn bestaande regel.
+    if (d.boeiDetails?.naam) {
+      // 2026-08-26, op verzoek van Lex (ZINK-N: "nadering Stellendam" viel
+      // weg t.o.v. de andere boeien): toon de gebiedsomschrijving vóór de
+      // naam, als die er is (zie boeiDetailsUit() in navtexLokaal.js).
+      if (d.boeiDetails.gebied) {
+        blokken.push(`<div class="popup-advies">Gebied: ${escapeHtml(d.boeiDetails.gebied)}</div>`);
+      }
+      blokken.push(`<div class="popup-advies">Naam: ${escapeHtml(d.boeiDetails.naam)}</div>`);
+      if (d.boeiDetails.lichtKarakteristiek) {
+        const omschrijvingTekst = d.boeiDetails.lichtOmschrijving ? ` (${d.boeiDetails.lichtOmschrijving})` : '';
+        blokken.push(`<div class="popup-advies">Lichtkarakteristiek: ${escapeHtml(d.boeiDetails.lichtKarakteristiek)}${escapeHtml(omschrijvingTekst)}</div>`);
+      }
+    } else if (d.boeiNaam) {
       blokken.push(`<div class="popup-advies">${escapeHtml(d.boeiNaam)}</div>`);
     } else if (d.bericht) {
       blokken.push(`<div class="popup-advies">${escapeHtml(d.bericht)}</div>`);
     }
     if (d.positieUitBericht === false) {
-      blokken.push('<div class="popup-sub">📍 positie geschat via zendstation — geen coördinaat in het bericht zelf gevonden</div>');
+      blokken.push('<div class="popup-sub">📍 positie geschat via zendstation - geen coördinaat in het bericht zelf gevonden</div>');
     }
   }
 
@@ -2798,9 +2817,9 @@ function zeeSynopsisPopupHtml(naam) {
   if (waarschuwingen.length > 0) {
     const meldingTekst = waarschuwingen.length === 1 ? '1 actieve scheepvaartwaarschuwing' : `${waarschuwingen.length} actieve scheepvaartwaarschuwingen`;
     const lijstHtml = waarschuwingen
-      .map((w) => `<div class="popup-advies">${w.id ? `<strong>${escapeHtml(w.id)}</strong> — ` : ''}${escapeHtml(w.tekst)}</div>`)
+      .map((w) => `<div class="popup-advies">${w.id ? `<strong>${escapeHtml(w.id)}</strong> - ` : ''}${escapeHtml(w.tekst)}</div>`)
       .join('');
-    return `${titelHtml}<div class="popup-sub">Geen synopsis beschikbaar voor dit gebied — wel ${meldingTekst} (bron: SeaLagom):</div>${lijstHtml}`;
+    return `${titelHtml}<div class="popup-sub">Geen synopsis beschikbaar voor dit gebied - wel ${meldingTekst} (bron: SeaLagom):</div>${lijstHtml}`;
   }
   return `${titelHtml}<div class="popup-sub">Geen synopsis beschikbaar voor dit gebied.</div>`;
 }
@@ -3595,8 +3614,8 @@ function navtexGroepPopupHtml(s) {
   const items = s._groepMeer
     .map((e) => {
       const kenmerk = e.detail?.code ?? e.detail?.referentie ?? null;
-      const kenmerkTekst = kenmerk ? `${escapeHtml(kenmerk)} — ` : '';
-      return `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} — ${kenmerkTekst}${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`;
+      const kenmerkTekst = kenmerk ? `${escapeHtml(kenmerk)} - ` : '';
+      return `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} - ${kenmerkTekst}${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`;
     })
     .join('');
   return `<div class="popup-groep"><div class="popup-groep-kop">+${s._groepMeer.length} ander(e) bericht(en) van dit station</div>${items}</div>`;
@@ -3945,7 +3964,7 @@ function maakMeldingItem(s) {
   // tegelijk. Bewust statisch (geen vervaltimer zoals bij "nieuw") — blijft
   // staan zolang de bron geen betrouwbare datum kan vinden.
   const datumOnbetrouwbaarHtml = s.detail?.datumOnbetrouwbaar
-    ? `<span class="pil roodvaag" title="Datum/herkomst van dit bericht kon niet betrouwbaar uit de tekst gehaald worden — de tijd hierboven is het moment van eerste ontvangst, niet de echte verzenddatum.">DATUM ONZEKER</span>`
+    ? `<span class="pil roodvaag" title="Datum/herkomst van dit bericht kon niet betrouwbaar uit de tekst gehaald worden - de tijd hierboven is het moment van eerste ontvangst, niet de echte verzenddatum.">DATUM ONZEKER</span>`
     : '';
   // 2026-08-26, zie navtexNummerBadge() hierboven.
   const navtexNummerHtml = navtexNummerBadge(s) ? `<div class="navtex-nummerbadge">${navtexNummerBadge(s)}</div>` : '';
@@ -4943,7 +4962,7 @@ function issKaartVoorHemel(s) {
   if (actief) {
     const live = issLiveData;
     kaart.innerHTML = `
-      <div class="iss-badge">🛰️ Live — ISS-passage bezig</div>
+      <div class="iss-badge">🛰️ Live - ISS-passage bezig</div>
       <div class="planeten-kompas-wrap" id="issLiveKompasWrap">${issKompasSvg(live?.azimuthGraden, live?.elevatieGraden)}</div>
       <div class="iss-live-tekst" id="issLiveTekst">${live ? (live.zichtbaarNu ? `Kijk nu ${live.elevatieGraden}° boven ${live.richting}` : 'Nog niet boven de horizon vanaf jouw locatie') : `Kijk laag boven ${d.richtingOp}`}</div>
       <div class="iss-live-sub" id="issLiveSub">${live ? `${live.hoogteKm} km hoog · ${live.afstandTotJouKm} km van jou` : `loopt op tot ${d.maxElevatieGraden}° · nog ${Math.max(0, Math.round((eind - nu) / 60000))} min`}</div>
@@ -5761,7 +5780,7 @@ async function abonneerOpMeldingen() {
   try {
     const toestemming = await Notification.requestPermission();
     if (toestemming !== 'granted') {
-      renderMeldingenStatus('Geen toestemming gegeven — je kunt dit later opnieuw proberen via je iOS-instellingen.');
+      renderMeldingenStatus('Geen toestemming gegeven - je kunt dit later opnieuw proberen via je iOS-instellingen.');
       return;
     }
     const registratie = await navigator.serviceWorker.ready;

@@ -182,11 +182,11 @@ async function fetchEventType({ event, categorie }) {
       const waargenomen = tornadoWaargenomen(p, categorie);
       const titelBasis = p.headline ?? p.event ?? event;
       const titel = emergency
-        ? `🚨 TORNADO EMERGENCY — ${titelBasis}`
+        ? `🚨 TORNADO EMERGENCY - ${titelBasis}`
         : pds
-        ? `⚠️ PDS — ${titelBasis}`
+        ? `⚠️ PDS - ${titelBasis}`
         : waargenomen
-        ? `🎯 TORNADO OP DE GROND — ${titelBasis}`
+        ? `🎯 TORNADO OP DE GROND - ${titelBasis}`
         : titelBasis;
       // Tornado Emergency is per definitie het hoogste niveau — ongeacht wat
       // NWS' eigen severity-veld toevallig zegt, forceren we hier 'kritiek'
@@ -248,13 +248,13 @@ function testTornadoWatchSignaal() {
   return makeSignal({
     id: 'nws-test-tornado-watch',
     categorie: 'tornado-watch',
-    titel: 'TEST — Tornado Watch (gesimuleerd, geen echt alarm)',
+    titel: 'TEST - Tornado Watch (gesimuleerd, geen echt alarm)',
     ernst: 'waarschuwing',
     lat,
     lon,
     tijd: new Date(nu).toISOString(),
     detail: {
-      gebied: 'TEST-gebied — Kansas/Oklahoma (gesimuleerd)',
+      gebied: 'TEST-gebied - Kansas/Oklahoma (gesimuleerd)',
       geldigTot: new Date(nu + 3 * 60 * 60 * 1000).toISOString(),
       instructie: null,
       bronUrl: 'https://alerts.weather.gov/',
@@ -296,7 +296,7 @@ async function testPutnamTornadoSignaal() {
   return makeSignal({
     id,
     categorie: 'tornado',
-    titel: 'TEST — Tornado Warning Putnam County, IL (gesimuleerd, geen echt alarm)',
+    titel: 'TEST - Tornado Warning Putnam County, IL (gesimuleerd, geen echt alarm)',
     ernst: 'kritiek',
     lat,
     lon,

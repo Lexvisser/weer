@@ -130,7 +130,7 @@ export async function haalPassagesOp({
     return makeSignal({
       id,
       categorie: 'hemel',
-      titel: `${titelVoorvoegsel} ${datumTekst} om ${tijdTekst} — max. ${maxElevatie}° (${duurMinuten} min)`,
+      titel: `${titelVoorvoegsel} ${datumTekst} om ${tijdTekst} - max. ${maxElevatie}° (${duurMinuten} min)`,
       ernst: maxElevatie >= 50 ? 'let-op' : 'info',
       tijd: p.start,
       detail: {
@@ -169,7 +169,7 @@ export function controleerPassageAlarm(aanbevolenPassage, { vooraankondigingSeco
   const { richtingOp, maxElevatieGraden, duurMinuten } = aanbevolenPassage;
   const minutenTekst = Math.round(vooraankondigingSeconden / 60);
   const titel = `${titelVoorvoegsel} begint zo`;
-  const bericht = `Kijk over ${minutenTekst} minuten laag boven de horizon in het ${richtingOp} — loopt op tot ${maxElevatieGraden}° (${duurMinuten} min).`;
+  const bericht = `Kijk over ${minutenTekst} minuten laag boven de horizon in het ${richtingOp} - loopt op tot ${maxElevatieGraden}° (${duurMinuten} min).`;
   const alarmId = `${alarmIdVoorvoegsel}-${aanbevolenPassage.starttijd}`;
 
   stuurAlarm({ id: alarmId, titel, bericht });
