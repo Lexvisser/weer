@@ -1080,7 +1080,22 @@ function parseBlok(blok) {
     .trim();
 
   const lines = cleaned.split('\n').map((l) => l.trim()).filter(Boolean);
-  const code = lines[0] || '';
+  // 2026-08-26-fix, op melding van Lex (live: code "SA05NC-OAMBURG" i.p.v.
+  // "SA05" -- vermoedelijk een weggevallen regeleinde tijdens ontvangst,
+  // waardoor de eerste regel van de body ("...HAMBURG...", Pinneberg ligt
+  // er dichtbij) tegen de codelijn aan plakte). GEEN kansrekening/woorden-
+  // voorspelling op toepassen -- dat is prima voor vrije berichttekst-typo's
+  // maar hier is de codevorm exact gespecificeerd (station+type+volgnummer,
+  // zie leesStationEnType()), dus gewoon dat harde patroon eraf knippen i.p.v.
+  // gokken wat de rest zou moeten zijn. Bijkomend voordeel: volgnummerIn()
+  // hieronder (zoekt cijfers aan het EIND van de code) en dedupSleutel()
+  // (gebruikt de code 1-op-1 als sleutel) faalden/verschilden stil bij zo'n
+  // vervuilde code -- dit fixt die twee ook meteen mee, niet alleen de
+  // weergave. Geen match (code volgt het patroon totaal niet) -> ongewijzigd
+  // laten staan, net als voorheen, i.p.v. het bericht te laten sneuvelen.
+  const codeRuw = lines[0] || '';
+  const codeMatch = /^([A-Z]{2}\d{1,3})/.exec(codeRuw);
+  const code = codeMatch ? codeMatch[1] : codeRuw;
   const datumregel = lines[1] || '';
   const body = lines.slice(2).join(' ');
   if (!code || !body) return null;
