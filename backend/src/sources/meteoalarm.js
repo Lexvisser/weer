@@ -81,7 +81,18 @@ const FENOMEEN_NL = {
   flooding: 'overstroming',
   flood: 'overstroming',
 };
+// 2026-08-26-fix, op melding van Lex ("Het is matig onweer ipv matige" --
+// een weeralarm-popup toonde "Matige onweer"): het ernst-woord kreeg tot nu
+// toe ALTIJD een -e (matige/lichte/ernstige/extreme), maar dat is voor een
+// "het"-woord als "onweer" (het onweer) grammaticaal fout zonder lidwoord
+// ervoor -- vergelijk "zwaar onweer"/"goed nieuws"/"warm water", niet "zware
+// onweer". Voor een "de"-woord (de wind, de regen, ...) hoort de -e er wel
+// gewoon bij ("matige wind"). Twee vormen per ernst-niveau, en een setje met
+// de FENOMEEN_NL-sleutels die "het"-woorden zijn (onweer, kustweer/weer,
+// lawinegevaar/gevaar) om de juiste vorm te kiezen.
 const ERNSTWOORD_NL = { Extreme: 'extreme', Severe: 'ernstige', Moderate: 'matige', Minor: 'lichte' };
+const ERNSTWOORD_NL_HET = { Extreme: 'extreem', Severe: 'ernstig', Moderate: 'matig', Minor: 'licht' };
+const HET_WOORD_FENOMENEN = new Set(['thunderstorm', 'coastal-event', 'avalanches']);
 
 function formatDatum(iso) {
   if (!iso) return null;
@@ -116,7 +127,7 @@ function vertaalEvent(event, severity) {
   const fenomeenNl = FENOMEEN_NL[sleutel];
 
   if (fenomeenNl) {
-    const ernstWoord = ERNSTWOORD_NL[severity];
+    const ernstWoord = (HET_WOORD_FENOMENEN.has(sleutel) ? ERNSTWOORD_NL_HET : ERNSTWOORD_NL)[severity];
     const tekst = ernstWoord ? `${ernstWoord} ${fenomeenNl}` : fenomeenNl;
     return tekst.charAt(0).toUpperCase() + tekst.slice(1);
   }
