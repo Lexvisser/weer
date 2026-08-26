@@ -861,6 +861,22 @@ function splitsRiglijst(body) {
 // deze naam i.p.v. de volledige berichttekst (zie detail.boeiNaam hieronder
 // en popupHtml() in app.js) -- de tekst geldt namelijk voor de HELE lijst
 // boeien, niet specifiek voor de ene boei waarop geklikt is.
+// 2026-08-26, op verzoek van Lex ("die cardinal boeien kunnen we dus
+// specifiek laten zien ook, in de juiste kleuren") -- IALA-kardinaaltekens
+// (NORTH/EAST/SOUTH/WEST CARDINAL) krijgen een eigen icoon met de echte
+// zwart/geel-banden + topmark-vorm (zie NAVTEX_BOEI_CARDINAAL_SVG in
+// app.js), i.p.v. het generieke groene "nieuwe boei"-icoon. Puur
+// trefwoord-match op de Engelse windrichting + "CARDINAL" -- staat letterlijk
+// zo in de MSI-tekst (bevestigd bij PA37/HINDERPLAAT: "WEST CARDINAL SPAR
+// LIGHT BUOY"). Geen L/N/O/Z/W-afkortingen geprobeerd (te makkelijk te
+// verwarren met andere lettercombinaties in de tekst, bv. boei-namen).
+const CARDINAAL_REGEX = /\b(NORTH|EAST|SOUTH|WEST)\s+CARDINAL\b/i;
+const CARDINAAL_RICHTING_PER_WOORD = { NORTH: 'noord', EAST: 'oost', SOUTH: 'zuid', WEST: 'west' };
+function cardinaalRichtingUit(tekst) {
+  const match = CARDINAAL_REGEX.exec(tekst);
+  return match ? CARDINAAL_RICHTING_PER_WOORD[match[1].toUpperCase()] : null;
+}
+
 const BOEI_NAAM_REGEX = /\b([A-Z])\s*-\s*([\s\S]{1,90}?)\s+ESTABLISHED\s+IN\s+POS(?:ITION)?\s*:?\s*$/i;
 function splitsBoeiLijst(body) {
   const entries = [];
@@ -873,10 +889,14 @@ function splitsBoeiLijst(body) {
     // Geen match (bv. ongebruikelijke frasering) -- dan liever geen naam
     // dan een gegokte, net als bij splitsRiglijst hierboven.
     const naam = naamMatch ? `${naamMatch[1]}-${naamMatch[2].trim().replace(/\s+/g, ' ')}` : null;
+    // Richting uit hetzelfde stukje tekst (dus per boei, niet voor de hele
+    // lijst -- bij een gemengde lijst kan elke boei een andere windrichting
+    // hebben, zie cardinaalRichtingUit() hierboven).
+    const richting = cardinaalRichtingUit(stuk);
     const lat = (Number(match[1]) + Number(normaliseerMinuten(match[2])) / 60) * (match[3].toUpperCase() === 'S' ? -1 : 1);
     const lon = (Number(match[4]) + Number(normaliseerMinuten(match[5])) / 60) * (match[6].toUpperCase() === 'W' ? -1 : 1);
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      entries.push({ naam, lat: +lat.toFixed(6), lon: +lon.toFixed(6) });
+      entries.push({ naam, lat: +lat.toFixed(6), lon: +lon.toFixed(6), richting });
     }
     vanaf = match.index + match[0].length;
   }
@@ -1023,6 +1043,17 @@ export async function fetchNavtexLokaal(env = {}) {
 
   const metPositie = berichten.map((b) => {
     const eventInfo = classificeerEvent(b.body);
+    // 2026-08-26, op verzoek van Lex ("ik zie dat er berichten zijn die zijn
+    // herleid tot het uitzendstation... daar kan een radiomast voor gebruikt
+    // worden") -- onthouden OF de positie hieronder een echte, uit de
+    // berichttekst gehaalde coordinaat is, of de terugval-positie van het
+    // zendstation zelf (bv. bij een gebiedsdekkend bericht zoals een
+    // weersverwachting, type E, dat nooit een eigen puntcoordinaat heeft).
+    // Zie NAVTEX_RADIOMAST_SVG/hazardIconHtml() in app.js -- die krijgt
+    // voorrang boven het normale eventType-icoon, want de positie zelf is
+    // hier het belangrijkste te communiceren feit (dit is NIET de echte
+    // locatie van het gemelde fenomeen).
+    const positieIsStation = !b.coords[0] && Boolean(b.station);
     const positie = b.coords[0] ?? (b.station ? { lat: b.station.lat, lon: b.station.lon } : null);
     const afstandTotJouKm = positie ? afstandKm(homeLat, homeLon, positie.lat, positie.lon) : null;
     const positieBinnenBereik = positie ? positiePlausibel(positie) : null;
@@ -1034,7 +1065,7 @@ export async function fetchNavtexLokaal(env = {}) {
     // de toch al getoonde b.datum -- op Lex' verzoek ("dubbele info anders"
     // naast de bestaande tijdregel), zie tijdregelVoorSignaal() in app.js.
     const laatstGezien = b.datum && laatsteDatum && laatsteDatum.getTime() > b.datum.getTime() ? laatsteDatum : null;
-    return { ...b, eventInfo, positie, afstandTotJouKm, positieBinnenBereik, referentie, zelfVervalDatum, aantalOntvangsten, laatstGezien };
+    return { ...b, eventInfo, positie, positieIsStation, afstandTotJouKm, positieBinnenBereik, referentie, zelfVervalDatum, aantalOntvangsten, laatstGezien };
   });
 
   // Elk bericht (ongeacht bereik/positie) kan een ANDER bericht intrekken —
@@ -1099,6 +1130,8 @@ export async function fetchNavtexLokaal(env = {}) {
       // getoond via navtexNummerBadge()/de sub-regel in app.js.
       aantalOntvangsten: b.aantalOntvangsten,
       laatstGezien: b.laatstGezien ? b.laatstGezien.toISOString() : null,
+      // 2026-08-26, zie positieIsStation hierboven.
+      positieIsStation: b.positieIsStation,
       bron: 'lokaal (ATS Mini + MLA-30+, testopstelling)',
       bestand,
     };
@@ -1138,7 +1171,7 @@ export async function fetchNavtexLokaal(env = {}) {
           lat: boei.lat,
           lon: boei.lon,
           tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(`${baseId}-boei${i}`),
-          detail: { ...gedeeldeDetail, positie: boei, boeiNaam: boei.naam, boeiIndex: i, boeiTotaal: boeien.length },
+          detail: { ...gedeeldeDetail, positie: boei, boeiNaam: boei.naam, boeiRichting: boei.richting, boeiIndex: i, boeiTotaal: boeien.length },
         })
       );
     }
@@ -1168,6 +1201,8 @@ export async function fetchNavtexLokaal(env = {}) {
           // bij een LOSSE boei (de gesplitste boei-lijst hierboven zet zijn
           // eigen boeiNaam al, dit is het pad voor 1 boei per bericht).
           boeiNaam: b.eventInfo.type === 'boei-nieuw' ? boeiOmschrijvingUit(b.body) : null,
+          // 2026-08-26, zie cardinaalRichtingUit() hierboven.
+          boeiRichting: b.eventInfo.type === 'boei-nieuw' ? cardinaalRichtingUit(b.body) : null,
         },
       }),
     ];

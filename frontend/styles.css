@@ -502,6 +502,16 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 /* 2026-08-20: detail.verlopen (zie historie.js) — moet meteen duidelijk zijn
    dat dit geen actuele melding meer is. */
 .popup-verlopen { color:#6b7280; font-size:10.5px; font-style:italic; margin-top:3px; }
+/* 2026-08-26: blokje onderaan de popup voor de overige berichten binnen een
+   groepeerStationSignalen()-groep (zie app.js) -- meerdere NAVTEX-berichten
+   die op dezelfde stationspositie samenkomen delen nu een marker, dit houdt
+   ze alsnog allemaal leesbaar. Zelfde ingetogen toon als .popup-sub
+   hierboven, met een dunne scheidingslijn zodat het duidelijk een aparte
+   lijst is t.o.v. de hoofdmelding erboven. */
+.popup-groep { margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.12); }
+.popup-groep-kop { color:#9199b5; font-size:10.5px; font-weight:600; margin-bottom:3px; }
+.popup-groep-item { color:#9199b5; font-size:10.5px; margin-top:2px; }
+
 /* 2026-08-20, op verzoek van Lex ("klokje is lastig te herkennen") — het
    🕓-klokje vóór de "uitgegeven om"-tijd (zie popupHtml/maakMeldingItem)
    stond in zijn volle, felle emoji-kleur, wat niet paste bij de verder
@@ -577,6 +587,24 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    schakeltje boven het anker (zie NAVTEX_ANKER_SVG in app.js) valt bij de
    gedeelde 22px-maat bijna weg. Zie ankerKlasse in app.js. */
 .navtex-pin.is-anker svg { width:26px; height:26px; }
+/* 2026-08-26-fix (meerdere iteraties): eerste versie (gebouw+mast+golven)
+   kreeg hier een grotere maat, tweede versie een blauwe kleur+gloed, derde
+   versie geen gloed -- Lex zag op zijn eigen kaart wel degelijk een blauwe
+   gloed rond de booreiland-iconen (die klasse konden we in de code zelf niet
+   terugvinden op riglijst, mogelijk toeval van overlappende markers of iets
+   dat nog niet volledig uitgezocht is) en wilde "witte lijnen met blauwe
+   gloed net als de boorrigs, maar wel de vorm van het radiostation". Zelfde
+   blauwe gloed-waarde als is-kabel/is-ukho-test hieronder (bewust dezelfde
+   kleur, dat IS de "techniek/signaal"-kleurfamilie in deze app). Zie
+   stationKlasse in app.js. */
+.navtex-pin.is-station { filter: drop-shadow(0 0 5px rgba(76,157,240,0.95)) drop-shadow(0 0 5px rgba(76,157,240,0.95)); }
+/* 2026-08-26, op verzoek van Lex ("de generieke boei moet iets groter en mag
+   ook een kleur met gloed") -- zelfde soort grotere maat als is-survey/
+   is-anker/is-station hierboven, plus een amber gloed (zelfde opzet als de
+   blauwe gloed bij is-kabel/is-ukho-test hieronder, maar dan warm/oranje
+   passend bij de nieuwe amber kleur van NAVTEX_BOEI_SVG in app.js). Zie
+   generiekeBoeiKlasse in app.js. */
+.navtex-pin.is-generieke-boei svg { width:27px; height:27px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 5px rgba(255,167,61,0.95)) drop-shadow(0 0 5px rgba(255,167,61,0.95)); }
 
 /* 2026-08-21: Vliegradar/Vaarradar-markers — bewust neutraal (geen
    ernst-kleur, dit is geen hazard) en simpel (emoji i.p.v. eigen SVG, Lex

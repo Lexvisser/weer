@@ -1923,19 +1923,50 @@ const LIFELINER_HELI_SVG = `
 
 // 2026-08-20, op verzoek van Lex — eerst 🛟 (reddingsboei-emoji), toen een
 // dunne-lijnen bakenicoon (beviel ook niet: "we moeten even zoeken wat goed
-// werkt"), nu een derde poging op basis van een nieuwe referentie-afbeelding:
-// een donkere bolboei met een oranje band en een oranje vlaggetje op een
-// staaf — een klassiek gevaar-/markeringsboei-silhouet. Gevuld i.p.v.
-// lijntekening (currentColor/stroke dus hier niet relevant, eigen kleuren).
-// Nog steeds alleen voor de kaart-marker, zelfde aanpak als LIFELINER_HELI_SVG
-// hierboven; 🛟 blijft de EMOJI_PER_CATEGORIE-fallback voor lijsten/legenda.
+// werkt"), toen (2026-08-20 t/m 2026-08-26) een donkere bolboei met een
+// oranje band en vlaggetje. Nog steeds alleen voor de kaart-marker, zelfde
+// aanpak als LIFELINER_HELI_SVG hierboven; 🛟 blijft de
+// EMOJI_PER_CATEGORIE-fallback voor lijsten/legenda.
+//
+// 2026-08-26, VIERDE poging, op verzoek van Lex: "het is uiteindelijk de
+// bedoeling om alle generieke boeien onder te brengen in hun eigen event...
+// ik vind alleen de huidige vorm niet zo mooi" -- dus bewust GEEN ander
+// concept (dat werd eerst voorgesteld met 4 radicaal andere iconen, radio/
+// driehoek/reddingsring/tekst, maar dat bleek een misverstand -- Lex wil
+// een boei houden voor "nog niet ingedeeld", gewoon een mooiere). Eerste
+// vervolgpoging (grijze bol met lantaarn i.p.v. vlag) werd ook afgewezen
+// ("ik wil een andere kant op van die balvorm af") -- de rond-lichaam-vorm
+// zelf was het probleem, niet de details erop. Nu een SPAR-vorm (smalle
+// paal, taps toelopend, iets breder onderaan als vlotter) -- sluit aan bij
+// de letterlijke berichttekst ("SPAR LIGHT BUOY", zie NAVTEX_BOEI_CARDINAAL_SVG
+// hieronder) en bij de referentie-afbeelding die Lex zelf aandroeg voor de
+// kardinaalboeien. Neutraal grijs (i.p.v. het oranje van de oude vorm, of
+// een kleur die al iets zou kunnen betekenen) -- past bij "nog niet
+// classificeerd/onbekend". Klein lichtbolletje boven de mast, een subtiele
+// highlight-boog voor wat diepte/glans i.p.v. een platte vorm.
+// 2026-08-26-fix, op verzoek van Lex ("moet iets groter en mag ook een
+// kleur met gloed") -- het grijze/neutrale kleurenschema hierboven (bewuste
+// keuze bij de spar-herbouw, "past bij nog niet classificeerd/onbekend")
+// bleek in de praktijk toch te saai/onopvallend. Amber/oranje gekozen --
+// pakt de kleurtraditie van de ALLEREERSTE boei-versie in dit bestand weer
+// op (die had ook een oranje band/vlag), maar botst niet met de kleuren die
+// inmiddels wel een eigen betekenis hebben (groen=net geplaatst,
+// zwart/geel=kardinaal, blauw=techniek/uitzending zie NAVTEX_KABEL_SVG/
+// NAVTEX_SURVEY_SVG/NAVTEX_RADIOMAST_SVG hierboven/hieronder). De kleur-MET-
+// gloed (drop-shadow) zit in .navtex-pin.is-generieke-boei, samen met de
+// grotere maat, zie styles.css.
 const NAVTEX_BOEI_SVG = `
   <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-    <defs><clipPath id="navtexBoeiClip"><circle cx="12" cy="16" r="6"/></clipPath></defs>
-    <line x1="12" y1="3" x2="12" y2="10.5" stroke="#3a3d47" stroke-width="1.6" stroke-linecap="round"/>
-    <path d="M12 3.2 L18.5 5.6 L12 8.2 Z" fill="#ff8a1f"/>
-    <circle cx="12" cy="16" r="6" fill="#3a3d47"/>
-    <rect x="5.5" y="14.7" width="13" height="2.6" fill="#ff8a1f" clip-path="url(#navtexBoeiClip)"/>
+    <defs>
+      <linearGradient id="navtexBoeiSparGradient" x1="0" y1="4" x2="0" y2="22" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#ffb266"/>
+        <stop offset="1" stop-color="#e8790f"/>
+      </linearGradient>
+    </defs>
+    <circle cx="12" cy="2.8" r="1.4" fill="#ffe0b0"/>
+    <line x1="12" y1="4.2" x2="12" y2="8" stroke="#c97a1f" stroke-width="1.1" stroke-linecap="round"/>
+    <path d="M11.3 8 L12.7 8 L14.2 17 Q14.2 20 12 21.6 Q9.8 20 9.8 17 Z" fill="url(#navtexBoeiSparGradient)"/>
+    <path d="M9.9 16.8 Q12 15.6 14.1 16.8" fill="none" stroke="#ffd9ad" stroke-width="0.6" opacity="0.7"/>
   </svg>
 `.trim();
 
@@ -2153,6 +2184,107 @@ const NAVTEX_ANKER_SVG = `
   </svg>
 `.trim();
 
+// 2026-08-26, op verzoek van Lex ("die cardinal boeien kunnen we dus
+// specifiek laten zien ook, in de juiste kleuren") -- een IALA-kardinaalteken
+// (NORTH/EAST/SOUTH/WEST CARDINAL, zie cardinaalRichtingUit() in
+// navtexLokaal.js/ukho.js) krijgt een eigen icoon met de ECHTE IALA-banden
+// en topmark-vorm, i.p.v. het generieke groene NAVTEX_BOEI_NIEUW_SVG
+// hierboven. Eerst geprobeerd met de rode referentie-afbeelding die Lex
+// aandroeg (letterlijk gebruiken) -- afgewezen: rood is geen IALA-
+// kardinaalkleur (dat is voor laterale/havenmarkeringen), dus dat zou op de
+// kaart juist verwarrend zijn. Het vorm-idee (slanke mast met lichtje) is
+// wel overgenomen. Zelfde opbouw als NAVTEX_BOEI_SVG/-_NIEUW_SVG hierboven
+// (mast + cirkelvormig boeilichaam via clipPath), maar de band-kleuren en de
+// topmark (twee kegels boven de mast) volgen nu de officiele IALA-regels:
+//   Noord: zwart boven geel, beide kegels wijzen omhoog
+//   Oost:  zwart-geel-zwart, kegels basis-tegen-basis (punten uit elkaar)
+//   Zuid:  geel boven zwart, beide kegels wijzen omlaag
+//   West:  geel-zwart-geel, kegels punt-tegen-punt (punten naar elkaar toe)
+// De kegels krijgen een lichte contourlijn (stroke), want puur zwart bleek
+// in een losse test nauwelijks zichtbaar tegen de donkere kaart -- de
+// gedeelde .navtex-pin svg-schaduwfilter (zie styles.css) volstond daar niet
+// voor (zelfde les als bij NAVTEX_ANKER_SVG hierboven).
+function navtexKardinaalSvg(clipId, kegelPaden, bandenSvg) {
+  return `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <defs><clipPath id="${clipId}"><circle cx="12" cy="16" r="6"/></clipPath></defs>
+    <line x1="12" y1="8" x2="12" y2="10.5" stroke="#3a3d47" stroke-width="1.4" stroke-linecap="round"/>
+    ${kegelPaden.map((d) => `<path d="${d}" fill="#1a1c22" stroke="#f4f6fb" stroke-width="0.8" stroke-linejoin="round"/>`).join('\n    ')}
+    ${bandenSvg}
+    <circle cx="12" cy="16" r="6" fill="none" stroke="#f4f6fb" stroke-width="0.6"/>
+  </svg>
+`.trim();
+}
+const NAVTEX_BOEI_NOORD_SVG = navtexKardinaalSvg(
+  'navtexKardinaalClipNoord',
+  ['M12 4 L14 7.5 L10 7.5 Z', 'M12 0.5 L14 4 L10 4 Z'],
+  `<rect x="6" y="10" width="12" height="6" fill="#1a1c22" clip-path="url(#navtexKardinaalClipNoord)"/>
+    <rect x="6" y="16" width="12" height="6" fill="#ffd633" clip-path="url(#navtexKardinaalClipNoord)"/>`
+);
+const NAVTEX_BOEI_OOST_SVG = navtexKardinaalSvg(
+  'navtexKardinaalClipOost',
+  ['M12 0.5 L14 4 L10 4 Z', 'M12 7.5 L14 4 L10 4 Z'],
+  `<rect x="6" y="10" width="12" height="4" fill="#1a1c22" clip-path="url(#navtexKardinaalClipOost)"/>
+    <rect x="6" y="14" width="12" height="4" fill="#ffd633" clip-path="url(#navtexKardinaalClipOost)"/>
+    <rect x="6" y="18" width="12" height="4" fill="#1a1c22" clip-path="url(#navtexKardinaalClipOost)"/>`
+);
+const NAVTEX_BOEI_ZUID_SVG = navtexKardinaalSvg(
+  'navtexKardinaalClipZuid',
+  ['M12 7.5 L14 4 L10 4 Z', 'M12 4 L14 0.5 L10 0.5 Z'],
+  `<rect x="6" y="10" width="12" height="6" fill="#ffd633" clip-path="url(#navtexKardinaalClipZuid)"/>
+    <rect x="6" y="16" width="12" height="6" fill="#1a1c22" clip-path="url(#navtexKardinaalClipZuid)"/>`
+);
+const NAVTEX_BOEI_WEST_SVG = navtexKardinaalSvg(
+  'navtexKardinaalClipWest',
+  ['M12 4 L14 0.5 L10 0.5 Z', 'M12 4 L14 7.5 L10 7.5 Z'],
+  `<rect x="6" y="10" width="12" height="4" fill="#ffd633" clip-path="url(#navtexKardinaalClipWest)"/>
+    <rect x="6" y="14" width="12" height="4" fill="#1a1c22" clip-path="url(#navtexKardinaalClipWest)"/>
+    <rect x="6" y="18" width="12" height="4" fill="#ffd633" clip-path="url(#navtexKardinaalClipWest)"/>`
+);
+const NAVTEX_BOEI_CARDINAAL_SVG = {
+  noord: NAVTEX_BOEI_NOORD_SVG,
+  oost: NAVTEX_BOEI_OOST_SVG,
+  zuid: NAVTEX_BOEI_ZUID_SVG,
+  west: NAVTEX_BOEI_WEST_SVG,
+};
+
+// 2026-08-26, op verzoek van Lex ("ik zie dat er berichten zijn die zijn
+// herleid tot het uitzendstation... daar kan een radiomast voor gebruikt
+// worden") -- zie positieIsStation in navtexLokaal.js/ukho.js hierboven.
+// EERSTE versie (eigen mast + gebouwtje + golfboogjes) bleek te druk/wazig
+// ("het radiostation wordt toch blur"). TWEEDE versie liet het gebouwtje
+// juist helemaal weg (puur de NAVTEX_RIG_SVG-tekening hierboven, blauw
+// i.p.v. wit) -- maar Lex wilde het gebouwtje terug ("dat radiostation wel
+// met het gebouw maar verder gelijk houden aan rig"). DERDE, huidige versie:
+// het gebouwtje van de eerste versie weer terug (links), de mast-tekening nu
+// wel EXACT dezelfde geometrie als NAVTEX_RIG_SVG (antennebal, platform,
+// kruisverband-poten, basisbalk) i.p.v. de eigen mast van versie 1 --
+// horizontaal gecomprimeerd (elke x-co??rdinaat lineair herschaald van het
+// origineel 4-20-bereik naar 11-21) zodat 'm rechts van het gebouwtje past,
+// zelfde stroke-width (1.4) als het origineel. Kleur blauw + gloed (zie
+// .navtex-pin.is-station in styles.css) blijven het onderscheid t.o.v. een
+// echt booreiland-icoon.
+const NAVTEX_RADIOMAST_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="14.5" width="7.5" height="7.5" fill="none" stroke="#f4f6fb" stroke-width="1.4" stroke-linejoin="round"/>
+    <rect x="4.3" y="17" width="2.2" height="2.2" fill="#f4f6fb"/>
+    <g fill="none" stroke="#f4f6fb" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 1 V2.6"/>
+      <circle cx="16" cy="0.9" r="0.6" fill="#f4f6fb" stroke="none"/>
+      <rect x="14.75" y="3" width="2.5" height="1.6" rx="0.3"/>
+      <path d="M14.125 5.4 L11.625 21 M17.875 5.4 L20.375 21"/>
+      <path d="M14.125 5.4 L18.5 13 M17.875 5.4 L13.5 13"/>
+      <path d="M13.5 13 L20.375 21 M18.5 13 L11.625 21"/>
+      <rect x="13.1875" y="12" width="5.625" height="1.8" rx="0.3"/>
+      <path d="M11 21 H21"/>
+    </g>
+    <g fill="none" stroke="#f4f6fb" stroke-width="1" stroke-linecap="round">
+      <path d="M18.6 0.4 Q20.4 1.2 18.6 2"/>
+      <path d="M13.4 0.4 Q11.6 1.2 13.4 2"/>
+    </g>
+  </svg>
+`.trim();
+
 const NAVTEX_EVENT_ICOON = {
   riglijst: NAVTEX_RIG_SVG,
   'licht-onbetrouwbaar': NAVTEX_LICHT_UIT_SVG,
@@ -2172,7 +2304,19 @@ const NAVTEX_EVENT_ICOON = {
 };
 function hazardIconHtml(s) {
   if (isLifeliner(s)) return LIFELINER_HELI_SVG;
-  if (s.categorie === 'navtex') return NAVTEX_EVENT_ICOON[s.detail?.eventType] ?? NAVTEX_BOEI_SVG;
+  if (s.categorie === 'navtex') {
+    // 2026-08-26, zie NAVTEX_RADIOMAST_SVG hierboven -- staat v??r de
+    // eventType-lookup, want als de positie sowieso al "gewoon het
+    // zendstation" is (geen echte coordinaat in het bericht), is dat
+    // belangrijker om te tonen dan WAT voor bericht het is.
+    if (s.detail?.positieIsStation) return NAVTEX_RADIOMAST_SVG;
+    // 2026-08-26, zie NAVTEX_BOEI_CARDINAAL_SVG hierboven -- alleen van
+    // toepassing op boei-nieuw-signalen MET een herkende windrichting;
+    // andere boei-nieuw-signalen (geen kardinaalteken) houden gewoon het
+    // bestaande groene icoon via de normale NAVTEX_EVENT_ICOON-lookup.
+    const kardinaal = s.detail?.eventType === 'boei-nieuw' ? NAVTEX_BOEI_CARDINAAL_SVG[s.detail?.boeiRichting] : null;
+    return kardinaal ?? NAVTEX_EVENT_ICOON[s.detail?.eventType] ?? NAVTEX_BOEI_SVG;
+  }
   if (s.categorie === 'tornado' || s.categorie === 'tornado-watch') {
     if (s.detail?.tornadoEmergency) return '🚨';
     if (s.detail?.pds) return '⚠️';
@@ -3103,6 +3247,50 @@ function stopKaartVolgen(terugNaarHemel) {
   if (terugNaarHemel) wisselView('hemel');
 }
 
+// 2026-08-26, bugfix op verzoek van Lex ("de eerste afbeelding toont een
+// ongelijke intensiteit... Scheveningen heeft de juiste") -- meerdere NAVTEX-
+// berichten die terugvallen op DEZELFDE stationspositie (zie positieIsStation
+// in navtexLokaal.js/ukho.js -- op dit moment bijv. 6x Oostende t.o.v. 2x
+// Scheveningen) kregen elk een eigen, volledig overlappende marker+popup op
+// exact dezelfde coordinaat. Meerdere gestapelde .is-station blauwe drop-
+// shadows precies boven op elkaar blijken elkaar te verzadigen/verdonkeren
+// i.p.v. gewoon "aan te staan" -- vandaar dat Oostende (6x) merkbaar anders
+// oogde dan Scheveningen (2x), puur een bijwerking van het aantal gestapelde
+// lagen, geen bewuste styling. Fix: op de kaart nog maar EEN marker per
+// stationspositie (de nieuwste van de groep als representant), met de
+// overige berichten als compacte lijst onderaan diezelfde popup (zie
+// navtexGroepPopupHtml hieronder) -- er gaat niets verloren, alleen het
+// stapel-effect verdwijnt.
+function groepeerStationSignalen(lijst) {
+  const groepen = new Map();
+  lijst.forEach((s) => {
+    if (!s.detail?.positieIsStation) return;
+    const sleutel = `${s.lat},${s.lon}`;
+    if (!groepen.has(sleutel)) groepen.set(sleutel, []);
+    groepen.get(sleutel).push(s);
+  });
+  const overgeslagenIds = new Set();
+  groepen.forEach((leden) => {
+    if (leden.length < 2) return;
+    const gesorteerd = [...leden].sort((a, b) => new Date(b.tijd ?? 0) - new Date(a.tijd ?? 0));
+    const [representant, ...rest] = gesorteerd;
+    representant._groepMeer = rest;
+    rest.forEach((s) => overgeslagenIds.add(s.id));
+  });
+  return lijst.filter((s) => !overgeslagenIds.has(s.id));
+}
+
+// Compacte lijst van de overige berichten binnen een groepeerStationSignalen()
+// -groep (zie hierboven) -- lege string als er geen groep is, zodat dit
+// veilig altijd achter popupHtml() geplakt kan worden.
+function navtexGroepPopupHtml(s) {
+  if (!Array.isArray(s._groepMeer) || !s._groepMeer.length) return '';
+  const items = s._groepMeer
+    .map((e) => `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} — ${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`)
+    .join('');
+  return `<div class="popup-groep"><div class="popup-groep-kop">+${s._groepMeer.length} ander(e) bericht(en) van dit station</div>${items}</div>`;
+}
+
 function renderMap(signalen) {
   if (!kaart) return; // wacht tot initMap() is geweest
   signaalLaag.clearLayers();
@@ -3124,8 +3312,7 @@ function renderMap(signalen) {
     : zeeModusActief
       ? signalen.filter((s) => s.categorie === 'navtex')
       : signalen.filter((s) => s.categorie !== 'navtex');
-  teTonenSignalen
-    .filter((s) => s.lat != null && s.lon != null)
+  groepeerStationSignalen(teTonenSignalen.filter((s) => s.lat != null && s.lon != null))
     .forEach((s) => {
       // Gevlogen spoor eerst tekenen (onder de marker) — zelf opgebouwd door
       // de backend sinds die 'm is gaan volgen (geen historie van vóór het
@@ -3172,6 +3359,25 @@ function renderMap(signalen) {
       // ketting-schakeltje boven het anker (zie NAVTEX_ANKER_SVG) is op de
       // standaard 22px-maat nauwelijks te onderscheiden.
       const ankerKlasse = s.detail?.eventType === 'anker-verloren' ? ' is-anker' : '';
+      // 2026-08-26-fix, op verzoek van Lex ("het radiostation wordt toch
+      // blur, het rigicon als basis nemen en toch maar zoiets doen ook met
+      // die gloed") -- NAVTEX_RADIOMAST_SVG hierboven is inmiddels op
+      // NAVTEX_RIG_SVG-formaat herbouwd (leest prima op 22px), deze klasse
+      // geeft nu een blauwe gloed i.p.v. een grotere maat (zie .navtex-pin.
+      // is-station in styles.css).
+      const stationKlasse = s.detail?.positieIsStation ? ' is-station' : '';
+      // 2026-08-26, zie NAVTEX_BOEI_SVG hierboven ("moet iets groter en mag
+      // ook een kleur met gloed") -- zelfde voorrangsvolgorde als
+      // hazardIconHtml() hierboven (station > cardinaal > eventType-lookup),
+      // om precies te bepalen wanneer de generieke boei ook ECHT getoond
+      // wordt (en dus niet per ongeluk ook gloeit rond een ander icoon).
+      const kardinaalActief = s.detail?.eventType === 'boei-nieuw' && NAVTEX_BOEI_CARDINAAL_SVG[s.detail?.boeiRichting];
+      const generiekeBoeiKlasse = s.categorie === 'navtex'
+        && !s.detail?.positieIsStation
+        && !kardinaalActief
+        && !NAVTEX_EVENT_ICOON[s.detail?.eventType]
+        ? ' is-generieke-boei'
+        : '';
       // 2026-08-20, op verzoek van Lex: NAVTEX is "een volledig separaat
       // gebeuren" t.o.v. de landgebonden hazard-pins — geen gedeelde ronde
       // achtergrond/ernst-kleur, een eigen (kleinere, vierkante, maritiem
@@ -3179,7 +3385,7 @@ function renderMap(signalen) {
       const icon = s.categorie === 'navtex'
         ? L.divIcon({
             className: '',
-            html: `<div class="navtex-pin${verlopenKlasse}${ukhoTestKlasse}${kabelKlasse}${surveyKlasse}${ankerKlasse}">${hazardIconHtml(s)}</div>`,
+            html: `<div class="navtex-pin${verlopenKlasse}${ukhoTestKlasse}${kabelKlasse}${surveyKlasse}${ankerKlasse}${stationKlasse}${generiekeBoeiKlasse}">${hazardIconHtml(s)}</div>`,
             iconSize: [26, 26],
             iconAnchor: [13, 13],
           })
@@ -3192,8 +3398,9 @@ function renderMap(signalen) {
       const popupBreedte = POPUP_BREED_CATEGORIEEN.has(s.categorie) ? 300 : 240;
       const marker = L.marker([s.lat, s.lon], { icon })
         .addTo(signaalLaag)
-        .bindPopup(popupHtml(s), { maxWidth: popupBreedte });
+        .bindPopup(popupHtml(s) + navtexGroepPopupHtml(s), { maxWidth: popupBreedte });
       markersPerId.set(s.id, marker);
+      if (Array.isArray(s._groepMeer)) s._groepMeer.forEach((extra) => markersPerId.set(extra.id, marker));
     });
   // 2026-08-20, op verzoek van Lex ("2 gebieden in Raleigh maar maar 1
   // outline bij beide apart") — ALLE actieve gebied-omtrekken (tornado-
