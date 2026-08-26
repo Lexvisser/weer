@@ -249,11 +249,60 @@ function coordinatenIn(tekst) {
 // één riglijst-bericht kunnen legitiem honderden km uit elkaar liggen, dat is
 // geen corruptie.
 const UITSCHIETER_DREMPEL_KM = 350;
+// 2026-08-26-uitbreiding, op melding van Lex (screenshot: een waaier roze
+// stippellijnen vanaf het Kanaal tot diep Normandie/tot voorbij Angers,
+// "iets met de slechte ontvangst van Niton Radio?") -- root cause KA53
+// (AVURNAV CHERBOURG via Niton Radio, vrijwel de hele body gecorrumpeerd:
+// "49-8.43N 0.0-33.?9W", "45-46.68 , :00-40.082" etc.): van al die
+// halfcorrupte fragmenten hield COORD_REGEX er hier toevallig maar 2 over
+// die ALSNOG als geldige coordinaat oogden -- een bij de bedoelde locatie
+// (~49.7-49.8N) en een tientallen/honderden km daarvandaan (de "45-46.68"
+// hierboven is vermoedelijk zelf ook al een corrupte "49-46.68"). De
+// hoofdfunctie hierboven miste dit soort paren compleet: "dichtstbijzijnde
+// ander punt" is bij precies 2 punten altijd gewoon "het andere punt", dus
+// kan die aanpak nooit onderscheiden WELKE van de twee de uitschieter is --
+// vandaar de expliciete `< 3`-terugval die dit paar altijd ongemoeid liet.
+// Voor precies 2 punten kán je dat onderscheid inderdaad niet maken, maar
+// je kunt wel zien dat ze SAMEN te ver uit elkaar liggen: bij deze bron
+// (kleine lokale kustmeldingen, zie UITSCHIETER_DREMPEL_KM hierboven) is
+// >350km tussen de enige twee punten van een melding op zichzelf al net zo
+// onwaarschijnlijk als de bestaande 3+ puntscheck aanneemt. Dan liever
+// BEIDE laten vallen (het signaal valt terug op positieIsStation -- een
+// radiomast-icoon bij het zendstation, zie fetchNavtexLokaal hieronder) dan
+// een lijn/gebied tekenen dat net zo goed op het foute punt kan steunen.
 function verwijderUitschieters(coords) {
-  if (coords.length < 3) return coords; // te weinig punten om "dichtstbijzijnde ander punt" zinvol te maken
-  return coords.filter((c) => {
+  if (coords.length < 2) return coords; // 0 of 1 punt: sowieso niets om te vergelijken/filteren, blijft ongemoeid
+  // 2026-08-26-verdieping: bij het KA53/Niton-onderzoek hierboven bleek ÉÉN
+  // gecorrumpeerd bericht ("AVURNAV CHERBOURG 53/26", bij herhaling ontvangen
+  // met wisselende bitfouten) meerdere keren compleet onzinnige coordinaten
+  // op te leveren -- niet alleen ver weg (het 2-puntsgeval hierboven), maar
+  // ook regelrecht onmogelijke breedtegraden zoals 94N (>90, kan niet
+  // bestaan) of kansloos ver weg zoals 8N/22N (equatoriaal, mijlenver van elk
+  // NAVAREA I-station). Die laatste soort is GEVAARLIJKER dan een simpele
+  // uitschieter: in één voorbeeld leverde de tekst toevallig TWEE van zulke
+  // onzinpunten op (allebei rond 8N, ~65km van elkaar) die daardoor voor de
+  // dichtstbijzijnde-ander-punt-check hieronder een "buurpunt binnen 350km"
+  // hadden -- ELKAAR dus, in plaats van bij het echte kustpunt. Zo'n paar
+  // overleeft die check dus ONGEFILTERD, ook al liggen beide punten mijlenver
+  // van waar het bericht daadwerkelijk over gaat. Vandaar nu eerst een harde
+  // check op individuele plausibiliteit (dezelfde PLAUSIBEL_BOX als
+  // positieBinnenBereik hierboven gebruikt) VOORDAT de onderlinge-afstand-
+  // vergelijking draait -- dat kan twee onzinpunten die elkaar "beschermen"
+  // nooit meer laten samenspannen. Bewust niet toegepast op berichten met
+  // maar 1 punt (regel hierboven): dat blijft de bestaande, met Lex
+  // afgesproken lichte aanpak (een onzeker éénpuntsbericht wordt getoond,
+  // niet geweigerd) -- deze extra check geldt alleen binnen de
+  // geometrie-uitschieterlogica, die al een bewuste, eerder afgesproken
+  // uitzondering op die regel is (zie de 2026-08-24-toelichting hierboven
+  // bij UITSCHIETER_DREMPEL_KM/de eerste versie van deze functie).
+  const basis = coords.filter(positiePlausibel);
+  if (basis.length === 2) {
+    return afstandKm(basis[0].lat, basis[0].lon, basis[1].lat, basis[1].lon) <= UITSCHIETER_DREMPEL_KM ? basis : [];
+  }
+  if (basis.length < 3) return basis; // 0 of 1 plausibel punt over: niets meer om te vergelijken
+  return basis.filter((c) => {
     const afstandTotDichtstbijzijnde = Math.min(
-      ...coords.filter((o) => o !== c).map((o) => afstandKm(c.lat, c.lon, o.lat, o.lon))
+      ...basis.filter((o) => o !== c).map((o) => afstandKm(c.lat, c.lon, o.lat, o.lon))
     );
     return afstandTotDichtstbijzijnde <= UITSCHIETER_DREMPEL_KM;
   });
@@ -977,7 +1026,30 @@ function parseBlok(blok) {
   // elke oorspronkelijke inhoudsregel een eigen array-element blijft.
   const cleaned = vanafZczc
     .replace(/^ZCZC\s*/i, '')
-    .replace(/[A-Z]{0,3}NNNN\s*$/i, '') // "NNNN" of iets als "SNNNN" aan het eind
+    // 2026-08-26-fix, op melding van Lex (screenshot: waaier roze lijnen tot
+    // voorbij Angers, hierboven het KA53/Niton-uitschieteronderzoek) --
+    // bleek uiteindelijk een TWEEDE, apart mechanisme te zijn, naast de
+    // uitschieter-fix in verwijderUitschieters() hierboven: VA08 (Oostende
+    // Radio) had een eigen, keurig afgesloten bericht ("...MISSING. NNNN"),
+    // maar segmenteerBerichten() hierboven splitst UITSLUITEND op de
+    // volgende "ZCZC" -- niet op "NNNN" -- juist om de KA58/KA53-
+    // polygoonberichten niet meer stuk te breken (zie de 2026-08-24-
+    // toelichting daar). Toen het ZCZC-kopje van het VOLGENDE bericht
+    // corrupt binnenkwam ("OCZC" i.p.v. "ZCZC" -- een bitfout), vond
+    // segmenteerBerichten() dus geen nieuwe grens en liep VA08's segment
+    // gewoon door tot het ECHT volgende (wel intacte) ZCZC -- met het hele
+    // tweede bericht (incl. een eigen "AREA BOUNDED BY"-polygoon rond
+    // Cherbourg) er middenin geplakt. Deze regel stripte NNNN-rommel tot nu
+    // toe alleen als die LETTERLIJK aan het eind van de string stond
+    // (`\s*$`) -- bij rommel/een tweede bericht ERNA (zoals hier) deed hij
+    // dus niets, en bleven de coordinaten van beide berichten samen in één body
+    // zitten, dus ook in één (nonsens-)geometrie. Nu: alles vanaf de eerste
+    // "NNNN" (met de bestaande tolerantie voor 0-3 letters ervoor, bv.
+    // "SNNNN") wordt weggeknipt, ongeacht wat erna komt -- net als de
+    // langer bestaande `\bNNNN\b[\s\S]*$`-aanpak in boeiOmschrijvingUit()
+    // hieronder, nu ook hier, VOOR de regel-opsplitsing, zodat ALLE
+    // eventTypes ervan profiteren (niet alleen boei-nieuw z'n samenvatting).
+    .replace(/[A-Z]{0,3}NNNN[\s\S]*$/i, '') // "NNNN" (of "SNNNN" e.d.), plus alles erna
     .replace(/[_*]+/g, ' ')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n\s*\n+/g, '\n')

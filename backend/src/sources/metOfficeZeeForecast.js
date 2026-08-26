@@ -85,6 +85,18 @@ const GEBIEDSNAAM_ALIAS = {
   'EAST SOLE': 'SOLE',
 };
 
+// 2026-08-26-fix, op melding van Lex ("wat is de reden dat er geen synopsis
+// is bij Fisher?"): live bevestigd (via de browser-devtools op de site
+// zelf) dat de koptekst op dat moment "East Dogger, Fisher, German Bight"
+// was — een richtings-variant van Dogger die niet in GEBIEDSNAAM_ALIAS
+// hierboven stond, waardoor de HELE koptekst afgekeurd werd (net als bij
+// de eerdere North/South German Bight-fix) en Fisher + German Bight er
+// samen mee verdwenen. Vaste alias-paren voor elke variant bijhouden is
+// een kat-en-muisspel (elk gebied kan in principe met een windstreek
+// gesplitst worden); daarom generiek: een leidende windstreek van een
+// koptekst-deel afknippen en opnieuw tegen de bekende namen checken.
+const RICHTING_PREFIX = /^(NORTHEAST|NORTHWEST|SOUTHEAST|SOUTHWEST|NORTH|SOUTH|EAST|WEST)\s+/;
+
 // "NORTH GERMAN BIGHT" -> "North German Bight", puur voor leesbare labels in
 // de samengevoegde tekst hieronder (parseGebieden) — de brontekst zelf komt
 // altijd in hoofdletters uit de koptekst-vergelijking.
@@ -107,7 +119,15 @@ function alsGebiedsnamen(kopTekst) {
   const delen = schoon.split(',').map((d) => d.trim().replace(/^and\s+/i, ''));
   const paren = delen.map((d) => {
     const origineel = d.toUpperCase();
-    return { canoniek: GEBIEDSNAAM_ALIAS[origineel] ?? origineel, origineel };
+    if (GEBIEDSNAMEN_SET.has(origineel)) return { canoniek: origineel, origineel };
+    if (GEBIEDSNAAM_ALIAS[origineel]) return { canoniek: GEBIEDSNAAM_ALIAS[origineel], origineel };
+    // Onbekende naam, geen expliciete alias: proberen als "<windstreek>
+    // <bekende naam>" (bv. "EAST DOGGER") — zie RICHTING_PREFIX hierboven.
+    const zonderRichting = origineel.replace(RICHTING_PREFIX, '');
+    if (zonderRichting !== origineel && GEBIEDSNAMEN_SET.has(zonderRichting)) {
+      return { canoniek: zonderRichting, origineel };
+    }
+    return { canoniek: origineel, origineel };
   });
   if (paren.every((p) => GEBIEDSNAMEN_SET.has(p.canoniek))) return paren;
   return null;
@@ -137,12 +157,6 @@ function tekstTotVolgendeKop($, kopNode) {
 function parseGebieden(html) {
   const $ = cheerio.load(html);
   const gebieden = {};
-  // 2026-08-25, op verzoek van Lex: bijhouden welke canonieke namen al
-  // minstens één GEBIEDSNAAM_ALIAS-variant (bv. "NORTH GERMAN BIGHT")
-  // ontvangen hebben, zodat de TWEEDE variant wordt SAMENGEVOEGD i.p.v. de
-  // eerste te overschrijven — zie de toelichting bij alsGebiedsnamen()
-  // hierboven.
-  const samengesteldeCanonieken = new Set();
   const koppen = $('h1,h2,h3,h4,h5,h6').toArray();
 
   for (const kopEl of koppen) {
@@ -153,22 +167,20 @@ function parseGebieden(html) {
     const tekst = tekstTotVolgendeKop($, kopEl);
     if (!tekst) continue;
 
+    // 2026-08-26-fix: eerder werd hier alleen "samengevoegd i.p.v.
+    // overschreven" bijgehouden voor GEBIEDSNAAM_ALIAS-varianten
+    // (bv. "NORTH GERMAN BIGHT") — maar als een gebied EERST via een platte
+    // kop (bv. "... Dogger") en DAARNA via een variant-kop (bv. "East
+    // Dogger, Fisher, German Bight") voorkomt, werd de eerste, platte tekst
+    // alsnog stilletjes overschreven. Voortaan simpelweg: bestaat er al
+    // tekst voor dit gebied (via welke kop dan ook), dan samenvoegen i.p.v.
+    // overschrijven — ongeacht de volgorde/vorm van de koppen.
     for (const { canoniek, origineel } of paren) {
-      if (origineel === canoniek) {
-        // Normaal geval, geen alias-variant: gewoon zetten (bestaand gedrag).
-        gebieden[canoniek] = { label: canoniek, tekst };
-        continue;
-      }
-      // Alias-variant (bv. "NORTH GERMAN BIGHT" -> "GERMAN BIGHT"): niet
-      // overschrijven maar samenvoegen, zodat beide helften ("North German
-      // Bight: ... | South German Bight: ...") bewaard blijven i.p.v. dat de
-      // laatst-verwerkte de andere wegdrukt.
-      const label = titelCase(origineel);
-      if (samengesteldeCanonieken.has(canoniek)) {
+      const label = origineel === canoniek ? canoniek : titelCase(origineel);
+      if (gebieden[canoniek]) {
         gebieden[canoniek].tekst += ` | ${label}: ${tekst}`;
       } else {
-        gebieden[canoniek] = { label: canoniek, tekst: `${label}: ${tekst}` };
-        samengesteldeCanonieken.add(canoniek);
+        gebieden[canoniek] = { label: canoniek, tekst: origineel === canoniek ? tekst : `${label}: ${tekst}` };
       }
     }
   }
@@ -176,10 +188,24 @@ function parseGebieden(html) {
   return gebieden;
 }
 
+// 2026-08-26-vangnet, op verzoek van Lex ("ja vangnet ok"): een echte
+// forecasttekst bevat altijd een cijfer (windkracht/golfhoogte) en is nooit
+// maar een paar woorden. Kort en/of cijferloos is vrijwel zeker een
+// knip-fout (verkeerde/lege sibling-tekst) — dat serveren we liever niet
+// urenlang door als "de" synopsis van dit gebied.
+function isPlausibeleForecastTekst(tekst) {
+  return tekst.length >= 15 && /\d/.test(tekst);
+}
+
 export async function fetchMetOfficeZeeForecast() {
   const html = await haalHtml();
-  const gebieden = parseGebieden(html);
-  console.log(`[weer] metoffice-zeeforecast: synopsis gevonden voor ${Object.keys(gebieden).length} gebieden.`);
+  const ruweGebieden = parseGebieden(html);
+  const gebieden = {};
+  for (const [naam, info] of Object.entries(ruweGebieden)) {
+    if (isPlausibeleForecastTekst(info.tekst)) gebieden[naam] = info;
+  }
+  const afgekeurd = Object.keys(ruweGebieden).length - Object.keys(gebieden).length;
+  console.log(`[weer] metoffice-zeeforecast: synopsis gevonden voor ${Object.keys(gebieden).length} gebieden${afgekeurd > 0 ? ` (${afgekeurd} afgekeurd door vangnet)` : ''}.`);
   if (Object.keys(gebieden).length === 0) {
     throw new Error('geen enkel gebied gevonden op de Met Office-pagina — structuur mogelijk gewijzigd');
   }

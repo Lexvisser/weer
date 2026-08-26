@@ -286,7 +286,7 @@ body {
    SVG-golflijn (fill:none/stroke, zie golfIcoonHtml() in app.js) — een dunne
    lijn kan niet "vollopen" tot een blob zoals de emoji deed, dus de gloed
    blijft er nu netjes omheen zitten i.p.v. 'm te overstemmen. */
-.golf-emoji { width:1.3em; height:1em; display:inline-block; vertical-align:middle; color:#3ec6ff; filter: drop-shadow(0 0 0.1em rgba(62,198,255,0.8)); }
+.golf-emoji { width:1.6em; height:1.6em; display:inline-block; vertical-align:middle; color:#3ec6ff; filter: drop-shadow(0 0 0.05em rgba(62,198,255,0.8)); }
 
 .map-toggle { position:absolute; top:10px; right:10px; z-index:1000; display:flex; background:rgba(10,11,18,0.85); border:1px solid rgba(255,255,255,0.12); border-radius:9px; padding:3px; gap:2px; }
 .map-toggle button { border:none; background:transparent; color:#9199b5; font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:6px 10px; border-radius:6px; cursor:pointer; }
@@ -604,7 +604,7 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    blauwe gloed bij is-kabel/is-ukho-test hieronder, maar dan warm/oranje
    passend bij de nieuwe amber kleur van NAVTEX_BOEI_SVG in app.js). Zie
    generiekeBoeiKlasse in app.js. */
-.navtex-pin.is-generieke-boei svg { width:27px; height:27px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 5px rgba(255,167,61,0.95)) drop-shadow(0 0 5px rgba(255,167,61,0.95)); }
+.navtex-pin.is-generieke-boei svg { width:31px; height:31px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 3px rgba(255,90,60,0.7)); }
 
 /* 2026-08-21: Vliegradar/Vaarradar-markers — bewust neutraal (geen
    ernst-kleur, dit is geen hazard) en simpel (emoji i.p.v. eigen SVG, Lex

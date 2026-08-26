@@ -1959,14 +1959,14 @@ const NAVTEX_BOEI_SVG = `
   <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="navtexBoeiSparGradient" x1="0" y1="4" x2="0" y2="22" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#ffb266"/>
-        <stop offset="1" stop-color="#e8790f"/>
+        <stop offset="0" stop-color="#ff8a63"/>
+        <stop offset="1" stop-color="#c81e0f"/>
       </linearGradient>
     </defs>
-    <circle cx="12" cy="2.8" r="1.4" fill="#ffe0b0"/>
-    <line x1="12" y1="4.2" x2="12" y2="8" stroke="#c97a1f" stroke-width="1.1" stroke-linecap="round"/>
+    <circle cx="12" cy="2.8" r="1.4" fill="#ffd4c2"/>
+    <line x1="12" y1="4.2" x2="12" y2="8" stroke="#a81c0f" stroke-width="1.1" stroke-linecap="round"/>
     <path d="M11.3 8 L12.7 8 L14.2 17 Q14.2 20 12 21.6 Q9.8 20 9.8 17 Z" fill="url(#navtexBoeiSparGradient)"/>
-    <path d="M9.9 16.8 Q12 15.6 14.1 16.8" fill="none" stroke="#ffd9ad" stroke-width="0.6" opacity="0.7"/>
+    <path d="M9.9 16.8 Q12 15.6 14.1 16.8" fill="none" stroke="#ffc2ad" stroke-width="0.6" opacity="0.7"/>
   </svg>
 `.trim();
 
@@ -2285,6 +2285,42 @@ const NAVTEX_RADIOMAST_SVG = `
   </svg>
 `.trim();
 
+// 2026-08-26, op verzoek van Lex ("een ander explosieven icon" — de losse
+// bom-emoji verving vervangen door een eigen zee-mijn: gestileerd op een
+// referentie die Lex aandroeg (een klassieke hoorn-contactmijn, spikey bol
+// met highlight-stipje), zelf opnieuw getekend. Acht korte stekels rondom
+// een donkere bol (zelfde donkere kleur #1a1c22 als de dunne contourlijnen
+// elders, i.p.v. puur zwart, blijft zo consistent met de rest van de set),
+// met rode stipjes op de stekeluiteinden als gevaar-accent (zelfde rode tint
+// #ff5c5c als bij is-anker hierboven) en een lichte highlight voor de
+// "glimmende bol"-uitstraling uit de referentie.
+const NAVTEX_MUNITIE_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <g stroke="#1a1c22" stroke-width="2.2" stroke-linecap="round">
+      <line x1="18" y1="12" x2="20.2" y2="12"/>
+      <line x1="16.24" y1="16.24" x2="17.8" y2="17.8"/>
+      <line x1="12" y1="18" x2="12" y2="20.2"/>
+      <line x1="7.76" y1="16.24" x2="6.2" y2="17.8"/>
+      <line x1="6" y1="12" x2="3.8" y2="12"/>
+      <line x1="7.76" y1="7.76" x2="6.2" y2="6.2"/>
+      <line x1="12" y1="6" x2="12" y2="3.8"/>
+      <line x1="16.24" y1="7.76" x2="17.8" y2="6.2"/>
+    </g>
+    <circle cx="12" cy="12" r="6" fill="#1a1c22" stroke="#f4f6fb" stroke-width="0.6"/>
+    <g fill="#ff5c5c">
+      <circle cx="20.2" cy="12" r="1"/>
+      <circle cx="17.8" cy="17.8" r="1"/>
+      <circle cx="12" cy="20.2" r="1"/>
+      <circle cx="6.2" cy="17.8" r="1"/>
+      <circle cx="3.8" cy="12" r="1"/>
+      <circle cx="6.2" cy="6.2" r="1"/>
+      <circle cx="12" cy="3.8" r="1"/>
+      <circle cx="17.8" cy="6.2" r="1"/>
+    </g>
+    <circle cx="9.6" cy="9.6" r="1.3" fill="#f4f6fb" opacity="0.85"/>
+  </svg>
+`.trim();
+
 const NAVTEX_EVENT_ICOON = {
   riglijst: NAVTEX_RIG_SVG,
   'licht-onbetrouwbaar': NAVTEX_LICHT_UIT_SVG,
@@ -2297,7 +2333,7 @@ const NAVTEX_EVENT_ICOON = {
   // 2026-08-24, op verzoek van Lex ("neem gelijk een bom/granaat icon mee
   // als er bij een gebied over ordinance of munitions, explosives wordt
   // gemeld") — zie 'munitie' in navtexLokaal.js/ukho.js EVENT_REGELS.
-  munitie: '💣',
+  munitie: NAVTEX_MUNITIE_SVG,
   oefening: '🎯',
   'anker-verloren': NAVTEX_ANKER_SVG,
   'boei-nieuw': NAVTEX_BOEI_NIEUW_SVG,
@@ -2477,7 +2513,23 @@ function synopsisBronVoorGebied(naam) {
 // Gedeeld via deze functie i.p.v. de HTML dubbel uit te schrijven op de
 // twee gebruiksplekken hieronder.
 function golfIcoonHtml() {
-  return '<svg class="golf-emoji" viewBox="0 0 22 14" aria-hidden="true"><path d="M1,7 C4,1 8,1 11,7 C14,13 18,13 21,7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // 2026-08-26-herzien (2e ronde), op verzoek van Lex ("de gold als je de
+  // golf zelf de vorm mee wil geven, globaal zoveel mogelijk de bovenste
+  // lijn pakken... liever nog deze golf overnemen") -- de vorige versie had
+  // wel de juiste OPZET (grote golf + spiraal-hoek + waterlijnen) maar de
+  // krul zelf was te klein/te rond t.o.v. Lex' referentie-afbeelding. Path
+  // opnieuw getekend met een duidelijke S-zwaai in de opgaande lijn (de
+  // referentie stijgt niet in één rechte boog, maar buigt eerst iets naar
+  // links voor 'ie doorzet naar de top) en een grotere, verder doorgetrokken
+  // spiraal, zodat het silhouet dichter bij de referentie komt. Zelf
+  // getekend/benaderd (geen overname van de referentie-afbeelding zelf),
+  // driedelig pad zodat de vorm bij elke maat een eigen, scherp gedefinieerd
+  // stuk blijft i.p.v. verder te verdunnen.
+  return '<svg class="golf-emoji" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M1,18 C1,14 4,12 3.3,8 C2.8,4.8 6.5,2 11,2 C15.5,2 19,4.3 19,8 C19,10.9 16,12.4 13,11.1 C10.9,10.2 10.6,7.9 12.4,7 C13.5,6.5 14.6,7.2 14,7.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '<path d="M1,17.5 C3.5,15.5 5.5,15.5 8,17.5 C10.5,19.5 12.5,19.5 15,17.5 C17.5,15.5 19.5,15.5 22,17.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '<path d="M1,21.5 C3.5,19.5 5.5,19.5 8,21.5 C10.5,23.5 12.5,23.5 15,21.5 C17.5,19.5 19.5,19.5 22,21.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg>';
 }
 
 // 2026-08-25, op verzoek van Lex ("geen golfhoogte hoor" bij de Fisher-popup,
@@ -2491,7 +2543,7 @@ function golfIcoonHtml() {
 function zeeSynopsisPopupHtml(naam) {
   const gekozen = synopsisBronVoorGebied(naam);
   const golfbereik = golfHoogteVoorGebied(naam);
-  const titelHtml = `<div class="popup-titel">${escapeHtml(naam)}</div>${golfbereik ? `<div class="popup-golfhoogte">${golfIcoonHtml()} ~${golfbereik}</div>` : ''}`;
+  const titelHtml = `<div class="popup-titel">${escapeHtml(naam)}</div>${golfbereik ? `<div class="popup-golfhoogte">${golfIcoonHtml()} ${golfbereik}</div>` : ''}`;
   if (gekozen?.bron === 'knmi') {
     return `${titelHtml}<div class="popup-advies">${escapeHtml(gekozen.synopsis.tekst)}</div>`;
   }
@@ -2516,8 +2568,10 @@ function zeeSynopsisPopupHtml(naam) {
 // terminologie in élk shipping-forecast-bericht, dus gewoon uit de al
 // geladen tekst zelf halen. Volgorde specifiek-naar-algemeen (net als
 // EVENT_REGELS in navtexLokaal.js) zodat "VERY ROUGH"/"VERY HIGH" niet per
-// ongeluk al bij "ROUGH"/"HIGH" matchen. Bewust een RUW indicatief bereik
-// (vandaar het "~"-teken in de weergave), geen exacte meting.
+// ongeluk al bij "ROUGH"/"HIGH" matchen. Bewust een RUW indicatief bereik,
+// geen exacte meting -- het "~"-teken dat dat eerst benadrukte is 2026-08-26
+// op verzoek van Lex weer weggehaald (stond ie nu naast het golf-icoon,
+// dat maakt zelf al duidelijk dat het indicatief is).
 const DOUGLAS_ZEEGANG = [
   { re: /\bPHENOMENAL\b/, bereik: '>14m' },
   { re: /\bVERY HIGH\b/, bereik: '9–14m' },
@@ -2564,7 +2618,7 @@ function golfHoogteVoorGebied(naam) {
 function zeeGebiedLabelHtml(naam) {
   const golfbereik = golfHoogteVoorGebied(naam);
   return golfbereik
-    ? `${escapeHtml(naam)} <span class="golf-label">${golfIcoonHtml()} ~${golfbereik}</span>`
+    ? `${escapeHtml(naam)} <span class="golf-label">${golfIcoonHtml()} ${golfbereik}</span>`
     : escapeHtml(naam);
 }
 

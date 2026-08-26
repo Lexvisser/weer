@@ -47,8 +47,23 @@ async function haalKnmiHtml() {
 // afsluitzinnen van deze pagina).
 function knipGebiedTeksten(platteTekst) {
   const gebieden = {};
+
+  // 2026-08-26-fix, op melding van Lex ("Thames is ook niet ok" — live
+  // popup toonde alleen "early in the night."): de algemene "Synopsis:"-
+  // alinea bovenaan de pagina noemt zelf ook gebiedsnamen in lopende tekst
+  // (bv. "Associated trough moves over Thames and Humber on Thursday
+  // morning."). indexOf(naam) hieronder pakte tot nu toe die EERSTE
+  // (verkeerde) vermelding uit de synopsis-alinea, en knipte een kort
+  // zinsfragment daaruit i.p.v. de echte gebiedstekst verderop onder
+  // "Forecast valid from ...". Vanaf hier pas zoeken na de EERSTE
+  // "Forecast valid from"-kop, waar de echte per-gebied koppen beginnen —
+  // als die kop niet gevonden wordt (paginastructuur gewijzigd) valt dit
+  // terug op de hele tekst zoals voorheen.
+  const structuurStart = platteTekst.indexOf('Forecast valid from');
+  const zoekVanaf = structuurStart === -1 ? 0 : structuurStart;
+
   for (const naam of GEBIEDSNAMEN) {
-    const start = platteTekst.indexOf(naam);
+    const start = platteTekst.indexOf(naam, zoekVanaf);
     if (start === -1) continue;
 
     const mogelijkeEinden = GEBIEDSNAMEN.filter((andere) => andere !== naam)
@@ -63,6 +78,13 @@ function knipGebiedTeksten(platteTekst) {
 
     const einde = mogelijkeEinden.length > 0 ? Math.min(...mogelijkeEinden) : platteTekst.length;
     const tekst = platteTekst.slice(start + naam.length, einde).trim();
+
+    // 2026-08-26-vangnet, op verzoek van Lex ("ja vangnet ok"): een echte
+    // forecasttekst bevat altijd een cijfer (windkracht/golfhoogte) en is
+    // nooit maar een paar woorden — een te kort en/of cijferloos fragment is
+    // vrijwel zeker een knip-fout zoals hierboven, en dat serveren we liever
+    // niet 3 uur lang door als "de" synopsis van dit gebied.
+    if (tekst.length < 15 || !/\d/.test(tekst)) continue;
 
     // Ruwe windkracht-gok uit de tekst zelf, puur als kort label — zelfde
     // regex als Lex' server.js, geen garantie dat 'ie altijd raak schiet.
