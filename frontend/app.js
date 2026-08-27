@@ -415,7 +415,9 @@ const EMOJI_PER_CATEGORIE = {
   // Brandweer/politie/ambulance (P2000) + Lifeliner-traumahelikopters, 2026-08-19
   // — zie backend/src/sources/p2000.js en lifeliner.js.
   hulpdiensten: '🚨',
-  // 2026-08-19: tsunami (VS-only via NWS, zie sources/nws.js) — geen apart
+  // 2026-08-19: tsunami (destijds VS-only via NWS; sinds 2026-08-27 ook
+  // wereldwijd via PTWC/tsunami.gov en GDACS TS-events, zie backend
+  // sources/ptwc.js en gdacs.js — zelfde twee categorieën) — geen apart
   // Unicode-symbool voor "tsunami" naast de gewone golf-emoji, dus zelfde
   // icoon als overstroming; onderscheid blijft duidelijk via titel/categorie-
   // label en de eigen randkleur.
@@ -5910,6 +5912,100 @@ function renderAlarmInstellingen() {
     knop.textContent = aan ? 'AAN' : 'UIT';
     knop.addEventListener('click', () => {
       zetAlarmCategorie(def.id, !aan);
+      renderAlarmInstellingen();
+    });
+    rij.appendChild(label);
+    rij.appendChild(knop);
+    ALARM_INSTELLINGEN_LIJST_EL.appendChild(rij);
+  });
+
+  renderTelefoonAlarmSchakelaars();
+}
+
+// 2026-08-27, op verzoek van Lex ("telefoonalarm graag, ook bij de
+// instellingen aan en uit te zetten") — anders dan de localStorage-toggles
+// hierboven (die alleen het rode alarmscherm op DIT toestel sturen) is dit
+// een SERVER-instelling: de telefoonalarmen (Pushover/mail/webpush) worden
+// door de backend verstuurd, ook zonder open app, dus de schakelaar leeft op
+// de server (zie backend alarmSchakelaars.js + /api/alarm-schakelaars) en
+// geldt vanzelf voor alle toestellen tegelijk. Labels/volgorde hier centraal,
+// zelfde opzet als ALARM_CATEGORIE_DEFINITIES.
+const TELEFOON_ALARM_DEFINITIES = [
+  { sleutel: 'tsunami', label: '🌊 Tsunami telefoonalarm (wereldwijd)' },
+];
+
+let telefoonSchakelaars = null; // null = nog niet opgehaald; 'fout' = ophalen mislukt
+let telefoonSchakelaarsBezig = false; // tegen dubbele/oneindige fetch-lussen
+
+async function haalTelefoonSchakelaars() {
+  if (telefoonSchakelaarsBezig) return;
+  telefoonSchakelaarsBezig = true;
+  try {
+    const res = await fetch('/api/alarm-schakelaars').then((r) => r.json());
+    telefoonSchakelaars = res.schakelaars ?? {};
+  } catch (err) {
+    console.warn('[weer] telefoonalarm-schakelaars ophalen mislukt:', err);
+    telefoonSchakelaars = 'fout'; // expliciete fouttoestand — nooit stil opnieuw blijven proberen
+  }
+  telefoonSchakelaarsBezig = false;
+  renderAlarmInstellingen();
+}
+
+function renderTelefoonAlarmSchakelaars() {
+  const kop = document.createElement('div');
+  kop.className = 'instellingen-uitleg';
+  kop.textContent = 'Telefoonalarm (Pushover/mail/push) — serverinstelling, geldt voor alle toestellen.';
+  ALARM_INSTELLINGEN_LIJST_EL.appendChild(kop);
+
+  if (telefoonSchakelaars === null || telefoonSchakelaars === 'fout') {
+    const rij = document.createElement('div');
+    rij.className = 'instelling-item';
+    if (telefoonSchakelaars === 'fout') {
+      // Ophalen mislukte — expliciet melden met een handmatige herkansing,
+      // geen kapotte toggles die stilletjes niets zouden doen.
+      const label = document.createElement('span');
+      label.textContent = 'Server niet bereikbaar';
+      const knop = document.createElement('button');
+      knop.type = 'button';
+      knop.className = 'alarm-toggle';
+      knop.textContent = 'OPNIEUW';
+      knop.addEventListener('click', () => {
+        telefoonSchakelaars = null;
+        renderAlarmInstellingen();
+      });
+      rij.appendChild(label);
+      rij.appendChild(knop);
+    } else {
+      // Eerste keer uitklappen: nog niet van de server gehaald — even doen
+      // en dan opnieuw renderen.
+      rij.textContent = 'Schakelaars ophalen…';
+      haalTelefoonSchakelaars();
+    }
+    ALARM_INSTELLINGEN_LIJST_EL.appendChild(rij);
+    return;
+  }
+
+  TELEFOON_ALARM_DEFINITIES.forEach((def) => {
+    const aan = telefoonSchakelaars[def.sleutel] !== false;
+    const rij = document.createElement('div');
+    rij.className = 'instelling-item';
+    const label = document.createElement('span');
+    label.textContent = def.label;
+    const knop = document.createElement('button');
+    knop.type = 'button';
+    knop.className = `alarm-toggle${aan ? ' aan' : ''}`;
+    knop.textContent = aan ? 'AAN' : 'UIT';
+    knop.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/alarm-schakelaars', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sleutel: def.sleutel, aan: !aan }),
+        }).then((r) => r.json());
+        telefoonSchakelaars = res.schakelaars ?? telefoonSchakelaars;
+      } catch (err) {
+        console.warn('[weer] telefoonalarm-schakelaar omzetten mislukt:', err);
+      }
       renderAlarmInstellingen();
     });
     rij.appendChild(label);

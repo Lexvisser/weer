@@ -8,15 +8,29 @@
 // vooral vervuilen — precies het probleem dat we bij aardbevingen al hadden.
 import { makeSignal } from '../normalize.js';
 import { verversMedia } from '../mediaHistorie.js';
+import { stuurAlarm, kaartTekst } from './pushover.js';
+import { stuurMailAlarm } from './email.js';
+import { stuurWebPushAlarm } from './webpush.js';
+import { telefoonAlarmAan } from '../alarmSchakelaars.js';
 
 const FEED_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH';
 
-const CATEGORIE_PER_TYPE = { EQ: 'aardbeving', TC: 'orkaan', FL: 'overstroming', WF: 'natuurbrand', VO: 'vulkaan', DR: 'droogte' };
+// 2026-08-27, op verzoek van Lex ("Ik heb tsunami alarmen alleen voor de US.
+// Ik zou dat globaal willen"): TS (tsunami) toegevoegd aan beide mappings.
+// GDACS berekent voor elke zware zeebeving wereldwijd een tsunami-inschatting
+// (JRC-model) en geeft significante gevallen als eigen TS-event uit — dit is
+// het model-gebaseerde wereldwijde vangnet (Indische Oceaan, Middellandse
+// Zee, Atlantisch) naast de nieuwe officiële PTWC-bron voor de Stille Oceaan
+// (zie sources/ptwc.js). De bestaande Orange/Red-filter geldt ook hier, dus
+// alleen tsunami's met verwachte echte impact komen door. TS-events zijn nog
+// niet live in de feed waargenomen (ze zijn zeldzaam) — de mapping is dus
+// nog niet tegen een echt event bevestigd.
+const CATEGORIE_PER_TYPE = { EQ: 'aardbeving', TC: 'orkaan', FL: 'overstroming', WF: 'natuurbrand', VO: 'vulkaan', DR: 'droogte', TS: 'tsunami' };
 // 2026-08-19: VO was 'Vulkaanuitbarsting' — een ander woord dan de
 // categorienaam 'Vulkaan' (zie NAAM_PER_CATEGORIE in app.js), waardoor de
 // titel ("Vulkaanuitbarsting Semeru") en de "+N meer (Vulkaan)"-knop eronder
 // niet meer bij elkaar leken te horen. Nu exact gelijk aan de categorienaam.
-const LABEL_PER_TYPE = { EQ: 'Aardbeving', TC: 'Cycloon', FL: 'Overstroming', WF: 'Natuurbrand', VO: 'Vulkaan', DR: 'Droogte' };
+const LABEL_PER_TYPE = { EQ: 'Aardbeving', TC: 'Cycloon', FL: 'Overstroming', WF: 'Natuurbrand', VO: 'Vulkaan', DR: 'Droogte', TS: 'Tsunami' };
 const ERNST_PER_ALERTLEVEL = { Red: 'kritiek', Orange: 'waarschuwing', Green: 'info' };
 const ALERTLEVEL_NL = { Red: 'Rood', Orange: 'Oranje', Green: 'Groen' };
 
@@ -112,7 +126,7 @@ export async function fetchGdacs() {
         .filter(Boolean)
         .join(' · ') || null;
       const id = `gdacs-${type}-${p.eventid}-${p.episodeid ?? 0}`;
-      return makeSignal({
+      const signaal = makeSignal({
         id,
         categorie: CATEGORIE_PER_TYPE[type] ?? 'multi-hazard',
         titel,
@@ -130,6 +144,22 @@ export async function fetchGdacs() {
           bronUrl: `https://www.gdacs.org/report.aspx?eventid=${p.eventid}&eventtype=${type}`,
         },
       });
+
+      // 2026-08-27, op verzoek van Lex ("telefoonalarm graag") — alleen voor
+      // TS (tsunami)-events, GDACS' andere types alarmeren bewust niet (een
+      // Orange bosbrand in Australië hoort geen telefoonalarm te zijn).
+      // Zelfde drie kanalen + dedup-gedrag als in ptwc.js/nws.js, en dezelfde
+      // serverbrede schakelaar (zie alarmSchakelaars.js). De Orange/Red-
+      // filter hierboven is al gepasseerd, dus dit gaat alleen over tsunami's
+      // met verwachte echte impact. Red = emergency-prioriteit 2.
+      if (type === 'TS' && telefoonAlarmAan('tsunami')) {
+        const alarmTitel = '🌊 Tsunami (GDACS)';
+        const bericht = kaartTekst(signaal);
+        stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: p.alertlevel === 'Red' ? 2 : 1 });
+        stuurMailAlarm({ id, titel: alarmTitel, bericht, lat: signaal.lat, lon: signaal.lon });
+        stuurWebPushAlarm({ id, titel: alarmTitel, bericht, url: `/?signaal=${encodeURIComponent(id)}`, lat: signaal.lat, lon: signaal.lon });
+      }
+      return signaal;
     })
   );
 }

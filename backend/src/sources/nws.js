@@ -22,6 +22,7 @@ import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
 import { metHistorie } from '../historie.js';
 import { verversMedia } from '../mediaHistorie.js';
+import { telefoonAlarmAan } from '../alarmSchakelaars.js';
 
 // 2026-08-19: Lex vroeg "hebben we al tsunami warnings?" — nog niet, terwijl
 // dit dezelfde api.weather.gov/alerts-infrastructuur is als tornado hierboven
@@ -49,6 +50,66 @@ const EVENT_TYPES = [
   { event: 'Tsunami Warning', categorie: 'tsunami' },
   { event: 'Tsunami Watch', categorie: 'tsunami-watch' },
 ];
+
+// 2026-08-27, op melding van Lex — een tornado warning (New Orleans, LA,
+// 27 aug 06:01-06:30 CDT, dus een heel normale/gewone melding) stond in de
+// app al "verlopen" terwijl 'ie volgens NWS zelf nog geldig was, en Lex kreeg
+// kort na elkaar meerdere warning-mails binnen. Vermoeden: NWS geeft bij een
+// update/correctie van een lopende warning soms een NIEUW alert-id uit
+// (zie p.id hieronder) i.p.v. het bestaande bij te werken -- voor deze app
+// ziet dat eruit als "oude id verdwijnt (dus verlopen) + gloednieuwe id
+// verschijnt", terwijl het feitelijk dezelfde dreiging blijft.
+// Bewust NOG GEEN gedragswijziging (geen id's samenvoegen, geen mail/
+// Pushover/webpush onderdrukken) -- dit is veiligheidsrelevant, en zonder
+// live bevestiging van hoe NWS' "references"/messageType-velden er in de
+// praktijk daadwerkelijk uitzien is een blinde aanname daar te riskant (een
+// gemiste tornado-melding door een verkeerd geraden match is erger dan een
+// verwarrende "verlopen"-status). In plaats daarvan: puur loggen zodra dit
+// patroon zich voordoet (zelfde categorie + zelfde gebied, oude verdwijnt en
+// nieuwe verschijnt in dezelfde pollcyclus), zodat de eerstvolgende keer
+// meteen harde data in het log staat i.p.v. te moeten gokken op geheugen.
+let vorigePollSignalen = []; // [{ id, categorie, gebied }] van de vorige fetchNws()-cyclus
+
+// 2026-08-27, op melding van Lex: de gebieden (county's) van opeenvolgende
+// tornado-warning-uitgaven schuiven vaak subtiel op naarmate de storm
+// beweegt (bv. "Lafourche, LA; St. Charles, LA; St. John The Baptist, LA" ->
+// "St. Charles, LA; St. John The Baptist, LA; Jefferson, LA") -- exact-
+// gelijke tekst vergelijken (hierboven, eerste versie) miste dat dus
+// helemaal. p.areaDesc/detail.gebied is een met ";" gescheiden lijst van
+// county's; hier ontleed tot losse, genormaliseerde namen zodat een
+// overlappende county (i.p.v. een woordelijk identieke lijst) ook telt.
+function gebiedTokens(gebied) {
+  if (!gebied) return new Set();
+  return new Set(
+    gebied
+      .split(';')
+      .map((deel) => deel.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function heeftOverlap(a, b) {
+  for (const token of a) if (b.has(token)) return true;
+  return false;
+}
+
+function loginMogelijkeHeruitgave(signalen) {
+  const huidigeIds = new Set(signalen.map((s) => s.id));
+  const verdwenen = vorigePollSignalen.filter((v) => !huidigeIds.has(v.id));
+  const nieuweIds = new Set(vorigePollSignalen.map((v) => v.id));
+  const nieuw = signalen.filter((s) => !nieuweIds.has(s.id));
+  for (const oud of verdwenen) {
+    const oudTokens = gebiedTokens(oud.gebied);
+    if (!oudTokens.size) continue;
+    const kandidaat = nieuw.find((n) => n.categorie === oud.categorie && heeftOverlap(oudTokens, gebiedTokens(n.detail?.gebied)));
+    if (kandidaat) {
+      console.log(
+        `[weer] nws: mogelijke heruitgave gedetecteerd -- oud id "${oud.id}" (${oud.gebied}) verdween, nieuw id "${kandidaat.id}" (${kandidaat.detail?.gebied}) verscheen in dezelfde cyclus met overlappend gebied (${oud.categorie}). Nog geen automatische koppeling, puur ter info/logging.`,
+      );
+    }
+  }
+  vorigePollSignalen = signalen.map((s) => ({ id: s.id, categorie: s.categorie, gebied: s.detail?.gebied ?? null }));
+}
 
 // 2026-08-22: voor de media-zoekterm (zie verversMedia hieronder) — alleen
 // p.areaDesc gebruiken (bv. kaal "Putnam, IL") bleek bij een live test met
@@ -391,6 +452,28 @@ export async function fetchNws() {
         gebiedPolygon: s.detail?.gebiedPolygon,
       });
     }
+    // 2026-08-27, op verzoek van Lex ("telefoonalarm graag") — de
+    // VS-tsunami's uit deze bron stuurden tot nu toe GEEN telefoonalarm
+    // (alleen tornado's deden dat); nu wel, tegelijk met de nieuwe
+    // wereldwijde tsunami-bronnen (ptwc.js + gdacs TS-events) en met
+    // dezelfde serverbrede aan/uit-schakelaar (zie alarmSchakelaars.js,
+    // in te stellen via Instellingen -> Alarmen). Warning = emergency-
+    // prioriteit 2 (zelfde afweging als tornado warning), watch = 1.
+    if ((s.categorie === 'tsunami' || s.categorie === 'tsunami-watch') && telefoonAlarmAan('tsunami')) {
+      const titel = s.categorie === 'tsunami' ? '🌊 Tsunami Warning' : 'Tsunami Watch';
+      const bericht = kaartTekst(s);
+      stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tsunami' ? 2 : 1 });
+      stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
+      stuurWebPushAlarm({
+        id: s.id,
+        titel,
+        bericht,
+        url: `/?signaal=${encodeURIComponent(s.id)}`,
+        lat: s.lat,
+        lon: s.lon,
+        gebiedPolygon: s.detail?.gebiedPolygon,
+      });
+    }
   }
 
   // 2026-08-20: historie (zie historie.js) NA de alarm-lus hierboven —
@@ -398,6 +481,7 @@ export async function fetchNws() {
   // een teruggehaald "verlopen"-signaal van hieronder (die zouden toch al
   // gededupliceerd worden via de gemeld-Set in pushover.js/email.js, maar dit
   // voorkomt sowieso elke twijfel daarover).
+  loginMogelijkeHeruitgave(signalen.filter((s) => s.categorie === 'tornado' || s.categorie === 'tornado-watch'));
   const totaal = metHistorie('nws', signalen);
 
   // 2026-08-22: verlopen signalen zitten niet meer in `signalen` hierboven

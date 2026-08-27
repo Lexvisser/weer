@@ -43,7 +43,17 @@ export const SOURCES = [
     pollIntervalMs: 2 * 60 * 1000,
     staleAfterMs: 30 * 60 * 1000,
     implemented: true,
-    note: 'Vereist herkenbare User-Agent header. Dekt alleen de VS. Levert vier categorieën: tornado (Warning), tornado-watch (Watch), tsunami (Warning) en tsunami-watch (Watch) — allemaal incl. polygon-omtrek van het gebied waar van toepassing. Severe Thunderstorm Warning zat er even bij (2026-08-20) maar is op verzoek van Lex weer uitgezet ("veeeeeels te veel") — zie EVENT_TYPES in nws.js om terug te zetten. Toont ook tot 48 uur terug verlopen waarschuwingen (detail.verlopen, zie historie.js) als lichte historie op de kaart. Binnen tornado/tornado-watch wordt ook PDS ("Particularly Dangerous Situation"), Tornado Emergency (hoogste niveau) en tornadoDetection=OBSERVED ("op de grond") herkend, zie tornadoDreigingsniveau()/tornadoWaargenomen() in nws.js.',
+    note: 'Vereist herkenbare User-Agent header. Dekt alleen de VS. Levert vier categorieën: tornado (Warning), tornado-watch (Watch), tsunami (Warning) en tsunami-watch (Watch) — allemaal incl. polygon-omtrek van het gebied waar van toepassing. Severe Thunderstorm Warning zat er even bij (2026-08-20) maar is op verzoek van Lex weer uitgezet ("veeeeeels te veel") — zie EVENT_TYPES in nws.js om terug te zetten. Toont ook tot 48 uur terug verlopen waarschuwingen (detail.verlopen, zie historie.js) als lichte historie op de kaart. Binnen tornado/tornado-watch wordt ook PDS ("Particularly Dangerous Situation"), Tornado Emergency (hoogste niveau) en tornadoDetection=OBSERVED ("op de grond") herkend, zie tornadoDreigingsniveau()/tornadoWaargenomen() in nws.js. Tsunami is hier VS-only — wereldwijde dekking komt sinds 2026-08-27 van ptwc (Stille Oceaan, officieel) + gdacs TS-events (rest van de wereld, model-vangnet).',
+  },
+  {
+    id: 'ptwc',
+    categorie: 'tsunami',
+    naam: 'PTWC tsunami.gov (Pacific)',
+    tier: 'officieel',
+    pollIntervalMs: 3 * 60 * 1000,
+    staleAfterMs: 30 * 60 * 1000,
+    implemented: true,
+    note: 'Pacific Tsunami Warning Center (NOAA, Honolulu) — officiële tsunamiberichten voor het hele Stille-Oceaanbekken (internationaal), via de sleutelloze Atom-feed op tsunami.gov (2026-08-27, op verzoek van Lex: "tsunami alarmen globaal"). Information statements (routinemeldingen zonder dreiging) worden bewust overgeslagen; alleen Warning/Threat/Advisory/Watch komen door. De NTWC-zusterfeed (VS/Canada) is bewust weggelaten: de VS-kust zit al met polygon-detail in nws. LET OP: nog niet live bevestigd tegen een echte Pacific-tsunami — zie de eerlijke waarschuwing in sources/ptwc.js.',
   },
   {
     id: 'spcOutlook',
@@ -117,7 +127,7 @@ export const SOURCES = [
     pollIntervalMs: 3 * 60 * 60 * 1000,
     staleAfterMs: 12 * 60 * 60 * 1000,
     implemented: true,
-    note: 'Vangnet-bron voor overstroming/natuurbrand/vulkaan/droogte en cyclonen buiten NHC. Alleen Orange/Red.',
+    note: 'Vangnet-bron voor overstroming/natuurbrand/vulkaan/droogte en cyclonen buiten NHC. Alleen Orange/Red. Sinds 2026-08-27 ook TS-events (tsunami, JRC-model, wereldwijd) — het vangnet naast de officiële PTWC-bron voor de Stille Oceaan.',
   },
   {
     id: 'blitzortung',

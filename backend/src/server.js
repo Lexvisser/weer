@@ -45,6 +45,8 @@ import { controleerIssAlarm } from './sources/celestrak.js';
 import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
 import { fetchStormvloedkering } from './sources/stormvloedkering.js';
+import { fetchPtwc } from './sources/ptwc.js';
+import { alleSchakelaars, zetTelefoonAlarm, GELDIGE_SLEUTELS } from './alarmSchakelaars.js';
 
 // Elke bron-id (uit config.js) gekoppeld aan de functie die 'm ophaalt.
 // Nieuwe bron toevoegen? Zet 'm hier neer, voeg een rij toe in config.js,
@@ -77,6 +79,9 @@ const FETCHERS = {
   ukho: (env) => fetchUkho(env),
   navtexLokaal: (env) => fetchNavtexLokaal(env),
   stormvloedkering: () => fetchStormvloedkering(),
+  // 2026-08-27: wereldwijde tsunami's — PTWC (Stille Oceaan, officieel);
+  // het GDACS TS-vangnet loopt gewoon mee in de bestaande gdacs-fetcher.
+  ptwc: () => fetchPtwc(),
 };
 
 const MIME = {
@@ -901,6 +906,28 @@ export function createApp(env) {
         return sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error('[weer] /api/push/afmelden mislukt:', err.message ?? err);
+        return sendJson(res, 400, { fout: 'ongeldig verzoek' });
+      }
+    }
+    // 2026-08-27, op verzoek van Lex ("telefoonalarm graag, ook bij de
+    // instellingen aan en uit te zetten") — serverbrede telefoonalarm-
+    // schakelaars (zie alarmSchakelaars.js). GET voor de Instellingen-tab,
+    // POST om er één om te zetten. Bewust een SERVER-instelling: de
+    // telefoonalarmen worden door de backend verstuurd, ook zonder open
+    // app, dus een localStorage-toggle (zoals het rode alarmscherm) zou
+    // hier niets uithalen.
+    if (url === '/api/alarm-schakelaars' && req.method !== 'POST') {
+      return sendJson(res, 200, { schakelaars: alleSchakelaars() });
+    }
+    if (url === '/api/alarm-schakelaars' && req.method === 'POST') {
+      try {
+        const { sleutel, aan } = await readJsonBody(req);
+        if (!GELDIGE_SLEUTELS.has(sleutel)) return sendJson(res, 400, { fout: `onbekende schakelaar: ${sleutel}` });
+        zetTelefoonAlarm(sleutel, Boolean(aan));
+        console.log(`[weer] telefoonalarm-schakelaar '${sleutel}' -> ${aan ? 'AAN' : 'UIT'}`);
+        return sendJson(res, 200, { schakelaars: alleSchakelaars() });
+      } catch (err) {
+        console.error('[weer] /api/alarm-schakelaars mislukt:', err.message ?? err);
         return sendJson(res, 400, { fout: 'ongeldig verzoek' });
       }
     }
