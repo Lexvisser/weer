@@ -41,6 +41,17 @@
 <div class="view" id="viewKaart">
   <div class="map-wrap">
     <div class="map" id="map"></div>
+    <!-- 2026-08-27, op verzoek van Lex: rechtsboven op de zeekaart de
+         eerstvolgende NAVTEX-uitzending ("Volgende uitzending door [station]
+         over [## u ## min]"), in hetzelfde fosfor-groen als de ruwe-
+         ontvangst-viewer. Alleen zichtbaar in Zee-modus; herberekend op het
+         klok-ritme (zie ververNavtexVolgende() in app.js). De AUTO-knop
+         (tweede verzoek, aan/uit) opent op het uitzendmoment vanzelf de
+         ruwe-ontvangst-viewer — voorkeur blijft per toestel bewaard. -->
+    <div class="navtex-volgende verborgen" id="navtexVolgendeUitzending">
+      <span id="navtexVolgendeTekst"></span>
+      <button type="button" id="navtexAutoKnop" title="Op het uitzendmoment automatisch de ruwe-ontvangst-viewer openen">AUTO UIT</button>
+    </div>
     <!-- Gevaren/Weer-schakelaar is op 2026-08-18 weggehaald: die deed toch
          alleen de radar-controls-balk hieronder tonen/verbergen, niet welke
          gevaren-iconen je zag — dus pure overhead. Radar en Satelliet staan

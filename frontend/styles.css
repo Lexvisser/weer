@@ -444,6 +444,18 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .navtex-ruw-inhoud { background:#030a05; }
 .navtex-ruw-inhoud pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.55), 0 0 9px rgba(59,255,124,0.22); }
 .navtex-ruw-status { font-family:'JetBrains Mono',monospace; font-size:11px; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.45); align-self:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+
+/* 2026-08-27, op verzoek van Lex: eerstvolgende NAVTEX-uitzending rechtsboven
+   op de zeekaart, in hetzelfde fosfor-groen als de ruwe-ontvangst-viewer
+   hierboven. pointer-events:none zodat 'ie nooit een kaart-tik onderschept;
+   donker halfdoorzichtig plaatje eronder voor leesbaarheid op elke
+   kaartondergrond. Zie ververNavtexVolgende() in app.js. */
+.navtex-volgende { position:absolute; top:8px; right:10px; z-index:1000; display:flex; align-items:center; gap:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.45); background:rgba(3,10,5,0.72); border:1px solid rgba(59,255,124,0.35); border-radius:8px; padding:4px 9px; pointer-events:none; max-width:72%; }
+.navtex-volgende.verborgen { display:none; }
+/* De AUTO-knop is het enige klikbare deel — de rest van het plaatje laat
+   kaart-tikken gewoon door (pointer-events:none op de container hierboven). */
+.navtex-volgende button { pointer-events:auto; font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:0.04em; color:#3bff7c; background:rgba(59,255,124,0.12); border:1px solid rgba(59,255,124,0.45); border-radius:6px; padding:2px 7px; cursor:pointer; white-space:nowrap; }
+.navtex-volgende button.aan { background:rgba(59,255,124,0.32); color:#062b12; text-shadow:none; font-weight:700; }
 /* Basis ('normaal') komt overeen met de oude, compacte Leaflet-popup-opmaak
    (11.5px titel-context, 10px advies-tekst e.d. — zie .popup-titel/.popup-sub/
    .popup-advies hieronder) zodat de inhoud er vertrouwd uitziet; de stappen

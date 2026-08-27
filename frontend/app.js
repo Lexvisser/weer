@@ -74,6 +74,11 @@ const NAVTEX_RUW_STATUS_EL = document.getElementById('navtexRuwStatus');
 const NAVTEX_RUW_INHOUD_EL = document.getElementById('navtexRuwInhoud');
 const NAVTEX_RUW_TEKST_EL = document.getElementById('navtexRuwTekst');
 const NAVTEX_RUW_SLUITEN_EL = document.getElementById('navtexRuwSluiten');
+// 2026-08-27: "volgende uitzending"-plaatje rechtsboven op de zeekaart +
+// AUTO-schakelknop — zie ververNavtexVolgende() verderop.
+const NAVTEX_VOLGENDE_EL = document.getElementById('navtexVolgendeUitzending');
+const NAVTEX_VOLGENDE_TEKST_EL = document.getElementById('navtexVolgendeTekst');
+const NAVTEX_AUTO_KNOP_EL = document.getElementById('navtexAutoKnop');
 const BOTTOM_NAV_EL = document.getElementById('bottomNav');
 const ZONMAAN_KAART_EL = document.getElementById('zonmaanKaart');
 const ZM_OP_EL = document.getElementById('zmOp');
@@ -102,6 +107,10 @@ const ALARM_POPUP_SLUIT_EL = document.getElementById('alarmPopupSluit');
 // expliciet hour12: false erbij, niet alleen hier.
 function updateKlok() {
   KLOK_EL.textContent = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // 2026-08-27: het "volgende NAVTEX-uitzending"-plaatje op de zeekaart lift
+  // mee op ditzelfde 15s-ritme — puur rekenwerk op al opgehaalde
+  // zendschema's, geen netwerkverkeer (zie ververNavtexVolgende()).
+  ververNavtexVolgende();
 }
 
 function geledenTekst(ts) {
@@ -847,6 +856,7 @@ async function laadNavtexStations() {
     if (Array.isArray(body?.stations) && body.stations.length) {
       NAVTEX_STATIONS_DATA = body.stations;
       renderNavtexUitlegSectie(); // ververst meteen als de sectie toevallig al openstond
+      ververNavtexVolgende(); // 2026-08-27: het "volgende uitzending"-plaatje kan nu gevuld worden
     }
   } catch {
     // Stil falen, zelfde reden als laadRadarstations() hierboven.
@@ -900,6 +910,98 @@ function eerstvolgendeUitzendingTekst(stationId) {
   const nlTekst = volgendeDatum.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Amsterdam' });
   return `${utcTekst} UTC (${nlTekst} NL-tijd)`;
 }
+
+// ---- "Volgende uitzending"-plaatje op de zeekaart (2026-08-27) --------
+// Op verzoek van Lex: rechtsboven op de zeekaart "Volgende uitzending door
+// [station] over [## u ## min]", in hetzelfde fosfor-groen als de ruwe-
+// ontvangst-viewer. Berekend over ALLE stations met een zendschema (NAVTEX
+// op 518 kHz is tijd-gemultiplext: elk station heeft eigen vaste
+// tijdsloten, dus "wie zendt hierna" is over de hele lijst heen zinvol).
+// Herberekend op het bestaande 15s-klokritme (updateKlok) — puur rekenen op
+// al opgehaalde data, geen extra netwerkverkeer.
+//
+// De AUTO-knop (tweede verzoek, aan/uit): op het uitzendmoment vanzelf de
+// ruwe-ontvangst-viewer openen, zodat je de tekst live ziet binnenlopen.
+// Per toestel bewaard in localStorage (dit is een weergavevoorkeur van dit
+// scherm, zoals de alarm-scherm-toggles — geen serverinstelling), standaard
+// UIT: een overlay die "vanzelf" opent moet een bewuste keuze zijn.
+const NAVTEX_AUTO_KEY = 'weerNavtexAutoSchakel';
+let navtexAutoSchakel = false;
+try {
+  navtexAutoSchakel = localStorage.getItem(NAVTEX_AUTO_KEY) === 'aan';
+} catch {
+  // privé-venster/geblokkeerde site-data — gewoon standaard UIT
+}
+let navtexAutoDoelMs = null; // tijdstip van de uitzending waar we op wachten
+
+function renderNavtexAutoKnop() {
+  if (!NAVTEX_AUTO_KNOP_EL) return;
+  NAVTEX_AUTO_KNOP_EL.textContent = navtexAutoSchakel ? 'AUTO AAN' : 'AUTO UIT';
+  NAVTEX_AUTO_KNOP_EL.classList.toggle('aan', navtexAutoSchakel);
+}
+
+// Eerstvolgende uitzending over alle stations heen: {naam, overMin, tijdMs}.
+function volgendeNavtexUitzending() {
+  if (!Array.isArray(NAVTEX_STATIONS_DATA)) return null;
+  const nu = new Date();
+  const nuMin = nu.getUTCHours() * 60 + nu.getUTCMinutes();
+  let beste = null;
+  for (const station of NAVTEX_STATIONS_DATA) {
+    if (!Array.isArray(station.zendschema)) continue;
+    for (const t of station.zendschema) {
+      const [u, m] = String(t).split(':').map(Number);
+      if (!Number.isFinite(u) || !Number.isFinite(m)) continue;
+      let over = u * 60 + m - nuMin;
+      if (over <= 0) over += 24 * 60; // vandaag al geweest (of exact nu) -> morgen
+      if (!beste || over < beste.overMin) beste = { naam: station.naam, overMin: over };
+    }
+  }
+  if (!beste) return null;
+  // Absoluut tijdstip (op hele minuut) voor de AUTO-trigger hieronder.
+  const basis = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate(), nu.getUTCHours(), nu.getUTCMinutes()));
+  beste.tijdMs = basis.getTime() + beste.overMin * 60 * 1000;
+  return beste;
+}
+
+function ververNavtexVolgende() {
+  if (!NAVTEX_VOLGENDE_EL) return;
+  const volgende = zeeModusActief ? volgendeNavtexUitzending() : null;
+  if (!volgende) {
+    NAVTEX_VOLGENDE_EL.classList.add('verborgen');
+    navtexAutoDoelMs = null; // geen verouderd doel laten staan voor een latere Zee-sessie
+    return;
+  }
+
+  // AUTO: het doel waar we vorige tik op wachtten is aangebroken -> viewer
+  // openen (eenmalig — daarna wordt het doel de vólgende uitzending). Alleen
+  // als de viewer niet toch al openstaat.
+  if (
+    navtexAutoSchakel &&
+    navtexAutoDoelMs != null &&
+    Date.now() >= navtexAutoDoelMs &&
+    NAVTEX_RUW_OVERLAY_EL?.classList.contains('verborgen')
+  ) {
+    openNavtexRuw();
+  }
+  navtexAutoDoelMs = volgende.tijdMs;
+
+  const uren = Math.floor(volgende.overMin / 60);
+  const minuten = volgende.overMin % 60;
+  const overTekst = uren > 0 ? `${uren} u ${minuten} min` : minuten > 0 ? `${minuten} min` : 'minder dan 1 min';
+  NAVTEX_VOLGENDE_TEKST_EL.textContent = `Volgende uitzending door ${volgende.naam} over ${overTekst}`;
+  renderNavtexAutoKnop();
+  NAVTEX_VOLGENDE_EL.classList.remove('verborgen');
+}
+
+NAVTEX_AUTO_KNOP_EL?.addEventListener('click', () => {
+  navtexAutoSchakel = !navtexAutoSchakel;
+  try {
+    localStorage.setItem(NAVTEX_AUTO_KEY, navtexAutoSchakel ? 'aan' : 'uit');
+  } catch (err) {
+    console.warn('[weer] navtex-auto-voorkeur opslaan mislukt (blijft wel actief voor deze sessie):', err);
+  }
+  renderNavtexAutoKnop();
+});
 
 // 2026-08-26: zelfde dicht-tot-je-erop-tikt uitklap-idioom (booleaanse vlag
 // + pijltje dat omdraait) als alarmSectieUitgeklapt hierboven — zie de
@@ -3222,6 +3324,10 @@ function toggleZeeModus() {
   // als Zee-modus uitgaat zodat de 10s-ververstimer niet blijft doorlopen.
   if (NAVTEX_RUW_KNOP_EL) NAVTEX_RUW_KNOP_EL.style.display = zeeModusActief ? '' : 'none';
   if (!zeeModusActief) sluitNavtexRuw();
+  // 2026-08-27: "volgende uitzending"-plaatje hoort ook bij de zeekaart —
+  // meteen tonen/verbergen bij het omschakelen i.p.v. wachten op de
+  // eerstvolgende klok-tik.
+  ververNavtexVolgende();
   if (zeeModusActief) {
     if (!zeeLaag) {
       zeeLaag = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
