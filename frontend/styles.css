@@ -235,7 +235,11 @@ body {
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    /* 2026-08-27 ("alle knoppen onderaan uitlijnen"): geen extra safe-area-
+       padding meer BINNEN de nav — de bottom hierboven rekent 'm al mee, en
+       dubbel geteld hingen de vierkantjes hoger dan de groene segmenten
+       (die de marge maar één keer hebben). */
+    padding: 0;
     gap: 12px;
   }
   /* 2026-08-27 (derde ronde), op verzoek van Lex ("een outline van de knop
