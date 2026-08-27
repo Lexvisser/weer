@@ -435,9 +435,15 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    hierboven; alleen de <pre> met de decoder-tekst en het statusregeltje in
    de balk hebben eigen regels. pre-wrap zodat lange regels niet horizontaal
    scrollen (op een telefoon onwerkbaar), word-break voor rauwe tekenreeksen
-   zonder spaties (bitfout-rommel kan lang aaneengesloten zijn). */
-.navtex-ruw-inhoud pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; color:#cfe3d8; }
-.navtex-ruw-status { font-family:'JetBrains Mono',monospace; font-size:11px; color:#9fb3c8; align-self:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+   zonder spaties (bitfout-rommel kan lang aaneengesloten zijn).
+   2026-08-27, op verzoek van Lex ("de tekst groen zoals vroeger op de
+   monochroom monitors"): fosfor-groen-op-bijna-zwart, P1-monochroom-stijl —
+   een zachte text-shadow als nagloei-effect, en de inhoud-container zelf
+   dieper zwart met een groenzweem zodat het echt als één beeldbuis oogt
+   i.p.v. groene letters op de standaard app-achtergrond. */
+.navtex-ruw-inhoud { background:#030a05; }
+.navtex-ruw-inhoud pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.55), 0 0 9px rgba(59,255,124,0.22); }
+.navtex-ruw-status { font-family:'JetBrains Mono',monospace; font-size:11px; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.45); align-self:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 /* Basis ('normaal') komt overeen met de oude, compacte Leaflet-popup-opmaak
    (11.5px titel-context, 10px advies-tekst e.d. — zie .popup-titel/.popup-sub/
    .popup-advies hieronder) zodat de inhoud er vertrouwd uitziet; de stappen
