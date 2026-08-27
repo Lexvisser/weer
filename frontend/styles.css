@@ -336,6 +336,16 @@ body {
    (.leaflet-tile i.p.v. de pane zelf) — zelfde uitzetting, nieuwe plek. */
 #map.zee-modus-actief .leaflet-tile-pane .leaflet-tile { filter: none; }
 
+/* 2026-08-27: gale-windvaan per zeegebied (zie verversWindvanen() in
+   app.js) — rode wimpel (het internationale stormsein) met het Beaufort-
+   getal + trendpijl ernaast. Bewust groter en feller dan alle andere
+   kaart-icons (verzoek Lex: "mooi icon, rood, best wat groter"): rode gloed
+   om de wimpel, het getal groot in mono met eigen slagschaduw zodat het op
+   de lichte zeekaart even hard aankomt als op de donkere. pointer-events op
+   de marker zelf regelt Leaflet; hier alleen de opmaak. */
+.wind-vaan { display:flex; align-items:flex-start; gap:2px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45)) drop-shadow(0 0 8px rgba(255,46,63,0.55)); }
+.wind-vaan-kracht { font-family:'JetBrains Mono',monospace; font-size:19px; font-weight:700; color:#ff2e3f; line-height:1; padding-top:4px; text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(255,255,255,0.35); white-space:nowrap; }
+
 /* 2026-08-20: labels van de Shipping Forecast-zeegebieden (Dogger, Humber,
    German Bight, ...), zie ZEE_GEBIEDEN/bouwZeeGebiedenLaag() in app.js.
    Tweede versie: subtieler dan de eerste poging op Lex' verzoek ("de

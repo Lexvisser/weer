@@ -3369,6 +3369,120 @@ function verversZeeGebiedLabels() {
   zeeGebiedenLaag?.eachLayer((laag) => laag.getTooltip()?.update());
 }
 
+// ---- Gale-windvanen per zeegebied (2026-08-27) ------------------------
+// Op verzoek van Lex ("er zitten galewarnings in de berichten... een
+// windvaan met de windkracht of de voorspellende verandering, dedup is daar
+// super belangrijk, mooi icon, rood, best wat groter"). Bewust GEEN parsing
+// van losse (ruizige) NAVTEX-berichten: de schone, al opgehaalde teksten
+// per zeegebied (KNMI-synopsis, Met Office shipping forecast, SeaLagom-
+// waarschuwingen) noemen gale/storm mét kracht en verwachting letterlijk —
+// en door per GEBIED te kijken is de dedup vanzelf geregeld: hooguit één
+// vaan per zeegebied, de nieuwste verwachting wint, hoe vaak stations
+// hetzelfde ook herhalen.
+//
+// Herkenning (internationale shipping-forecast-terminologie, hoogste wint):
+// HURRICANE FORCE 12 > VIOLENT STORM 11 > STORM (FORCE) 10 > SEVERE GALE 9
+// > GALE (FORCE) 8 > kaal "GALE" (zonder cijfer -> 8). "NO WARNING"/
+// "GALE WARNINGS." als kop zonder inhoud matcht niet (negatieve check).
+// Trendpijl: INCREASING/LATER/SOON/EXPECTED/IMMINENT -> ↗ ("wordt/komt"),
+// DECREASING/MODERATING -> ↘ (neemt af).
+const GALE_NIVEAUS = [
+  { regex: /HURRICANE\s+FORCE\s*12|HURRICANE\s+FORCE/, kracht: 12 },
+  { regex: /VIOLENT\s+STORM\s*(?:11)?/, kracht: 11 },
+  { regex: /STORM(?:\s+FORCE)?\s*10|(?<!VIOLENT\s)STORM\s+FORCE/, kracht: 10 },
+  { regex: /SEVERE\s+GALE\s*(?:FORCE\s*)?9|SEVERE\s+GALE/, kracht: 9 },
+  { regex: /GALE\s*(?:FORCE\s*)?[89]|(?<!NO\s)(?<!SEVERE\s)GALE(?!\s*WARNINGS?\s*[.:]?\s*$)/, kracht: 8 },
+];
+
+function galeInfoUitTekst(tekst) {
+  if (!tekst) return null;
+  const t = String(tekst).toUpperCase();
+  // "GALE WARNINGS. ... NO WARNING." (eigen-ontvangst/KNMI-vorm) is juist
+  // de mededeling dat er NIETS is — niet op de sectiekop afgaan.
+  const zonderKop = t.replace(/GALE\s+WARNINGS?\s*[.:]/g, ' ');
+  if (/NO\s+(?:GALE\s+)?WARNINGS?/.test(t) && !/GALE\s*(?:FORCE\s*)?[89]|SEVERE\s+GALE|STORM|HURRICANE/.test(zonderKop)) return null;
+  let kracht = null;
+  for (const niveau of GALE_NIVEAUS) {
+    if (niveau.regex.test(zonderKop)) {
+      kracht = niveau.kracht;
+      break; // lijst staat van zwaar naar licht — eerste treffer is de hoogste
+    }
+  }
+  if (kracht == null) return null;
+  // Expliciet cijfer wint van het niveau-default (bv. "GALE 9" -> 9).
+  const cijfer = zonderKop.match(/(?:SEVERE\s+)?GALE\s*(?:FORCE\s*)?(\d{1,2})|STORM\s*(?:FORCE\s*)?(1[01])/);
+  const expliciet = Number(cijfer?.[1] ?? cijfer?.[2]);
+  if (Number.isFinite(expliciet) && expliciet > kracht) kracht = expliciet;
+  const trend = /INCREASING|LATER|SOON|EXPECTED|IMMINENT/.test(zonderKop)
+    ? '↗'
+    : /DECREASING|MODERATING/.test(zonderKop)
+      ? '↘'
+      : '';
+  return { kracht, trend };
+}
+
+// Alle beschikbare teksten voor één gebied bij elkaar — zelfde bronnen (en
+// voorrangsvolgorde qua beschikbaarheid) als de synopsis-popup.
+function galeInfoVoorGebied(naam) {
+  const teksten = [];
+  const synopsis = synopsisBronVoorGebied(naam);
+  if (synopsis?.synopsis?.tekst) teksten.push(synopsis.synopsis.tekst);
+  for (const w of zeeWaarschuwingenPerGebied[naam.toUpperCase()] ?? []) {
+    if (w?.tekst) teksten.push(w.tekst);
+  }
+  let beste = null;
+  for (const tekst of teksten) {
+    const info = galeInfoUitTekst(tekst);
+    if (info && (!beste || info.kracht > beste.kracht)) beste = info;
+  }
+  return beste;
+}
+
+// Rode wimpel op mast — het internationale stormsein — met het Beaufort-
+// getal (en trendpijl) er groot naast. iconAnchor legt de mastvoet op het
+// gebied-middelpunt, zodat de vaan net BOVEN het bestaande gebiedslabel
+// zweeft i.p.v. er doorheen.
+const WIND_VAAN_SVG = `<svg viewBox="0 0 30 40" width="30" height="40" aria-hidden="true">
+  <line x1="7" y1="3" x2="7" y2="38" stroke="#f4f6fb" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M8.4 4 L27 10.5 L8.4 17.5 Z" fill="#ff2e3f" stroke="#7a0d16" stroke-width="1.2" stroke-linejoin="round"/>
+</svg>`;
+
+let windvaanLaag = null;
+
+function verversWindvanen() {
+  if (!kaart) return;
+  if (windvaanLaag) {
+    kaart.removeLayer(windvaanLaag);
+    windvaanLaag = null;
+  }
+  if (!zeeModusActief) return;
+  const vanen = [];
+  ZEE_GEBIEDEN.features.forEach((feature) => {
+    const naam = feature.properties.name;
+    const info = galeInfoVoorGebied(naam);
+    if (!info) return;
+    const ring = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
+    const midden = L.latLngBounds(ring).getCenter();
+    const marker = L.marker(midden, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="wind-vaan" title="${escapeHtml(naam)}: gale/storm">${WIND_VAAN_SVG}<span class="wind-vaan-kracht">${info.kracht}${info.trend}</span></div>`,
+        iconSize: [64, 44],
+        iconAnchor: [10, 46],
+      }),
+    });
+    // Zelfde popup als het gebiedslabel — daar staat de volledige tekst
+    // waar deze vaan uit is afgeleid.
+    marker.on('click', () => {
+      L.popup({ maxWidth: 280 }).setLatLng(midden).setContent(zeeSynopsisPopupHtml(naam)).openOn(kaart);
+    });
+    vanen.push(marker);
+  });
+  if (vanen.length) {
+    windvaanLaag = L.layerGroup(vanen).addTo(kaart);
+  }
+}
+
 function bouwZeeGebiedenLaag() {
   return L.geoJSON(ZEE_GEBIEDEN, {
     pane: 'zeePane',
@@ -3423,9 +3537,11 @@ function toggleZeeModus() {
   // 2026-08-27: "volgende uitzending"-plaatje hoort ook bij de zeekaart —
   // meteen tonen/verbergen bij het omschakelen i.p.v. wachten op de
   // eerstvolgende klok-tik. De AUTO-monitor (openen bij binnenrollende
-  // tekst) start/stopt op hetzelfde moment.
+  // tekst) start/stopt op hetzelfde moment, net als de gale-windvanen
+  // (verversWindvanen ruimt zichzelf op als Zee-modus uit is).
   ververNavtexVolgende();
   zorgNavtexAutoMonitor();
+  verversWindvanen();
   if (zeeModusActief) {
     if (!zeeLaag) {
       zeeLaag = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
@@ -3453,8 +3569,13 @@ function toggleZeeModus() {
     // labels (golfje-badge) doen dat niet vanzelf — zie verversZeeGebiedLabels
     // hierboven — dus die expliciet laten herevalueren zodra de synopsis-data
     // (waar het golfje uit komt) binnen is.
-    Promise.all([laadZeeSynopsis(), laadMetOfficeSynopsis()]).then(verversZeeGebiedLabels);
-    laadZeeWaarschuwingen();
+    // 2026-08-27: na het binnenkomen van de teksten ook de gale-windvanen
+    // (her)tekenen — zie verversWindvanen().
+    Promise.all([laadZeeSynopsis(), laadMetOfficeSynopsis()]).then(() => {
+      verversZeeGebiedLabels();
+      verversWindvanen();
+    });
+    laadZeeWaarschuwingen().then(verversWindvanen);
     // 2026-08-21: Zee-modus en Vliegradar tonen allebei een heel andere
     // kaartweergave (Lex: "of boten of vliegtuigen") — wederzijds
     // uitsluitend. vliegModusActief is op dit punt nog de OUDE waarde (dit
