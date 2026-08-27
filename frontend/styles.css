@@ -211,11 +211,44 @@ body {
   }
   body.kaart-actief #viewKaart .map-wrap { padding: 0; }
   body.kaart-actief #viewKaart .map { border-radius: 0; border: none; }
+  /* 2026-08-27, op verzoek van Lex ("het is een groot zwart geheel, los zou
+     mooier zijn"): de zwevende nav is in deze kaartstand geen dichte balk
+     meer maar vier losse, glazen knop-chips met de kaart ertussen zichtbaar.
+     De container zelf wordt onzichtbaar (geen achtergrond/rand/schaduw) en
+     krimpt tot de inhoud; elke .nav-btn krijgt zijn eigen afgeronde donkere
+     achtergrond + blur + schaduw (zelfde familie als de radar-controls-
+     knoppen). De actieve tab licht op met het bestaande app-blauw. */
   body.kaart-actief .bottom-nav {
     bottom: 16px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    max-width: none;
+    width: auto;
+    background: none;
+    border-top: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    gap: 12px;
+  }
+  body.kaart-actief .bottom-nav .nav-btn {
+    flex: none;
+    /* "misschien transparant" (Lex) — halfdoorzichtig frosted-glas: de
+       kaart schemert erdoorheen, de blur houdt de tekst leesbaar op elke
+       ondergrond. */
+    background: rgba(12,15,26,0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.08);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    padding: 8px 18px 6px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  }
+  body.kaart-actief .bottom-nav .nav-btn.actief {
+    border-color: rgba(62,198,255,0.55);
+    box-shadow: 0 0 12px rgba(62,198,255,0.25), 0 6px 18px rgba(0,0,0,0.40);
   }
   /* 2026-08-27, op melding van Lex (iPad-screenshot: de zwevende bottom-nav
      viel over de Regenradar/Satelliet/…-knoppenbalk heen): in deze
