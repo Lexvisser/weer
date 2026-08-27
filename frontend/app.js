@@ -3810,16 +3810,26 @@ function renderMap(signalen) {
   // 2026-08-26, op verzoek van Lex: verlopen signalen (detail.verlopen,
   // zie historie.js) niet meer als los, gedimd icoon op de kaart tonen --
   // dat vervagen bleek in de praktijk onbetrouwbaar (zie sw.js-fix
-  // hierboven) en maakte de kaart alleen maar drukker. De "waar was het"-
-  // geschiedenis blijft gewoon bewaard in het inklapbare "verlopen"-blokje
-  // per categorie in de Meldingen-lijst (zie renderMeldingen/
-  // maakVerlopenMeldingItem) -- dit verandert alleen wat er op de kaart zelf
-  // te zien is.
+  // hierboven) en maakte de kaart alleen maar drukker.
+  // 2026-08-27, op verzoek van Lex: TERUGGEDRAAID -- de verlopen icoontjes
+  // mogen weer op de kaart, mits echt goed als grijs te onderscheiden. De
+  // eigenlijke reden dat het grijs "maar niet lukte" is gevonden: de
+  // .is-verlopen-CSS-regel zette alleen opacity + een halve grayscale(0.6),
+  // maar de gekleurde achtergrond/rand van de .ernst-*-klasse en de
+  // saturate(1.6)-backdrop-filter bleven gewoon staan -- een oranje pin
+  // bleef er dus oranjig uitzien. De regel in styles.css overschrijft nu
+  // expliciet ALLES (neutraal grijze achtergrond, gestippelde grijze rand,
+  // geen gloed, volledige grayscale op het emoji-icoon). Daarbovenop
+  // speelde destijds ook nog de stale-styles.css-cache mee (zie de
+  // sw.js-historie), en juist die levering is sinds vandaag betrouwbaar
+  // (ETag + no-cache). Gebied-omtrekken van verlopen signalen blijven WEL
+  // uitgesloten (zie tekenAlleGebiedOmtrekken-aanroep hieronder) -- alleen
+  // het grijze icoontje komt terug, geen omtrek die actief zou kunnen lijken.
   const teTonenSignalen = vliegModusActief || kaartVolgType
     ? []
     : zeeModusActief
-      ? signalen.filter((s) => s.categorie === 'navtex' && !s.detail?.verlopen)
-      : signalen.filter((s) => s.categorie !== 'navtex' && !s.detail?.verlopen);
+      ? signalen.filter((s) => s.categorie === 'navtex')
+      : signalen.filter((s) => s.categorie !== 'navtex');
   groepeerStationSignalen(teTonenSignalen.filter((s) => s.lat != null && s.lon != null))
     .forEach((s) => {
       // Gevlogen spoor eerst tekenen (onder de marker) — zelf opgebouwd door
@@ -3942,7 +3952,11 @@ function renderMap(signalen) {
   // tegelijk tekenen, elke cyclus, net als de hazard-pins hierboven i.p.v.
   // alleen de laatst-aangetikte. Zelfde teTonenSignalen als de pins (dus ook
   // hier uit tijdens Zee-modus, consistent met de rest van de kaart).
-  tekenAlleGebiedOmtrekken(teTonenSignalen);
+  // 2026-08-27: verlopen signalen hier WEL uitfilteren -- die staan sinds
+  // vandaag weer als grijs icoontje op de kaart (zie teTonenSignalen
+  // hierboven), maar een volgekleurde gebied-omtrek erbij zou ze ten
+  // onrechte actief laten lijken.
+  tekenAlleGebiedOmtrekken(teTonenSignalen.filter((s) => !s.detail?.verlopen));
   // Geen eigen ververs-lus voor de flitsenstippen — die liften mee op
   // dezelfde 20-seconden-cyclus die renderMap() toch al elke keer met verse
   // data aanroept (zie verversen()). ververGeselecteerdGebied houdt alleen

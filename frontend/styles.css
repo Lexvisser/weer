@@ -556,10 +556,38 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 
 /* 2026-08-20: detail.verlopen (zie historie.js) — tot 48u terug bewaarde,
    niet meer actieve waarschuwingen, puur als lichte trail op de kaart ("waar
-   was het"). Na de ernst-*/is-lifeliner-regels hierboven zodat dit in de
-   CSS-cascade wint en de gloed/kleur van een actieve melding overstemt —
-   geen aparte glow meer, duidelijk minder opvallend dan iets actiefs. */
-.hazard-pin.is-verlopen, .hazard-pin.is-haperend { opacity: 0.4; filter: grayscale(0.6); box-shadow: 0 2px 4px rgba(10,13,22,0.25); }
+   was het").
+   2026-08-27-fix, op verzoek van Lex ("het lukt maar niet om ze in grijs
+   weer te geven zodat ze goed te onderscheiden zijn"): de oude regel zette
+   alleen opacity 0.4 + grayscale(0.6) — maar de gekleurde background/border
+   van de .ernst-*-klasse en de saturate(1.6)-backdrop-filter van .hazard-pin
+   bleven gewoon doorwerken (deze regel overschreef die properties nooit),
+   dus een oranje pin bleef er oranjig uitzien. Nu wordt ALLES expliciet
+   overschreven: neutraal grijze achtergrond, gestippelde grijze rand (een
+   vorm-signaal, herkenbaar los van kleurweergave), geen gloed, backdrop-blur
+   zonder saturate, en volledige grayscale(1) zodat ook het emoji-icoon zelf
+   echt grijs wordt.
+   EN DE ECHTE ROOT CAUSE (via een screenshot-test gevonden): dit commentaar
+   bevatte de letterlijke tekst "de ernst-* / is-lifeliner-regels" MAAR DAN
+   ZONDER SPATIES rond de schuine streep — ster-plus-slash sluit een
+   CSS-commentaar af, dus het commentaar stopte daar abrupt en de rest van
+   de zin werd door de parser als (ongeldige) selector gelezen, die
+   vervolgens de EERSTVOLGENDE regel — juist deze .is-verlopen-regel! —
+   volledig opslokte. De verlopen-stijl heeft dus nooit bestaan voor de
+   browser, hoe vaak de cache ook ververst werd. Les: nooit ster-slash als
+   tekst in een CSS-commentaar zetten.
+   Deze regel staat na de ernst- en is-lifeliner-regels hierboven zodat hij
+   in de CSS-cascade wint en de gloed/kleur van een actieve melding
+   overstemt — geen aparte glow, duidelijk minder opvallend dan actief. */
+.hazard-pin.is-verlopen, .hazard-pin.is-haperend {
+  background: rgba(70,75,88,0.5);
+  border: 1.5px dashed rgba(158,164,178,0.8);
+  box-shadow: 0 2px 4px rgba(10,13,22,0.25);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  filter: grayscale(1) brightness(0.85);
+  opacity: 0.55;
+}
 
 /* 2026-08-20, op verzoek van Lex: NAVTEX ("een volledig separaat gebeuren")
    krijgt een eigen markervorm i.p.v. de gedeelde ronde .hazard-pin met
@@ -572,7 +600,10 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    een eigen achtergrondvlak. */
 .navtex-pin { width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-size:16px; text-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.4); }
 .navtex-pin svg { width:22px; height:22px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 3px rgba(255,255,255,0.5)); }
-.navtex-pin.is-verlopen, .navtex-pin.is-haperend { opacity: 0.4; filter: grayscale(0.6); }
+/* 2026-08-27: zelfde volledige-grayscale-aanpak als .hazard-pin.is-verlopen
+   hierboven — grayscale(0.6) liet de gekleurde NAVTEX-SVG's nog te veel
+   kleur houden om als "verlopen" herkenbaar te zijn. */
+.navtex-pin.is-verlopen, .navtex-pin.is-haperend { opacity: 0.5; filter: grayscale(1) brightness(0.85); }
 /* 2026-08-26, op verzoek van Lex (na de vraag "hoe lang blijft een
    onweersbui op de kaart staan" -- bleek een uur stilgevallen door een
    WebSocket-hapering bij Blitzortung, zie SourceState.isStale()/
