@@ -997,6 +997,12 @@ function ververNavtexVolgende() {
 // stilteperiode) opent opnieuw.
 const NAVTEX_AUTO_POLL_MS = 10 * 1000;
 const NAVTEX_AUTO_HERWAPEN_MS = 3 * 60 * 1000;
+// 2026-08-27, op verzoek van Lex ("1 minuut"): een viewer die door AUTO is
+// geopend klapt vanzelf weer dicht zodra het bestand zó lang stil is — terug
+// naar de kaart. Alleen voor auto-geopende viewers (zelf via 📻/BEKIJK
+// geopend = zelf sluiten), en nooit terwijl je omhoog gescrold bent om iets
+// terug te lezen.
+const NAVTEX_AUTO_SLUIT_STILTE_MS = 60 * 1000;
 let navtexAutoTimer = null;
 let navtexAutoBekendeBytes = null; // null = nog geen nulmeting gedaan
 let navtexAutoGewapend = true;
@@ -1016,10 +1022,34 @@ async function navtexAutoTik() {
       navtexAutoLaatsteGroeiMs = Date.now();
       if (navtexAutoGewapend && NAVTEX_RUW_OVERLAY_EL?.classList.contains('verborgen')) {
         navtexAutoGewapend = false;
-        openNavtexRuw();
+        openNavtexRuw(true); // true = door AUTO geopend, mag ook weer vanzelf dicht
       }
-    } else if (!navtexAutoGewapend && Date.now() - navtexAutoLaatsteGroeiMs > NAVTEX_AUTO_HERWAPEN_MS) {
-      navtexAutoGewapend = true; // stilteperiode voorbij — volgende ontvangst mag weer openen
+    } else {
+      if (!navtexAutoGewapend && Date.now() - navtexAutoLaatsteGroeiMs > NAVTEX_AUTO_HERWAPEN_MS) {
+        navtexAutoGewapend = true; // stilteperiode voorbij — volgende ontvangst mag weer openen
+      }
+      // Terugschakelen naar de kaart (zie NAVTEX_AUTO_SLUIT_STILTE_MS): 1
+      // minuut geen nieuwe bytes én de viewer was door AUTO geopend. De
+      // vastgepind-check (zelfde 40px-marge als ververNavtexRuw) zorgt dat
+      // we nooit dichtklappen terwijl je omhoog gescrold zit terug te lezen
+      // — dan proberen we het bij de volgende tik gewoon opnieuw.
+      if (
+        navtexRuwGeopendDoorAuto &&
+        !NAVTEX_RUW_OVERLAY_EL?.classList.contains('verborgen') &&
+        Date.now() - navtexAutoLaatsteGroeiMs > NAVTEX_AUTO_SLUIT_STILTE_MS
+      ) {
+        const vastgepind =
+          NAVTEX_RUW_INHOUD_EL.scrollHeight - NAVTEX_RUW_INHOUD_EL.scrollTop - NAVTEX_RUW_INHOUD_EL.clientHeight < 40;
+        if (vastgepind) {
+          sluitNavtexRuw();
+          // Na een AUTO-sluiting meteen herwapenen: begint de ontvangst
+          // even later tóch weer (lang gat middenin een uitzending), dan
+          // mag de viewer direct opnieuw openklappen. De 3-minuten-
+          // herwapentermijn blijft alleen gelden na een HANDMATIGE sluiting
+          // — dat is de "niet meteen weer in mijn gezicht"-bescherming.
+          navtexAutoGewapend = true;
+        }
+      }
     }
   } catch (err) {
     console.warn('[weer] navtex-auto-statuscheck mislukt:', err);
@@ -1098,8 +1128,15 @@ async function ververNavtexRuw() {
   }
 }
 
-function openNavtexRuw() {
+// 2026-08-27: onthoudt of de viewer door de AUTO-monitor is geopend — alleen
+// dan mag 'ie ook weer vanzelf dichtklappen (zie navtexAutoTik). Strikte
+// `=== true`-check omdat openNavtexRuw ook direct als click-handler hangt en
+// dan een (truthy) event-object als eerste argument meekrijgt.
+let navtexRuwGeopendDoorAuto = false;
+
+function openNavtexRuw(doorAuto) {
   if (!NAVTEX_RUW_OVERLAY_EL) return;
+  navtexRuwGeopendDoorAuto = doorAuto === true;
   NAVTEX_RUW_OVERLAY_EL.classList.remove('verborgen');
   NAVTEX_RUW_TEKST_EL.textContent = 'Ophalen…';
   NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst';
@@ -1111,6 +1148,7 @@ function openNavtexRuw() {
 
 function sluitNavtexRuw() {
   NAVTEX_RUW_OVERLAY_EL?.classList.add('verborgen');
+  navtexRuwGeopendDoorAuto = false;
   if (navtexRuwTimer) {
     clearInterval(navtexRuwTimer);
     navtexRuwTimer = null;
