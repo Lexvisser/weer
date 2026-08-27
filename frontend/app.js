@@ -1484,7 +1484,18 @@ function tekenGebiedOmtrek(signal) {
   if (!gebiedLaag) return false;
   const ringenLatLon = signal.detail?.gebiedPolygon;
   const koerslijnLatLon = signal.detail?.koerslijn;
-  const omtrekKleur = GEBIED_OMTREK_KLEUR_PER_CATEGORIE[signal.categorie] ?? GEBIED_OMTREK_KLEUR_STANDAARD;
+  // 2026-08-27, op melding van Lex ("ik weet zeker dat dit voorheen een
+  // gevuld kader had, ook bij verlopen"): klopt — vóór 2026-08-26 tekenden
+  // verlopen signalen hun omtrek gewoon mee. Bij het terugbrengen van de
+  // grijze verlopen-pins eerder vandaag waren de omtrekken nog uitgesloten;
+  // nu weer terug, maar dan in het grijs (zelfde kleurtaal als de
+  // .is-verlopen-pins) zodat een verlopen kader nooit voor een actieve
+  // warning kan worden aangezien. Zelfde opzet (gestippelde rand + lichte
+  // vulling), alleen kleur/dekking gedempt.
+  const verlopen = Boolean(signal.detail?.verlopen);
+  const omtrekKleur = verlopen
+    ? '#9ea6b4'
+    : (GEBIED_OMTREK_KLEUR_PER_CATEGORIE[signal.categorie] ?? GEBIED_OMTREK_KLEUR_STANDAARD);
   let ietsGetekend = false;
   if (Array.isArray(ringenLatLon) && ringenLatLon.length) {
     ringenLatLon.forEach((ring) => {
@@ -1492,10 +1503,10 @@ function tekenGebiedOmtrek(signal) {
         className: 'gebied-omtrek',
         color: omtrekKleur,
         weight: 1.5,
-        opacity: 0.55,
-        dashArray: '5 7',
+        opacity: verlopen ? 0.4 : 0.55,
+        dashArray: verlopen ? '3 7' : '5 7',
         fillColor: omtrekKleur,
-        fillOpacity: 0.05,
+        fillOpacity: verlopen ? 0.04 : 0.05,
         interactive: false,
       }).addTo(gebiedLaag);
     });
@@ -1504,9 +1515,9 @@ function tekenGebiedOmtrek(signal) {
   if (Array.isArray(koerslijnLatLon) && koerslijnLatLon.length >= 2) {
     L.polyline(koerslijnLatLon, {
       className: 'koers-lijn',
-      color: '#3ec6ff',
+      color: verlopen ? '#9ea6b4' : '#3ec6ff',
       weight: 2.5,
-      opacity: 0.85,
+      opacity: verlopen ? 0.4 : 0.85,
       dashArray: '2 6',
       interactive: false,
     }).addTo(gebiedLaag);
@@ -4252,11 +4263,11 @@ function renderMap(signalen) {
   // tegelijk tekenen, elke cyclus, net als de hazard-pins hierboven i.p.v.
   // alleen de laatst-aangetikte. Zelfde teTonenSignalen als de pins (dus ook
   // hier uit tijdens Zee-modus, consistent met de rest van de kaart).
-  // 2026-08-27: verlopen signalen hier WEL uitfilteren -- die staan sinds
-  // vandaag weer als grijs icoontje op de kaart (zie teTonenSignalen
-  // hierboven), maar een volgekleurde gebied-omtrek erbij zou ze ten
-  // onrechte actief laten lijken.
-  tekenAlleGebiedOmtrekken(teTonenSignalen.filter((s) => !s.detail?.verlopen));
+  // 2026-08-27 (herzien, op melding van Lex "voorheen een gevuld kader, ook
+  // bij verlopen"): verlopen signalen tekenen hun omtrek weer gewoon mee —
+  // tekenGebiedOmtrek() dempt ze zelf naar grijs, dus het eerdere
+  // "actief lijken"-bezwaar is daarmee ondervangen.
+  tekenAlleGebiedOmtrekken(teTonenSignalen);
   // Geen eigen ververs-lus voor de flitsenstippen — die liften mee op
   // dezelfde 20-seconden-cyclus die renderMap() toch al elke keer met verse
   // data aanroept (zie verversen()). ververGeselecteerdGebied houdt alleen
