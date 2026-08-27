@@ -982,6 +982,18 @@ function classificeerRiglijstStatus(statusTekst) {
   if (/FOGHORN[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT)\b/i.test(statusTekst)) {
     return { type: 'foghorn', label: 'Misthoorn defect' };
   }
+  // 2026-08-27, op verzoek van Lex, na MSI 220/26 (platform K6DN: "TOTAL
+  // BLACK OUT") -- eerst tijdelijk onder 'licht-onbetrouwbaar' geschaard
+  // (die tekst matchte geen van de bestaande statuswoorden), maar Lex wilde
+  // hier een eigen, duidelijk zwaarder icoon voor ("we hebben dus een
+  // ander icon nodig voor total black out toch?") -- "BLACK OUT" is
+  // inhoudelijk ook meer dan alleen het licht (heel platform stroomloos),
+  // dus nu een eigen 'blackout'-type/icoon i.p.v. meegeschaard onder
+  // licht-onbetrouwbaar. Check vóór de algemene licht-regel hieronder
+  // (specifieker eerst, zelfde patroon als de FOGHORN-check hierboven).
+  if (/\bBLACK\s*OUT\b/i.test(statusTekst)) {
+    return { type: 'blackout', label: 'Totale black-out' };
+  }
   if (/\b(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE)\b/i.test(statusTekst)) {
     return { type: 'licht-onbetrouwbaar', label: 'Licht onbetrouwbaar/uit' };
   }
