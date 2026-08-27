@@ -3394,6 +3394,36 @@ const GALE_NIVEAUS = [
   { regex: /GALE\s*(?:FORCE\s*)?[89]|(?<!NO\s)(?<!SEVERE\s)GALE(?!\s*WARNINGS?\s*[.:]?\s*$)/, kracht: 8 },
 ];
 
+// 2026-08-27 (vervolg, op verzoek van Lex "kunnen we nog wat met de
+// windrichting?"): windrichting uit dezelfde tekst halen. Shipping-forecast-
+// teksten beginnen vrijwel altijd met de richting ("SOUTHWESTERLY 5 TO 7"),
+// en een draaiing staat er als "VEERING W" (ruimend) of "BACKING S"
+// (krimpend). Samengestelde richtingen (NE/SW/...) staan bewust vóór de
+// enkelvoudige in de lijst — "SOUTHWESTERLY" mag nooit als "SOUTH" matchen
+// (de \b-grenzen voorkomen dat ook al, maar volgorde maakt het expliciet).
+const WINDRICHTING_TOKENS = [
+  { regex: /\bNORTH-?EAST(?:ERLY)?\b|\bNE\b/, nl: 'NO', graden: 45 },
+  { regex: /\bNORTH-?WEST(?:ERLY)?\b|\bNW\b/, nl: 'NW', graden: 315 },
+  { regex: /\bSOUTH-?EAST(?:ERLY)?\b|\bSE\b/, nl: 'ZO', graden: 135 },
+  { regex: /\bSOUTH-?WEST(?:ERLY)?\b|\bSW\b/, nl: 'ZW', graden: 225 },
+  { regex: /\bNORTH(?:ERLY)?\b|\bN\b/, nl: 'N', graden: 0 },
+  { regex: /\bEAST(?:ERLY)?\b|\bE\b/, nl: 'O', graden: 90 },
+  { regex: /\bSOUTH(?:ERLY)?\b|\bS\b/, nl: 'Z', graden: 180 },
+  { regex: /\bWEST(?:ERLY)?\b|\bW\b/, nl: 'W', graden: 270 },
+];
+
+// Eerste richting op of ná `vanaf` in de tekst — vroegste treffer wint (bij
+// "W OR NW" is de huidige richting dus W, precies wat de forecast bedoelt).
+function eersteWindrichting(t, vanaf = 0) {
+  const stuk = t.slice(vanaf);
+  let beste = null;
+  for (const token of WINDRICHTING_TOKENS) {
+    const m = stuk.match(token.regex);
+    if (m && (beste === null || m.index < beste.index)) beste = { index: m.index, nl: token.nl, graden: token.graden };
+  }
+  return beste;
+}
+
 function galeInfoUitTekst(tekst) {
   if (!tekst) return null;
   const t = String(tekst).toUpperCase();
@@ -3418,7 +3448,16 @@ function galeInfoUitTekst(tekst) {
     : /DECREASING|MODERATING/.test(zonderKop)
       ? '↘'
       : '';
-  return { kracht, trend };
+  // Windrichting: de eerste genoemde is de huidige; staat er een VEERING/
+  // BACKING met daarná een richting, dan is dát waar 'ie heen draait.
+  const richting = eersteWindrichting(zonderKop);
+  let richtingNa = null;
+  const draai = zonderKop.match(/VEERING|BACKING/);
+  if (draai) {
+    const na = eersteWindrichting(zonderKop, draai.index + draai[0].length);
+    if (na && (!richting || na.nl !== richting.nl)) richtingNa = na;
+  }
+  return { kracht, trend, richting: richting ?? null, richtingNa };
 }
 
 // Alle beschikbare teksten voor één gebied bij elkaar — zelfde bronnen (en
@@ -3438,10 +3477,29 @@ function galeInfoVoorGebied(naam) {
   return beste;
 }
 
-// Rode wimpel op mast — het internationale stormsein — met het Beaufort-
-// getal (en trendpijl) er groot naast. iconAnchor legt de mastvoet op het
-// gebied-middelpunt, zodat de vaan net BOVEN het bestaande gebiedslabel
-// zweeft i.p.v. er doorheen.
+// Weergave (2026-08-27, na twee iteraties met Lex: richtingtekst erbij
+// "wordt wel veel", en meteorologische barb-veertjes coderen kracht — "dat
+// hebben we al" als getal): een klassieke WINDVAAN-pijl, zoals op een
+// kerktoren — precies het woord waar Lex' oorspronkelijke verzoek mee
+// begon. De pijl draait met de wind en wijst waar 'ie VANDAAN komt (de
+// windvaan-conventie), met veerstaart aan de achterkant en een pivot-stip
+// in het midden. De kracht staat er al als getal naast; de richting zit
+// dus puur in de draaiing — niets extra's erbij.
+function windVaanPijlSvg(graden) {
+  // Getekend wijzend naar het noorden (punt boven), dan gedraaid naar de
+  // aanvoerrichting: wind uit ZW (225°) -> punt wijst naar linksonder.
+  return `<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
+    <g transform="rotate(${graden} 22 22)" fill="#ff2e3f" stroke="#7a0d16" stroke-linejoin="round">
+      <line x1="22" y1="8" x2="22" y2="36" stroke="#ff2e3f" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M22 2 L28 13 L22 10.5 L16 13 Z" stroke-width="1.1"/>
+      <path d="M22 36 L27.5 42 L22 39.5 L16.5 42 Z" stroke-width="1.1"/>
+      <circle cx="22" cy="22" r="3.4" stroke-width="1.1"/>
+    </g>
+  </svg>`;
+}
+
+// Terugval als er geen richting uit de tekst te halen valt (cyclonic/
+// variable): het internationale stormsein — rode wimpel op mast.
 const WIND_VAAN_SVG = `<svg viewBox="0 0 30 40" width="30" height="40" aria-hidden="true">
   <line x1="7" y1="3" x2="7" y2="38" stroke="#f4f6fb" stroke-width="2.6" stroke-linecap="round"/>
   <path d="M8.4 4 L27 10.5 L8.4 17.5 Z" fill="#ff2e3f" stroke="#7a0d16" stroke-width="1.2" stroke-linejoin="round"/>
@@ -3463,12 +3521,15 @@ function verversWindvanen() {
     if (!info) return;
     const ring = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
     const midden = L.latLngBounds(ring).getCenter();
+    // Richting bekend -> draaiende windvaan-pijl; onbekend (cyclonic/
+    // variable) -> het statische stormsein-wimpeltje als terugval.
+    const icoonSvg = info.richting ? windVaanPijlSvg(info.richting.graden) : WIND_VAAN_SVG;
     const marker = L.marker(midden, {
       icon: L.divIcon({
         className: '',
-        html: `<div class="wind-vaan" title="${escapeHtml(naam)}: gale/storm">${WIND_VAAN_SVG}<span class="wind-vaan-kracht">${info.kracht}${info.trend}</span></div>`,
+        html: `<div class="wind-vaan" title="${escapeHtml(naam)}: gale/storm">${icoonSvg}<span class="wind-vaan-kracht">${info.kracht}${info.trend}</span></div>`,
         iconSize: [64, 44],
-        iconAnchor: [10, 46],
+        iconAnchor: [22, 50],
       }),
     });
     // Zelfde popup als het gebiedslabel — daar staat de volledige tekst
