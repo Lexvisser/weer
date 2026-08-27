@@ -3426,7 +3426,16 @@ function eersteWindrichting(t, vanaf = 0) {
 
 function galeInfoUitTekst(tekst) {
   if (!tekst) return null;
-  const t = String(tekst).toUpperCase();
+  let t = String(tekst).toUpperCase();
+  // 2026-08-27-fix (live voorbeeld van Lex: "Northeast Forties:
+  // Southeasterly 5 to 7, perhaps gale 8 later"): een gebiedskop kan zelf
+  // een windstreek bevatten ("Northeast Forties") die dan ten onrechte als
+  // windrichting zou matchen. Een vroege dubbele punt is altijd zo'n kop —
+  // alles ervoor weggooien; de echte windbeschrijving begint erna. Alleen
+  // als er een LETTER voor de dubbele punt staat — een tijdstip ("11:06")
+  // is geen kop.
+  const dubbelePunt = t.indexOf(':');
+  if (dubbelePunt > 0 && dubbelePunt < 40 && /[A-Z]/.test(t[dubbelePunt - 1])) t = t.slice(dubbelePunt + 1);
   // "GALE WARNINGS. ... NO WARNING." (eigen-ontvangst/KNMI-vorm) is juist
   // de mededeling dat er NIETS is — niet op de sectiekop afgaan.
   const zonderKop = t.replace(/GALE\s+WARNINGS?\s*[.:]/g, ' ');
@@ -3443,7 +3452,7 @@ function galeInfoUitTekst(tekst) {
   const cijfer = zonderKop.match(/(?:SEVERE\s+)?GALE\s*(?:FORCE\s*)?(\d{1,2})|STORM\s*(?:FORCE\s*)?(1[01])/);
   const expliciet = Number(cijfer?.[1] ?? cijfer?.[2]);
   if (Number.isFinite(expliciet) && expliciet > kracht) kracht = expliciet;
-  const trend = /INCREASING|LATER|SOON|EXPECTED|IMMINENT/.test(zonderKop)
+  const trend = /INCREASING|LATER|SOON|EXPECTED|IMMINENT|PERHAPS|POSSIBLY/.test(zonderKop)
     ? '↗'
     : /DECREASING|MODERATING/.test(zonderKop)
       ? '↘'
@@ -3457,7 +3466,24 @@ function galeInfoUitTekst(tekst) {
     const na = eersteWindrichting(zonderKop, draai.index + draai[0].length);
     if (na && (!richting || na.nl !== richting.nl)) richtingNa = na;
   }
-  return { kracht, trend, richting: richting ?? null, richtingNa };
+  // 2026-08-27-fix, op melding van Lex ("er staat 8 terwijl de werkelijke
+  // wind lager is, de trend is wel naar 8"): shipping-forecast-teksten
+  // beginnen met de HUIDIGE kracht ("SE 5 TO 7, occasionally gale 8 later")
+  // — het gale-getal is dan de verwáchting, niet het nu. De huidige kracht
+  // staat direct achter de richting; alleen daar zoeken (venster van 40
+  // tekens) zodat drukwaarden/golfhoogtes verderop nooit meetellen. Bij
+  // "X TO Y" telt de bovenkant. Alleen geaccepteerd als 'ie ONDER het
+  // gale-getal ligt — anders is het gewoon hetzelfde getal.
+  let huidigeKracht = null;
+  if (richting) {
+    const venster = zonderKop.slice(richting.index, richting.index + 40);
+    const m = venster.match(/\b([1-9]|1[0-2])(?:\s*TO\s*([1-9]|1[0-2]))?\b/);
+    if (m) {
+      const bovenkant = Math.max(Number(m[1]), Number(m[2] ?? 0));
+      if (bovenkant < kracht) huidigeKracht = bovenkant;
+    }
+  }
+  return { kracht, trend, richting: richting ?? null, richtingNa, huidigeKracht };
 }
 
 // Alle beschikbare teksten voor één gebied bij elkaar — zelfde bronnen (en
@@ -3531,10 +3557,17 @@ function verversWindvanen() {
     // Richting bekend -> draaiende windvaan-pijl; onbekend (cyclonic/
     // variable) -> het statische stormsein-wimpeltje als terugval.
     const icoonSvg = info.richting ? windVaanPijlSvg(info.richting.graden) : WIND_VAAN_SVG;
+    // 2026-08-27-fix, op melding van Lex ("er staat 8 terwijl de werkelijke
+    // wind lager is, de trend is wel naar 8"): als de huidige kracht bekend
+    // is en het gale-getal de verwachting is, toon dan "7→8" i.p.v. een
+    // misleidend kaal "8↗" — dat las als "nu al 8".
+    const krachtTekst = info.trend === '↗' && info.huidigeKracht != null
+      ? `${info.huidigeKracht}→${info.kracht}`
+      : `${info.kracht}${info.trend}`;
     const marker = L.marker(midden, {
       icon: L.divIcon({
         className: '',
-        html: `<div class="wind-vaan" title="${escapeHtml(naam)}: gale/storm">${icoonSvg}<span class="wind-vaan-kracht">${info.kracht}${info.trend}</span></div>`,
+        html: `<div class="wind-vaan" title="${escapeHtml(naam)}: gale/storm">${icoonSvg}<span class="wind-vaan-kracht">${krachtTekst}</span></div>`,
         iconSize: [64, 44],
         iconAnchor: [22, 50],
       }),
