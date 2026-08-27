@@ -3486,10 +3486,17 @@ function galeInfoVoorGebied(naam) {
 // in het midden. De kracht staat er al als getal naast; de richting zit
 // dus puur in de draaiing — niets extra's erbij.
 function windVaanPijlSvg(graden) {
-  // Getekend wijzend naar het noorden (punt boven), dan gedraaid naar de
-  // aanvoerrichting: wind uit ZW (225°) -> punt wijst naar linksonder.
+  // 2026-08-27-fix, op melding van Lex ("de wind wordt E gegeven maar de
+  // pijl wijst vanuit het westen"): de eerste versie volgde de klassieke
+  // windvaan-conventie (punt prikt IN de wind, dus bij oostenwind punt naar
+  // het oosten) — maar op een kaart lees je een pijl instinctief als
+  // STROMING, en dan oogt diezelfde pijl als wind die uit het westen komt.
+  // Nu dus de windkaart-conventie (zoals Windy): de pijl wijst mee met de
+  // wind — oostenwind stroomt van oost naar west, punt naar het westen.
+  // `graden` blijft de aanvoerrichting uit de forecast; +180 maakt er de
+  // stroomrichting van.
   return `<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
-    <g transform="rotate(${graden} 22 22)" fill="#ff2e3f" stroke="#7a0d16" stroke-linejoin="round">
+    <g transform="rotate(${(graden + 180) % 360} 22 22)" fill="#ff2e3f" stroke="#7a0d16" stroke-linejoin="round">
       <line x1="22" y1="8" x2="22" y2="36" stroke="#ff2e3f" stroke-width="2.6" stroke-linecap="round"/>
       <path d="M22 2 L28 13 L22 10.5 L16 13 Z" stroke-width="1.1"/>
       <path d="M22 36 L27.5 42 L22 39.5 L16.5 42 Z" stroke-width="1.1"/>
