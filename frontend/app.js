@@ -920,11 +920,18 @@ function eerstvolgendeUitzendingTekst(stationId) {
 // Herberekend op het bestaande 15s-klokritme (updateKlok) — puur rekenen op
 // al opgehaalde data, geen extra netwerkverkeer.
 //
-// De AUTO-knop (tweede verzoek, aan/uit): op het uitzendmoment vanzelf de
-// ruwe-ontvangst-viewer openen, zodat je de tekst live ziet binnenlopen.
-// Per toestel bewaard in localStorage (dit is een weergavevoorkeur van dit
-// scherm, zoals de alarm-scherm-toggles — geen serverinstelling), standaard
-// UIT: een overlay die "vanzelf" opent moet een bewuste keuze zijn.
+// De AUTO-knop (tweede verzoek, aan/uit): vanzelf de ruwe-ontvangst-viewer
+// openen zodra er ECHT tekst binnenrolt — niet op het geplande tijdstip.
+// Eerste versie triggerde op het zendschema; op verzoek van Lex omgebouwd
+// ("ontvangst actief alleen lijkt me beter ivm noodberichten" — terecht:
+// nood-/SAR-berichten mogen buiten het schema om uitgezonden worden, en op
+// tijdstip openen bij een gemiste ontvangst geeft alleen een leeg scherm).
+// De monitor (zie zorgNavtexAutoMonitor() hieronder) checkt elke ~10s met
+// een kale stat-route (/api/navtex-ruw-status) of het ontvangstbestand
+// groeit, en opent de viewer bij de eerste groei. Per toestel bewaard in
+// localStorage (weergavevoorkeur van dit scherm, zoals de alarmscherm-
+// toggles — geen serverinstelling), standaard UIT: een overlay die
+// "vanzelf" opent moet een bewuste keuze zijn.
 const NAVTEX_AUTO_KEY = 'weerNavtexAutoSchakel';
 let navtexAutoSchakel = false;
 try {
@@ -932,7 +939,6 @@ try {
 } catch {
   // privé-venster/geblokkeerde site-data — gewoon standaard UIT
 }
-let navtexAutoDoelMs = null; // tijdstip van de uitzending waar we op wachten
 
 function renderNavtexAutoKnop() {
   if (!NAVTEX_AUTO_KNOP_EL) return;
@@ -968,22 +974,8 @@ function ververNavtexVolgende() {
   const volgende = zeeModusActief ? volgendeNavtexUitzending() : null;
   if (!volgende) {
     NAVTEX_VOLGENDE_EL.classList.add('verborgen');
-    navtexAutoDoelMs = null; // geen verouderd doel laten staan voor een latere Zee-sessie
     return;
   }
-
-  // AUTO: het doel waar we vorige tik op wachtten is aangebroken -> viewer
-  // openen (eenmalig — daarna wordt het doel de vólgende uitzending). Alleen
-  // als de viewer niet toch al openstaat.
-  if (
-    navtexAutoSchakel &&
-    navtexAutoDoelMs != null &&
-    Date.now() >= navtexAutoDoelMs &&
-    NAVTEX_RUW_OVERLAY_EL?.classList.contains('verborgen')
-  ) {
-    openNavtexRuw();
-  }
-  navtexAutoDoelMs = volgende.tijdMs;
 
   const uren = Math.floor(volgende.overMin / 60);
   const minuten = volgende.overMin % 60;
@@ -991,6 +983,60 @@ function ververNavtexVolgende() {
   NAVTEX_VOLGENDE_TEKST_EL.textContent = `Volgende uitzending door ${volgende.naam} over ${overTekst}`;
   renderNavtexAutoKnop();
   NAVTEX_VOLGENDE_EL.classList.remove('verborgen');
+}
+
+// ---- AUTO-monitor: viewer openen zodra het ontvangstbestand groeit -----
+// Draait alleen zolang Zee-modus én AUTO allebei aan staan (zie
+// zorgNavtexAutoMonitor). Elke tik een kale stat via /api/navtex-ruw-status;
+// pas bij daadwerkelijke groei opent de viewer (die haalt dan zelf de
+// volledige tekst op). Eerste meting is puur de nulmeting — bestaande oude
+// inhoud mag nooit meteen een "ontvangst!" zijn. Na één keer openen is de
+// trekker "ontwapend" tot het bestand 3 minuten stil is geweest: als je de
+// viewer zelf wegklikt terwijl dezelfde uitzending nog binnenloopt, klapt
+// 'ie dus niet meteen weer open — pas een écht nieuwe ontvangst (na een
+// stilteperiode) opent opnieuw.
+const NAVTEX_AUTO_POLL_MS = 10 * 1000;
+const NAVTEX_AUTO_HERWAPEN_MS = 3 * 60 * 1000;
+let navtexAutoTimer = null;
+let navtexAutoBekendeBytes = null; // null = nog geen nulmeting gedaan
+let navtexAutoGewapend = true;
+let navtexAutoLaatsteGroeiMs = 0;
+
+async function navtexAutoTik() {
+  try {
+    const res = await fetch('/api/navtex-ruw-status').then((r) => r.json());
+    const bytes = res.bestandsBytes ?? 0;
+    if (navtexAutoBekendeBytes === null) {
+      navtexAutoBekendeBytes = bytes; // nulmeting
+      return;
+    }
+    const groei = bytes > navtexAutoBekendeBytes;
+    navtexAutoBekendeBytes = bytes;
+    if (groei) {
+      navtexAutoLaatsteGroeiMs = Date.now();
+      if (navtexAutoGewapend && NAVTEX_RUW_OVERLAY_EL?.classList.contains('verborgen')) {
+        navtexAutoGewapend = false;
+        openNavtexRuw();
+      }
+    } else if (!navtexAutoGewapend && Date.now() - navtexAutoLaatsteGroeiMs > NAVTEX_AUTO_HERWAPEN_MS) {
+      navtexAutoGewapend = true; // stilteperiode voorbij — volgende ontvangst mag weer openen
+    }
+  } catch (err) {
+    console.warn('[weer] navtex-auto-statuscheck mislukt:', err);
+  }
+}
+
+function zorgNavtexAutoMonitor() {
+  const moetDraaien = zeeModusActief && navtexAutoSchakel;
+  if (moetDraaien && !navtexAutoTimer) {
+    navtexAutoBekendeBytes = null;
+    navtexAutoGewapend = true;
+    navtexAutoTik(); // meteen de nulmeting, niet pas na de eerste 10s
+    navtexAutoTimer = setInterval(navtexAutoTik, NAVTEX_AUTO_POLL_MS);
+  } else if (!moetDraaien && navtexAutoTimer) {
+    clearInterval(navtexAutoTimer);
+    navtexAutoTimer = null;
+  }
 }
 
 NAVTEX_AUTO_KNOP_EL?.addEventListener('click', () => {
@@ -1001,6 +1047,7 @@ NAVTEX_AUTO_KNOP_EL?.addEventListener('click', () => {
     console.warn('[weer] navtex-auto-voorkeur opslaan mislukt (blijft wel actief voor deze sessie):', err);
   }
   renderNavtexAutoKnop();
+  zorgNavtexAutoMonitor();
 });
 
 // 2026-08-26: zelfde dicht-tot-je-erop-tikt uitklap-idioom (booleaanse vlag
@@ -3326,8 +3373,10 @@ function toggleZeeModus() {
   if (!zeeModusActief) sluitNavtexRuw();
   // 2026-08-27: "volgende uitzending"-plaatje hoort ook bij de zeekaart —
   // meteen tonen/verbergen bij het omschakelen i.p.v. wachten op de
-  // eerstvolgende klok-tik.
+  // eerstvolgende klok-tik. De AUTO-monitor (openen bij binnenrollende
+  // tekst) start/stopt op hetzelfde moment.
   ververNavtexVolgende();
+  zorgNavtexAutoMonitor();
   if (zeeModusActief) {
     if (!zeeLaag) {
       zeeLaag = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {

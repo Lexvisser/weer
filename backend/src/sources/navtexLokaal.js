@@ -1434,6 +1434,18 @@ function parseBlok(blok) {
 // zijn, en de viewer toont toch alleen het recente stuk). Bij afkappen wordt
 // de halve eerste regel weggegooid zodat de weergave nooit midden in een
 // regel begint. Zelfde pad-logica als fetchNavtexLokaal() hieronder.
+// 2026-08-27 (vervolg): alleen de bestandsstatus, zonder de inhoud te lezen
+// — voor de AUTO-schakelmonitor in de frontend (zie zorgNavtexAutoMonitor()
+// in app.js), die elke ~10s alleen wil weten OF het bestand groeit. Een kale
+// stat() is daarvoor genoeg; de volledige tail wordt pas gelezen zodra de
+// viewer echt opent.
+export function ruweOntvangstStatus() {
+  const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
+  if (!existsSync(bestand)) return { bestandsBytes: 0, bijgewerkt: null };
+  const s = statSync(bestand);
+  return { bestandsBytes: s.size, bijgewerkt: s.mtime.toISOString() };
+}
+
 export function leesRuweOntvangst(maxBytes = 64 * 1024) {
   const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
   if (!existsSync(bestand)) return { tekst: null, bestandsBytes: 0, bijgewerkt: null };

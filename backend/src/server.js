@@ -35,7 +35,7 @@ import { fetchLifeliner, lifelinerRapportTekst } from './sources/lifeliner.js';
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -955,6 +955,18 @@ export function createApp(env) {
       } catch (err) {
         console.error('[weer] /api/navtex-ruw mislukt:', err.message ?? err);
         return sendJson(res, 500, { fout: 'ruwe ontvangst niet leesbaar' });
+      }
+    }
+    // 2026-08-27 (vervolg): alleen de bestandsgrootte/mtime, voor de
+    // AUTO-schakelmonitor ("openen zodra er tekst binnenrolt", keuze van
+    // Lex i.v.m. noodberichten die buiten het zendschema om komen) — een
+    // kale stat, geen inhoud. Zie ruweOntvangstStatus() in navtexLokaal.js.
+    if (url === '/api/navtex-ruw-status') {
+      try {
+        return sendJson(res, 200, ruweOntvangstStatus());
+      } catch (err) {
+        console.error('[weer] /api/navtex-ruw-status mislukt:', err.message ?? err);
+        return sendJson(res, 500, { fout: 'status niet leesbaar' });
       }
     }
     if (url === '/api/navtex-stations') {
