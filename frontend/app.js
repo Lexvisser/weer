@@ -259,10 +259,28 @@ function wisselView(naam) {
 // aan (die staat ook bij een verse app-start standaard aan).
 function gaNaarStart() {
   wisselView('kaart');
-  if (kaart) {
-    kaart.setView([THUIS.homeLat, THUIS.homeLon], 6);
-    dwingRegenradarZoomAf(); // zie definitie verderop in dit bestand — Home negeerde deze vloer tot nu toe
-  }
+  // 2026-08-27-fix, zelfde patroon als bij centreerOpMelding() (zie fix
+  // aldaar): wisselView() hierboven stelt zijn eigen kaart.invalidateSize()
+  // bewust een tik uit (setTimeout(...,0)), maar kaart.setView() hieronder
+  // draaide daarvóór -- dus op de OUDE, mogelijk te kleine containermaat van
+  // vóór de tabwissel. Resultaat (op melding van Lex): na op "Kaart"/Home
+  // drukken eerst maar een klein stukje kaart zichtbaar. Fix: ook dit een
+  // tik uitstellen, zodat het pas draait NADAT de containermaat al gecorrigeerd is.
+  setTimeout(() => {
+    if (kaart) {
+      // 2026-08-27, iPad-freeze-analyse (observatie van Lex: vanuit Tropische
+      // Storm Lala werkt de Kaart-knop meteen vlekkeloos, vanuit een
+      // Weeralarm-gebied duurt het consequent 15-16s): het verschil is de
+      // afstand — bij Lala (halve wereld weg) slaat Leaflet de pan/zoom-
+      // animatie vanzelf over ("teleport"), bij een NL-gebied vlakbij huis
+      // animeert hij wél, en juist die geanimeerde transform over de
+      // gefilterde tegellaag is zwaar op de iPad. animate:false maakt de
+      // Home-reset altijd een directe teleport — precies het pad dat
+      // aantoonbaar wél soepel werkt.
+      kaart.setView([THUIS.homeLat, THUIS.homeLon], 6, { animate: false });
+      dwingRegenradarZoomAf(); // zie definitie verderop in dit bestand — Home negeerde deze vloer tot nu toe
+    }
+  }, 0);
   if (aardeActief) verbergAarde();
   if (satellietActief) toggleSatelliet();
   if (dopplerActief) toggleDoppler();
@@ -1083,28 +1101,70 @@ function centreerOpMelding(signal) {
   // laten verlopen terwijl je 'm openhoudt.
   geselecteerdGebiedId = gebiedBounds ? signal.id : null;
   if (!kaart) return;
-  if (gebiedBounds && signal.lat != null && signal.lon != null) {
-    // Zowel een omtrek als een eigen actuele positie (orkaan) — symmetrisch
-    // rond die positie, zie symmetrischeBoundsRondPunt() hierboven.
-    beweegKaartProgrammatisch(() => {
-      kaart.fitBounds(symmetrischeBoundsRondPunt(signal.lat, signal.lon, gebiedBounds), { padding: [24, 24] });
-      dwingRegenradarZoomAf(); // fitBounds kan met gemak onder REGENRADAR_ZOOM uitkomen bij een groot gebied
-    });
-  } else if (gebiedBounds) {
-    // Groot gebied zonder eigen "nu"-punt (bv. een NWS-watch-polygon) —
-    // gewoon de hele omtrek in beeld.
-    beweegKaartProgrammatisch(() => {
-      kaart.fitBounds(gebiedBounds, { padding: [24, 24] });
-      dwingRegenradarZoomAf();
-    });
-  } else if (signal.lat != null && signal.lon != null) {
-    const minZoom = signal.categorie === 'hulpdiensten' ? HULPDIENSTEN_ZOOM : 8;
-    beweegKaartProgrammatisch(() => kaart.setView([signal.lat, signal.lon], Math.max(kaart.getZoom(), minZoom)));
-  } else {
-    return;
+  // 2026-08-27-fix, op melding van Lex (kaart stond na het aantikken van een
+  // melding eerst te ver ingezoomd, en "corrigeerde" zichzelf pas een cyclus
+  // later naar verder uitgezoomd): wisselView() hierboven stelt zijn eigen
+  // kaart.invalidateSize() bewust met setTimeout(...,0) uit (de kaarttab moet
+  // eerst zichtbaar worden voordat de afmeting goed te meten is). Dit
+  // fitBounds/setView-blok draaide daarvóór, dus nog op de OUDE containermaat
+  // van vóór de tabwissel -- Leaflet berekende de zoom dan verkeerd. Pas de
+  // eerstvolgende 20-seconden-cyclus (ververGeselecteerdGebied hieronder)
+  // deed dezelfde berekening nog eens, dan wél op de juiste maat -- wat
+  // oogde als "verspringen"/"verder uitzoomen", maar in werkelijkheid gewoon
+  // de eerste, foute weergave was die zichzelf rechtzette. Fix: dit hele
+  // blok ook een tik uitstellen, zodat het pas draait NADAT wisselView()'s
+  // eigen invalidateSize() al is geweest (die stond eerder in de wachtrij,
+  // dus draait eerder) -- dan is de containermaat vanaf de eerste weergave
+  // al goed.
+  setTimeout(() => {
+    if (gebiedBounds && signal.lat != null && signal.lon != null) {
+      // Zowel een omtrek als een eigen actuele positie (orkaan) — symmetrisch
+      // rond die positie, zie symmetrischeBoundsRondPunt() hierboven.
+      beweegKaartProgrammatisch(() => {
+        kaart.fitBounds(symmetrischeBoundsRondPunt(signal.lat, signal.lon, gebiedBounds), { padding: [24, 24] });
+        dwingRegenradarZoomAf(); // fitBounds kan met gemak onder REGENRADAR_ZOOM uitkomen bij een groot gebied
+      });
+    } else if (gebiedBounds) {
+      // Groot gebied zonder eigen "nu"-punt (bv. een NWS-watch-polygon) —
+      // gewoon de hele omtrek in beeld.
+      beweegKaartProgrammatisch(() => {
+        kaart.fitBounds(gebiedBounds, { padding: [24, 24] });
+        dwingRegenradarZoomAf();
+      });
+    } else if (signal.lat != null && signal.lon != null) {
+      const minZoom = signal.categorie === 'hulpdiensten' ? HULPDIENSTEN_ZOOM : 8;
+      beweegKaartProgrammatisch(() => kaart.setView([signal.lat, signal.lon], Math.max(kaart.getZoom(), minZoom)));
+    }
+  }, 0);
+  // 2026-08-27, op verzoek van Lex ("dat label even terug zetten") — het
+  // label/popup weer op zijn oude, vaste timing (250ms na dit punt, niet
+  // pas na de kaart-fit-vertraging hierboven) -- alleen de kaart-fit zelf
+  // bleef uitgesteld, zie de fix hierboven.
+  //
+  // 2026-08-27-fix (tweede ronde), op melding van Lex ("soms komt het label
+  // meteen soms niet", iPad): de marker-referentie werd op het KLIK-moment
+  // opgezocht, maar renderMap() (elke 20s-cyclus, én de zoomend/dragend-
+  // gekoppelde her-renders) doet signaalLaag.clearLayers() en bouwt alle
+  // markers opnieuw — een tussen klik en de 250ms-timeout herbouwde kaart
+  // maakte de vastgehouden referentie dus stilletjes een wees: openPopup()
+  // op een marker die niet meer op de kaart staat doet gewoon niks. Fix:
+  // de marker pas ÍN de timeout vers opzoeken (markersPerId wordt bij elke
+  // herbouw opnieuw gevuld), en als de popup even later alsnog niet open
+  // blijkt (bv. omdat een herbouw er net tussendoor kwam), nog maximaal
+  // twee keer opnieuw proberen.
+  if (gebiedBounds || (signal.lat != null && signal.lon != null)) {
+    const openPopupPoging = (pogingenOver) => {
+      const marker = markersPerId.get(signal.id);
+      if (marker) marker.openPopup();
+      if (pogingenOver > 0) {
+        setTimeout(() => {
+          const controle = markersPerId.get(signal.id);
+          if (controle && !controle.isPopupOpen()) openPopupPoging(pogingenOver - 1);
+        }, 900);
+      }
+    };
+    setTimeout(() => openPopupPoging(2), 250); // 250ms: wacht tot de pan/zoom-animatie klaar is
   }
-  const marker = markersPerId.get(signal.id);
-  if (marker) setTimeout(() => marker.openPopup(), 250); // wacht tot de pan/zoom-animatie klaar is
 }
 
 // Bij een aangetikt gebied-signaal (nu: tornado-watch, severe-outlook) de
@@ -1798,6 +1858,19 @@ function toggleRegenradar() {
     // harde ondergrens worden die handmatig uitzoomen daarna blokkeert; dit
     // is puur een eenmalige sprong op het moment van aanzetten).
     if (kaart) beweegKaartProgrammatisch(() => kaart.setZoom(REGENRADAR_ZOOM));
+    // 2026-08-27-fix, op melding van Lex (regenradar-aanzetten: kaart zoomde
+    // na een paar seconden vanzelf verder uit dan zoomniveau 7, ook zonder
+    // enig ander gebied aangetikt te hebben in dezelfde sessie) — als er nog
+    // een gebied-signaal "gevolgd" werd van eerder (geselecteerdGebiedId,
+    // zie centreerOpMelding/ververGeselecteerdGebied), telt deze eigen
+    // programmatische zoom daar bewust niet als "handmatig zoomen" voor (zie
+    // kaart.on('zoomend dragend', ...) hierboven) — dus die oude selectie
+    // bleef gewoon staan, en de eerstvolgende 20-seconden-cyclus deed er
+    // alsnog een fitBounds() op, wat zomaar verder uit kon zoomen dan
+    // REGENRADAR_ZOOM. Regenradar-aanzetten is zelf ook een bewuste "ik wil
+    // nu hiernaar kijken"-actie, dus die mag zo'n oude selectie net zo goed
+    // opruimen als een handmatige zoom dat al doet.
+    geselecteerdGebiedId = null;
   } else {
     radarAfspelenStop();
     if (radarLagen) {
@@ -2345,6 +2418,44 @@ const NAVTEX_LICHT_UIT_SVG = `
   </svg>
 `.trim();
 
+// 2026-08-27, op verzoek van Lex, na MSI 220/26 (platform K6DN: "TOTAL
+// BLACK OUT") -- een total black-out is zwaarder dan een gewoon
+// licht-onbetrouwbaar (heel platform stroomloos, niet alleen het licht),
+// dus een eigen icoon i.p.v. hetzelfde NAVTEX_LICHT_UIT_SVG hergebruiken
+// (zie classificeerRiglijstStatus() in navtexLokaal.js voor de herkenning,
+// nieuw type 'blackout'). Lex was expliciet: geen standaard/generiek icoon
+// (hij liet als tegenvoorbeeld het kale rondje-met-kruis zien dat op
+// standaard zeekaarten voor een lichtprobleem gebruikt wordt) en ook geen
+// cirkel als vorm ("Dus de laatste maar dan zonder cirkel" / "D zonder
+// cirkel"). Daarom: zelfde peertje-silhouet als NAVTEX_LICHT_UIT_SVG
+// hierboven (voetje, spiraaltje) zodat het herkenbaar bij dezelfde
+// "licht"-iconenfamilie hoort, maar met een hoekige (zeshoekige) kop i.p.v.
+// een cirkel, helemaal zwart gevuld (i.p.v. gedimd grijs) voor "volledig
+// uit/kapot", en een fel rood kruis (i.p.v. het donkere kruisje) voor de
+// hogere ernst -- zelfde rode (#ff3b3b) als het diagonale streepje bij
+// NAVTEX_MISTHOORN_SVG, dezelfde ernst-conventie. Puur zwart bleek eerder
+// (NAVTEX_ANKER_SVG/NAVTEX_BOEI_NOORD_SVG hieronder) nauwelijks zichtbaar
+// tegen een donkere kaartondergrond, dus de kop/voet krijgen net als daar
+// een lichte contourlijn (stroke #f4f6fb) rond de zwarte vulling.
+const NAVTEX_BLACKOUT_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <g fill="#1a1c22" stroke="#f4f6fb" stroke-width="1" stroke-linejoin="round">
+      <path d="M12 3.2 L17 6.3 L16.1 13 Q16 14.8 14.7 14.8 L9.3 14.8 Q8 14.8 7.9 13 L7 6.3 Z"/>
+      <path d="M9.3 14.8 L9.3 18.3 Q9.3 19.1 10.1 19.1 L13.9 19.1 Q14.7 19.1 14.7 18.3 L14.7 14.8 Z"/>
+    </g>
+    <g fill="none" stroke="#5c6274" stroke-width="1.1">
+      <line x1="9.6" y1="16.4" x2="14.4" y2="16.4"/>
+      <line x1="9.6" y1="17.7" x2="14.4" y2="17.7"/>
+    </g>
+    <line x1="10.4" y1="21" x2="13.6" y2="21" stroke="#5c6274" stroke-width="1.3" stroke-linecap="round"/>
+    <path d="M9.8 7.5 Q9.8 6 12 6 Q14.2 6 14.2 7.5 Q14.2 9.5 12.7 10.4 L12.7 12 L11.3 12 L11.3 10.4 Q9.8 9.5 9.8 7.5 Z" fill="none" stroke="#5c6274" stroke-width="0.9"/>
+    <g stroke="#ff3b3b" stroke-width="1.6" stroke-linecap="round">
+      <line x1="8.4" y1="6.4" x2="15.6" y2="12.6"/>
+      <line x1="15.6" y1="6.4" x2="8.4" y2="12.6"/>
+    </g>
+  </svg>
+`.trim();
+
 // 2026-08-26, op verzoek van Lex, na MSI 214/26 ("voor foghorns
 // inoperative zou ik aparte icons willen trouwens") -- eigen icoon voor
 // een defecte misthoorn i.p.v. hetzelfde generieke riglijst/licht-icoon,
@@ -2629,6 +2740,7 @@ const NAVTEX_OBSTRUCTIE_SVG = `
 const NAVTEX_EVENT_ICOON = {
   riglijst: NAVTEX_RIG_SVG,
   'licht-onbetrouwbaar': NAVTEX_LICHT_UIT_SVG,
+  blackout: NAVTEX_BLACKOUT_SVG,
   'safety-zone': '🚧',
   kabel: NAVTEX_KABEL_SVG,
   survey: NAVTEX_SURVEY_SVG,
@@ -6120,6 +6232,27 @@ ALARM_POPUP_BEKIJK_EL.addEventListener('click', () => {
 let pendingDeepLinkSignaalId = new URLSearchParams(window.location.search).get('signaal');
 let deepLinkPogingen = 0;
 
+// 2026-08-27, iPad-freeze-analyse: renderMap() (alle markers slopen en
+// herbouwen) en renderMeldingen() (hele lijst-DOM opnieuw) draaiden élke
+// 20-seconden-cyclus, ook als er inhoudelijk niets veranderd was — op de
+// iPad gaf die periodieke sloop/herbouw merkbare hikken (en het was de
+// motor achter het soms-verdwijnende popup-label, zie centreerOpMelding).
+// Nu wordt eerst een vingerafdruk van de signalen vergeleken met de vorige
+// cyclus. Het bron.bijgewerkt-veld (laatste poll-moment per bron) verandert
+// vrijwel elke cyclus zonder dat er iets zichtbaars wijzigt — dat veld
+// wordt buiten de vingerafdruk gehouden (bron.haperend telt WEL mee, dat
+// dimt de pins). De datum zit er ook in, zodat dag-afhankelijke weergave
+// (isNavtexNieuw) rond middernacht gewoon ververst. Alleen de zware twee
+// (renderMap/renderMeldingen) worden overgeslagen — de Hemel/Weer-renders
+// bevatten klokjes/aftellingen en draaien gewoon elke cyclus door.
+let vorigeSignalenVingerafdruk = null;
+
+function signalenVingerafdruk(signalen) {
+  return new Date().toDateString() + JSON.stringify(signalen, (sleutel, waarde) => (
+    sleutel === 'bijgewerkt' ? undefined : waarde
+  ));
+}
+
 async function verversen() {
   try {
     const [signalenRes, statusRes] = await Promise.all([
@@ -6133,8 +6266,12 @@ async function verversen() {
       (perCategorie[s.categorie] ??= []).push(s);
     }
 
+    const vingerafdruk = signalenVingerafdruk(signalenRes.signalen);
+    const signalenGewijzigd = vingerafdruk !== vorigeSignalenVingerafdruk;
+    vorigeSignalenVingerafdruk = vingerafdruk;
+
     verwerkTornadoAlarm(signalenRes.signalen);
-    renderMap(signalenRes.signalen);
+    if (signalenGewijzigd) renderMap(signalenRes.signalen);
 
     if (pendingDeepLinkSignaalId) {
       deepLinkPogingen += 1;
@@ -6151,7 +6288,7 @@ async function verversen() {
       }
     }
 
-    renderMeldingen(signalenRes.signalen);
+    if (signalenGewijzigd) renderMeldingen(signalenRes.signalen);
     renderSky(perCategorie);
     renderWeer(perCategorie);
     renderZonMaan(perCategorie);

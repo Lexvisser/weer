@@ -8,7 +8,7 @@
 // aggregator-service even niet bereikbaar is. Verhoog CACHE_NAAM telkens als
 // je wilt garanderen dat oude installaties de nieuwe versie ophalen.
 
-const CACHE_NAAM = 'weer-shell-v20';
+const CACHE_NAAM = 'weer-shell-v21';
 const SHELL_BESTANDEN = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -38,8 +38,19 @@ self.addEventListener('fetch', (event) => {
   // blijven geven, zelfs na syncen naar de server. cache: 'no-store' dwingt
   // hier altijd een echte netwerk-fetch af, precies zoals de strategie
   // hierboven al bedoeld was ("altijd de nieuwste versie zien").
+  //
+  // 2026-08-27, trage-kaart-analyse: versoepeld van 'no-store' naar
+  // 'no-cache'. serveStatic() stuurt inmiddels WEL een ETag + Cache-Control
+  // mee (dat ontbrak toen de fix hierboven nodig was) — 'no-cache' checkt
+  // nog steeds ALTIJD eerst bij de server (dus nooit meer een stilletjes
+  // verouderde app.js/styles.css, de garantie van de 2026-08-26-fix blijft
+  // staan), maar bij een ongewijzigd bestand antwoordt de server nu met een
+  // leeg 304'je i.p.v. de volle ~460KB schil — die bytes concurreerden bij
+  // elke app-start met de eerste kaarttegels om dezelfde ~6
+  // browserverbindingen. 'no-store' zou die conditionele check juist
+  // onmogelijk maken (die slaat de browsercache volledig over).
   event.respondWith(
-    fetch(event.request, { cache: 'no-store' })
+    fetch(event.request, { cache: 'no-cache' })
       .then((netwerkResponse) => {
         const kopie = netwerkResponse.clone();
         caches.open(CACHE_NAAM).then((cache) => cache.put(event.request, kopie));

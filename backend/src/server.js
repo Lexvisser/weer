@@ -2,8 +2,11 @@
 // puur op Node zelf. Dat betekent: geen "npm install" nodig om te starten,
 // gewoon "node src/index.js". Scheelt gedoe voor een klein persoonlijk project.
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
+import { join, extname, dirname } from 'node:path';
+import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { SOURCES } from './config.js';
 import { SourceState } from './normalize.js';
 
@@ -92,13 +95,56 @@ const MIME = {
   '.webp': 'image/webp',
 };
 
+// 2026-08-27, trage-kaart-analyse: alles (tegels, /api/signals, statische
+// bestanden) loopt over deze ene kale HTTP/1.1-host, waar de browser maar ~6
+// gelijktijdige verbindingen naartoe opent — hoe minder bytes en round-trips
+// per verzoek, hoe sneller de kaart-opbouw. Twee generieke maatregelen die
+// hieronder in sendJson() én serveStatic() terugkomen:
+// (1) gzip: JSON en tekst-bestanden comprimeren prima (app.js ~350KB → een
+//     fractie daarvan), zlib zit gewoon in Node, geen dependency nodig.
+// (2) ETag + Cache-Control: no-cache: "no-cache" betekent NIET "niet cachen"
+//     maar "eerst even bij de server checken" — de browser stuurt dan
+//     If-None-Match mee, en bij ongewijzigde inhoud is het antwoord een leeg
+//     304'je i.p.v. de hele payload. Altijd vers (belangrijk tijdens actieve
+//     ontwikkeling, zie de sw.js-historie), maar zonder telkens alles
+//     opnieuw te versturen. Zie ook de bijbehorende sw.js-aanpassing
+//     (cache: 'no-store' → 'no-cache') — no-store omzeilde de browsercache
+//     volledig en maakte conditionele verzoeken dus onmogelijk.
+const COMPRESSIE_MIN_BYTES = 1024; // onder ~1KB wint gzip niets (soms zelfs groter)
+
+function accepteertGzip(req) {
+  return /\bgzip\b/.test(req?.headers?.['accept-encoding'] ?? '');
+}
+
 function sendJson(res, status, data) {
   const body = JSON.stringify(data);
-  res.writeHead(status, {
+  // res.req is de bijbehorende IncomingMessage (standaard node:http) — zo
+  // hoeven de ~20 bestaande sendJson(res, ...)-aanroepen niet allemaal een
+  // extra req-parameter te krijgen.
+  const req = res.req;
+  const headers = {
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
     'Access-Control-Allow-Origin': '*', // gemakkelijk binnen je eigen tailnet, geen publieke blootstelling
-  });
+    'Vary': 'Accept-Encoding',
+  };
+  if (status === 200) {
+    const etag = `"${createHash('sha1').update(body).digest('base64url')}"`;
+    headers['ETag'] = etag;
+    headers['Cache-Control'] = 'no-cache';
+    if (req?.headers?.['if-none-match'] === etag) {
+      res.writeHead(304, headers);
+      return res.end();
+    }
+    if (Buffer.byteLength(body) >= COMPRESSIE_MIN_BYTES && accepteertGzip(req)) {
+      const gz = gzipSync(Buffer.from(body));
+      headers['Content-Encoding'] = 'gzip';
+      headers['Content-Length'] = gz.length;
+      res.writeHead(status, headers);
+      return res.end(gz);
+    }
+  }
+  headers['Content-Length'] = Buffer.byteLength(body);
+  res.writeHead(status, headers);
   res.end(body);
 }
 
@@ -187,6 +233,127 @@ const TEGEL_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 const TEGEL_CACHE_MAX = 4000;
 const tegelCache = new Map(); // "z/x/y" -> { buffer, contentType, tijdMs }
 
+// 2026-08-27, trage/onbetrouwbare-kaart-analyse — vier vangnetten die beide
+// tegel-proxy's (OSM hieronder én RainViewer verderop) misten:
+//
+// (1) TIMEOUT op de upstream-fetch. Zonder timeout houdt één hangende
+//     OSM/RainViewer-request niet alleen deze proxy-aanroep eindeloos vast,
+//     maar ook een van de ~6 verbindingen die de browser maximaal naar deze
+//     host opent (HTTP/1.1) — alle andere tegels wachten daar dan achter.
+//     Dat verklaarde het "kaart hangt/blijft half leeg"-gevoel goed.
+// (2) IN-FLIGHT-DEDUP. Bij een koude cache vraagt Leaflet dezelfde tegel
+//     soms bijna gelijktijdig meermaals aan (en de radar-lagen a/b sowieso
+//     in paren) — voorheen ging elk van die verzoeken apart naar upstream.
+//     Nu delen gelijktijdige aanvragen voor dezelfde tegel één fetch.
+// (3) NEGATIEVE CACHE (kort). Een upstream-fout (404/500/timeout) werd
+//     voorheen nergens onthouden, dus elke herpoging ging meteen weer de
+//     volle (trage) weg naar upstream. Nu wordt zo'n fout 30s onthouden en
+//     direct beantwoord; na 30s mag het gewoon opnieuw geprobeerd worden.
+//     Fout-responses krijgen 'Cache-Control: no-store' mee zodat de browser
+//     ze nooit vasthoudt (het eerdere Esri→OSM-cache-debacle indachtig).
+// (4) SCHIJF-PERSISTENTIE (alleen OSM, zie TEGEL_SCHIJF_DIR hieronder). De
+//     geheugencache verdween bij elke service-herstart — en syncweer
+//     herstart de service, dus juist ná elke deploy was de eerste
+//     kaart-opbouw altijd volledig koud. OSM-tegels wijzigen zelden; ze
+//     staan nu ook in backend/data/tegels/ (30 dagen houdbaar) zodat een
+//     herstart de cache niet meer leegt. RainViewer-frames zijn te
+//     kortstondig om schijfruimte aan te besteden — die houden alleen de
+//     geheugencache.
+const TEGEL_FETCH_TIMEOUT_MS = 10 * 1000;
+const TEGEL_FOUT_CACHE_MS = 30 * 1000;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEGEL_SCHIJF_DIR = join(__dirname, '..', 'data', 'tegels');
+const TEGEL_SCHIJF_MAX_LEEFTIJD_MS = 30 * 24 * 60 * 60 * 1000;
+
+const tegelFoutCache = new Map(); // sleutel -> { status, tijdMs }
+const tegelInFlight = new Map(); // sleutel -> Promise<{ status, buffer?, contentType?, bron? }>
+
+// 2026-08-27, diagnose-hulp voor Lex' iPad-melding ("consequent 15-16s
+// voordat de hele kaart er staat"): een klein ringbuffertje met de laatste
+// tegel-verzoeken — wanneer ze op de server AANKWAMEN, hoe lang het
+// beantwoorden duurde en waar het antwoord vandaan kwam. Opvraagbaar via
+// /api/tegel-stats (zie route hieronder). Daarmee is het onderscheid te
+// maken dat we vanaf de iPad zelf (geen DevTools) niet kunnen zien:
+// - komen de verzoeken pas ná ~15s binnen -> het probleem zit vóór de
+//   server (verbindingsopbouw iPad->server, wifi/Tailscale), of
+// - komen ze meteen binnen maar duurt het antwoord lang -> het zit in de
+//   server/upstream (dan staat het hier per tegel zwart-op-wit).
+const TEGEL_STATS_MAX = 400;
+const tegelStats = [];
+
+function noteerTegelStat(pad, aankomstMs, bron, status) {
+  tegelStats.push({
+    pad,
+    aankomst: new Date(aankomstMs).toISOString(),
+    duurMs: Date.now() - aankomstMs,
+    bron,
+    status,
+  });
+  if (tegelStats.length > TEGEL_STATS_MAX) tegelStats.splice(0, tegelStats.length - TEGEL_STATS_MAX);
+}
+
+function tegelFoutStatus(foutCache, sleutel) {
+  const fout = foutCache.get(sleutel);
+  if (!fout) return null;
+  if (Date.now() - fout.tijdMs > TEGEL_FOUT_CACHE_MS) {
+    foutCache.delete(sleutel);
+    return null;
+  }
+  return fout.status;
+}
+
+// Haalt één OSM-tegel op als data-object, met de volledige cache-keten:
+// geheugen → schijf → upstream. Gedeeld door gelijktijdige aanvragen via
+// tegelInFlight (zie punt 2 hierboven). Gooit zelf nooit — een fout komt
+// terug als { status } zonder buffer.
+function haalTegelData(sleutel, zNum, xNum, yNum) {
+  const lopend = tegelInFlight.get(sleutel);
+  if (lopend) return lopend;
+
+  const promise = (async () => {
+    // Schijfcache — overleeft de service-herstart die elke syncweer doet.
+    const schijfPad = join(TEGEL_SCHIJF_DIR, String(zNum), String(xNum), `${yNum}.png`);
+    try {
+      const s = await stat(schijfPad);
+      if (Date.now() - s.mtimeMs < TEGEL_SCHIJF_MAX_LEEFTIJD_MS) {
+        const buffer = await readFile(schijfPad);
+        return { status: 200, buffer, contentType: 'image/png', bron: 'schijf' };
+      }
+    } catch {
+      // niet op schijf (of niet leesbaar) — gewoon door naar upstream
+    }
+
+    try {
+      // OSM gebruikt de gebruikelijke XYZ-volgorde (z/x/y), geen herordening nodig.
+      const upstream = await fetch(`${TEGEL_BASIS_URL}/${zNum}/${xNum}/${yNum}.png`, {
+        headers: { 'User-Agent': TEGEL_USER_AGENT },
+        signal: AbortSignal.timeout(TEGEL_FETCH_TIMEOUT_MS),
+      });
+      if (!upstream.ok) {
+        tegelFoutCache.set(sleutel, { status: upstream.status, tijdMs: Date.now() });
+        return { status: upstream.status, bron: 'upstream-fout' };
+      }
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      const contentType = upstream.headers.get('content-type') ?? 'image/png';
+
+      // Fire-and-forget naar schijf — een schrijffout (schijf vol, rechten)
+      // mag het serveren zelf nooit ophouden of laten falen.
+      mkdir(dirname(schijfPad), { recursive: true })
+        .then(() => writeFile(schijfPad, buffer))
+        .catch((err) => console.error('[weer] tegel-schijfcache schrijven mislukt:', err.message ?? err));
+
+      return { status: 200, buffer, contentType, bron: 'upstream' };
+    } catch (err) {
+      console.error('[weer] kaarttegel-proxy mislukt:', err.message ?? err);
+      tegelFoutCache.set(sleutel, { status: 502, tijdMs: Date.now() });
+      return { status: 502, bron: 'fout' };
+    }
+  })().finally(() => tegelInFlight.delete(sleutel));
+
+  tegelInFlight.set(sleutel, promise);
+  return promise;
+}
+
 async function serveTegel(req, res, z, x, y) {
   const zNum = Number(z);
   const xNum = Number(x);
@@ -199,6 +366,7 @@ async function serveTegel(req, res, z, x, y) {
   const nu = Date.now();
   const bestaand = tegelCache.get(sleutel);
   if (bestaand && nu - bestaand.tijdMs < TEGEL_CACHE_MS) {
+    noteerTegelStat(sleutel, nu, 'geheugen', 200);
     res.writeHead(200, {
       'Content-Type': bestaand.contentType,
       'Content-Length': bestaand.buffer.length,
@@ -207,45 +375,44 @@ async function serveTegel(req, res, z, x, y) {
     res.end(bestaand.buffer);
     return;
   }
-  try {
-    // OSM gebruikt de gebruikelijke XYZ-volgorde (z/x/y), geen herordening nodig.
-    const upstream = await fetch(`${TEGEL_BASIS_URL}/${zNum}/${xNum}/${yNum}.png`, {
-      headers: { 'User-Agent': TEGEL_USER_AGENT },
-    });
-    if (!upstream.ok) {
-      res.writeHead(upstream.status).end();
-      return;
-    }
-    const buffer = Buffer.from(await upstream.arrayBuffer());
-    const contentType = upstream.headers.get('content-type') ?? 'image/png';
-
-    if (tegelCache.size >= TEGEL_CACHE_MAX) {
-      const oudsteSleutel = tegelCache.keys().next().value; // Map bewaart invoegvolgorde — oudste eerst
-      tegelCache.delete(oudsteSleutel);
-    }
-    tegelCache.set(sleutel, { buffer, contentType, tijdMs: nu });
-
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Content-Length': buffer.length,
-      // 2026-08-19: was 'immutable, max-age=604800' (een week) — bleek een
-      // valkuil tijdens het zoeken naar de juiste tegelbron: toen de upstream
-      // hier wisselde van Esri naar OSM (zelfde /api/tegel/{z}/{x}/{y}.png-pad)
-      // bleef Lex' browser de oude, kapotte respons uit de eigen schijfcache
-      // hergebruiken zonder de server ooit opnieuw te vragen. Nu een dag i.p.v.
-      // een week, en zonder 'immutable' — nog steeds ruim genoeg om herhaalde
-      // round-trips te schelen, maar een volgende wijziging hangt niet meer
-      // een week lang vast in Lex' eigen browsercache. (De nieuwe server-
-      // eigen tegelCache hierboven mag wél veel langer bewaren — die is niet
-      // gevoelig voor hetzelfde "oude kapotte respons blijft hangen"-risico,
-      // want een herstart van de service (bv. na syncweer) leegt 'm toch al.)
-      'Cache-Control': 'public, max-age=86400',
-    });
-    res.end(buffer);
-  } catch (err) {
-    console.error('[weer] kaarttegel-proxy mislukt:', err.message ?? err);
-    res.writeHead(502).end();
+  const eerderFout = tegelFoutStatus(tegelFoutCache, sleutel);
+  if (eerderFout != null) {
+    // no-store: de browser mag een fout-respons nooit bewaren (zie het
+    // Esri→OSM-schijfcache-debacle in de module-comment hierboven).
+    noteerTegelStat(sleutel, nu, 'fout-cache', eerderFout);
+    res.writeHead(eerderFout, { 'Cache-Control': 'no-store' }).end();
+    return;
   }
+
+  const resultaat = await haalTegelData(sleutel, zNum, xNum, yNum);
+  noteerTegelStat(sleutel, nu, resultaat.bron ?? 'onbekend', resultaat.status);
+  if (resultaat.status !== 200 || !resultaat.buffer) {
+    res.writeHead(resultaat.status, { 'Cache-Control': 'no-store' }).end();
+    return;
+  }
+
+  if (tegelCache.size >= TEGEL_CACHE_MAX) {
+    const oudsteSleutel = tegelCache.keys().next().value; // Map bewaart invoegvolgorde — oudste eerst
+    tegelCache.delete(oudsteSleutel);
+  }
+  tegelCache.set(sleutel, { buffer: resultaat.buffer, contentType: resultaat.contentType, tijdMs: nu });
+
+  res.writeHead(200, {
+    'Content-Type': resultaat.contentType,
+    'Content-Length': resultaat.buffer.length,
+    // 2026-08-19: was 'immutable, max-age=604800' (een week) — bleek een
+    // valkuil tijdens het zoeken naar de juiste tegelbron: toen de upstream
+    // hier wisselde van Esri naar OSM (zelfde /api/tegel/{z}/{x}/{y}.png-pad)
+    // bleef Lex' browser de oude, kapotte respons uit de eigen schijfcache
+    // hergebruiken zonder de server ooit opnieuw te vragen. Nu een dag i.p.v.
+    // een week, en zonder 'immutable' — nog steeds ruim genoeg om herhaalde
+    // round-trips te schelen, maar een volgende wijziging hangt niet meer
+    // een week lang vast in Lex' eigen browsercache. (De server-eigen caches
+    // mogen wél veel langer bewaren — sinds 2026-08-27 overleven die zelfs
+    // een herstart, via de schijfcache in backend/data/tegels/.)
+    'Cache-Control': 'public, max-age=86400',
+  });
+  res.end(resultaat.buffer);
 }
 
 // ---- Regenradar-tegel-proxy (RainViewer), 2026-08-19 -----------------------
@@ -294,6 +461,42 @@ const TRANSPARANTE_TEGEL = Buffer.from(
   'base64',
 );
 
+// 2026-08-27: zelfde vangnetten als de OSM-tegel-proxy hierboven (timeout,
+// in-flight-dedup, korte negatieve cache) — zie de uitgebreide comment daar.
+// Alleen de schijf-persistentie ontbreekt hier bewust: radarframes zijn na
+// een uur toch verouderd, daar hoeft geen schijfruimte aan op te gaan.
+const regenradarFoutCache = new Map(); // pad -> { status, tijdMs }
+const regenradarInFlight = new Map(); // pad -> Promise<{ status, buffer?, contentType? }>
+
+function haalRegenradarData(pad) {
+  const lopend = regenradarInFlight.get(pad);
+  if (lopend) return lopend;
+
+  const promise = (async () => {
+    try {
+      const upstream = await fetch(`${REGENRADAR_HOST}/${pad}`, {
+        headers: { 'User-Agent': TEGEL_USER_AGENT },
+        signal: AbortSignal.timeout(TEGEL_FETCH_TIMEOUT_MS),
+      });
+      if (!upstream.ok) {
+        regenradarFoutCache.set(pad, { status: upstream.status, tijdMs: Date.now() });
+        return { status: upstream.status };
+      }
+      let buffer = Buffer.from(await upstream.arrayBuffer());
+      if (buffer.length < REGENRADAR_PLACEHOLDER_MAX_BYTES) buffer = TRANSPARANTE_TEGEL;
+      const contentType = upstream.headers.get('content-type') ?? 'image/png';
+      return { status: 200, buffer, contentType };
+    } catch (err) {
+      console.error('[weer] regenradar-tegel-proxy mislukt:', err.message ?? err);
+      regenradarFoutCache.set(pad, { status: 502, tijdMs: Date.now() });
+      return { status: 502 };
+    }
+  })().finally(() => regenradarInFlight.delete(pad));
+
+  regenradarInFlight.set(pad, promise);
+  return promise;
+}
+
 async function serveRegenradar(req, res, pad) {
   const nu = Date.now();
   const bestaand = regenradarCache.get(pad);
@@ -306,32 +509,30 @@ async function serveRegenradar(req, res, pad) {
     res.end(bestaand.buffer);
     return;
   }
-  try {
-    const upstream = await fetch(`${REGENRADAR_HOST}/${pad}`, { headers: { 'User-Agent': TEGEL_USER_AGENT } });
-    if (!upstream.ok) {
-      res.writeHead(upstream.status).end();
-      return;
-    }
-    let buffer = Buffer.from(await upstream.arrayBuffer());
-    if (buffer.length < REGENRADAR_PLACEHOLDER_MAX_BYTES) buffer = TRANSPARANTE_TEGEL;
-    const contentType = upstream.headers.get('content-type') ?? 'image/png';
-
-    if (regenradarCache.size >= REGENRADAR_CACHE_MAX) {
-      const oudsteSleutel = regenradarCache.keys().next().value; // Map bewaart invoegvolgorde — oudste eerst
-      regenradarCache.delete(oudsteSleutel);
-    }
-    regenradarCache.set(pad, { buffer, contentType, tijdMs: nu });
-
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Content-Length': buffer.length,
-      'Cache-Control': 'public, max-age=3600',
-    });
-    res.end(buffer);
-  } catch (err) {
-    console.error('[weer] regenradar-tegel-proxy mislukt:', err.message ?? err);
-    res.writeHead(502).end();
+  const eerderFout = tegelFoutStatus(regenradarFoutCache, pad);
+  if (eerderFout != null) {
+    res.writeHead(eerderFout, { 'Cache-Control': 'no-store' }).end();
+    return;
   }
+
+  const resultaat = await haalRegenradarData(pad);
+  if (resultaat.status !== 200 || !resultaat.buffer) {
+    res.writeHead(resultaat.status, { 'Cache-Control': 'no-store' }).end();
+    return;
+  }
+
+  if (regenradarCache.size >= REGENRADAR_CACHE_MAX) {
+    const oudsteSleutel = regenradarCache.keys().next().value; // Map bewaart invoegvolgorde — oudste eerst
+    regenradarCache.delete(oudsteSleutel);
+  }
+  regenradarCache.set(pad, { buffer: resultaat.buffer, contentType: resultaat.contentType, tijdMs: nu });
+
+  res.writeHead(200, {
+    'Content-Type': resultaat.contentType,
+    'Content-Length': resultaat.buffer.length,
+    'Cache-Control': 'public, max-age=3600',
+  });
+  res.end(resultaat.buffer);
 }
 
 // ---- Idle-detectie voor credit-gelimiteerde bronnen, 2026-08-19 ------------
@@ -596,6 +797,22 @@ export function createApp(env) {
     );
   }
 
+  // 2026-08-27, trage-kaart-analyse: serveStatic stuurde voorheen géén
+  // Cache-Control/ETag en géén compressie — en de service worker (sw.js)
+  // haalde de schil met cache: 'no-store' op, dus elke keer dat de app werd
+  // geopend ging de volle ~460KB (app.js + styles.css + index.html)
+  // ongecomprimeerd over de lijn, concurrerend met de eerste kaarttegels om
+  // dezelfde ~6 browserverbindingen. Nu: ETag (uit mtime+grootte, geen
+  // hashing van de inhoud nodig) + 'Cache-Control: no-cache' zodat de
+  // browser conditioneel mag vragen (304 = leeg antwoord bij ongewijzigd
+  // bestand — precies wat je tijdens actieve ontwikkeling wilt: altijd de
+  // check, nooit onnodig de bytes), plus gzip voor tekst-bestanden. De
+  // gecomprimeerde versie wordt per bestand+ETag in het geheugen bewaard
+  // zodat app.js niet bij elke paginalading opnieuw gecomprimeerd wordt.
+  // Zie ook de bijbehorende sw.js-wijziging ('no-store' → 'no-cache').
+  const COMPRESSIBLE_EXT = new Set(['.html', '.css', '.js', '.json', '.webmanifest', '.svg']);
+  const statischGzipCache = new Map(); // filePath -> { etag, gz }
+
   async function serveStatic(req, res) {
     const urlPath = decodeURIComponent(req.url.split('?')[0]);
     const relPath = urlPath === '/' ? '/index.html' : urlPath;
@@ -608,8 +825,32 @@ export function createApp(env) {
     try {
       const s = await stat(filePath);
       if (!s.isFile()) throw new Error('geen bestand');
+      const ext = extname(filePath);
+      const etag = `"${s.size.toString(16)}-${Math.round(s.mtimeMs).toString(16)}"`;
+      const headers = {
+        'Content-Type': MIME[ext] ?? 'application/octet-stream',
+        'ETag': etag,
+        'Cache-Control': 'no-cache',
+        'Vary': 'Accept-Encoding',
+      };
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, headers);
+        return res.end();
+      }
       const data = await readFile(filePath);
-      res.writeHead(200, { 'Content-Type': MIME[extname(filePath)] ?? 'application/octet-stream' });
+      if (COMPRESSIBLE_EXT.has(ext) && data.length >= COMPRESSIE_MIN_BYTES && accepteertGzip(req)) {
+        let gecached = statischGzipCache.get(filePath);
+        if (!gecached || gecached.etag !== etag) {
+          gecached = { etag, gz: gzipSync(data) };
+          statischGzipCache.set(filePath, gecached);
+        }
+        headers['Content-Encoding'] = 'gzip';
+        headers['Content-Length'] = gecached.gz.length;
+        res.writeHead(200, headers);
+        return res.end(gecached.gz);
+      }
+      headers['Content-Length'] = data.length;
+      res.writeHead(200, headers);
       res.end(data);
     } catch {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -774,6 +1015,14 @@ export function createApp(env) {
       const signalen = signalenMet(catMatch[1]);
       return sendJson(res, 200, { signalen, aantal: signalen.length });
     }
+    // 2026-08-27, diagnose-hulp (zie tegelStats hierboven): recente
+    // tegel-verzoeken met aankomsttijd/duur/bron — op elk toestel te openen
+    // als gewone URL, om vanaf de serverkant te zien of trage kaart-opbouw
+    // vóór de server zit (verzoeken komen laat binnen) of erin/erachter
+    // (verzoeken komen meteen binnen maar duren lang).
+    if (url === '/api/tegel-stats') {
+      return sendJson(res, 200, { serverNu: new Date().toISOString(), aantal: tegelStats.length, verzoeken: [...tegelStats].reverse() });
+    }
     const tegelMatch = url.match(/^\/api\/tegel\/(\d+)\/(\d+)\/(\d+)\.png$/);
     if (tegelMatch) {
       return serveTegel(req, res, tegelMatch[1], tegelMatch[2], tegelMatch[3]);
@@ -785,6 +1034,16 @@ export function createApp(env) {
 
     return serveStatic(req, res);
   });
+
+  // 2026-08-27, iPad-analyse: Node's standaard keepAliveTimeout is maar 5s —
+  // elke stilte langer dan dat (en de frontend polt elke 20s) sloot alle
+  // browserverbindingen, zodat een volgende klik op de kaart eerst wéér ~6
+  // verse TCP-verbindingen moest opzetten vóór er ook maar één tegel kon
+  // laden. Ruim boven het 20s-pollritme houdt de verbindingen warm tussen
+  // de cycli door; headersTimeout moet daar per Node-documentatie boven
+  // blijven liggen.
+  server.keepAliveTimeout = 65 * 1000;
+  server.headersTimeout = 70 * 1000;
 
   return { server, startPolling, stopPolling, states };
 }

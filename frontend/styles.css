@@ -112,8 +112,15 @@ body {
    laten kloppen i.p.v. de "negatief"-look die pure invert() geeft — een
    gangbare truc om lichte kaarttegels een donkere-modus-uiterlijk te geven.
    Nooit live gezien op Lex' eigen scherm; als de kleuren/contrast niet
-   kloppen is dit de eerste plek om bij te stellen. */
-#map .leaflet-tile-pane { filter: invert(1) hue-rotate(200deg) brightness(0.95) contrast(0.9) saturate(1.4); }
+   kloppen is dit de eerste plek om bij te stellen.
+   2026-08-27, iPad-freeze-analyse: de filter stond op de HELE tegel-pane —
+   iOS Safari moet dan bij elke pan/zoom(-animatie) de complete pane als één
+   grote offscreen-buffer filteren, wat op een iPad merkbaar kan blokkeren.
+   Nu op elke .leaflet-tile afzonderlijk: alle gebruikte filter-functies
+   (invert/hue-rotate/brightness/contrast/saturate) werken puur per pixel,
+   dus per-tegel filteren geeft EXACT hetzelfde beeld, maar de browser
+   rastert dan kleine 256px-blokjes i.p.v. één reusachtig vlak. */
+#map .leaflet-tile-pane .leaflet-tile { filter: invert(1) hue-rotate(200deg) brightness(0.95) contrast(0.9) saturate(1.4); }
 
 /* 2026-08-20, op verzoek van Lex ("los klikken op de kaart toggelt hele
    gebied, iphone, tot de onderste rij knoppen zoiets" / "de navtexkaart mag
@@ -217,8 +224,10 @@ body {
    ONDER de (deels transparante) seamark-laag nog steeds inverted/donker
    doorschemeren. Zolang Zee-modus aan staat (zie
    kaart.getContainer().classList.toggle('zee-modus-actief', ...) in
-   toggleZeeModus()) die filter hier uitzetten. */
-#map.zee-modus-actief .leaflet-tile-pane { filter: none; }
+   toggleZeeModus()) die filter hier uitzetten.
+   2026-08-27: selector meeveranderd met de per-tegel-filter hierboven
+   (.leaflet-tile i.p.v. de pane zelf) — zelfde uitzetting, nieuwe plek. */
+#map.zee-modus-actief .leaflet-tile-pane .leaflet-tile { filter: none; }
 
 /* 2026-08-20: labels van de Shipping Forecast-zeegebieden (Dogger, Humber,
    German Bight, ...), zie ZEE_GEBIEDEN/bouwZeeGebiedenLaag() in app.js.
