@@ -219,7 +219,13 @@ body {
      achtergrond + blur + schaduw (zelfde familie als de radar-controls-
      knoppen). De actieve tab licht op met het bestaande app-blauw. */
   body.kaart-actief .bottom-nav {
-    bottom: 16px;
+    /* 2026-08-27 (vierde ronde), op verzoek van Lex ("de iconen met de
+       groene balk mogen er onder komen. Niet te veel ruimte creëren"):
+       volgorde omgedraaid — de groene radar-controls-balk staat weer op
+       zijn oude plek tegen de schermonderkant (bottom:6px, zie de
+       teruggedraaide regel hieronder), en de nav-chips zweven er compact
+       net boven: 6px balk-bottom + ±36px balkhoogte + 6px lucht. */
+    bottom: calc(48px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     right: auto;
     transform: translateX(-50%);
@@ -266,17 +272,14 @@ body {
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.75));
     opacity: 1;
   }
-  /* 2026-08-27, op melding van Lex (iPad-screenshot: de zwevende bottom-nav
-     viel over de Regenradar/Satelliet/…-knoppenbalk heen): in deze
-     fullscreen-kaartstand reikt de kaart tot de schermonderkant, dus de
-     radar-controls-balk (bottom:6px, over de volle breedte) en de
-     gecentreerde nav-pil (bottom:16px, 480px breed) deelden letterlijk
-     dezelfde strook. De balk schuift hier boven de nav uit: 16px nav-bottom
-     + ±60px nav-hoogte + 10px lucht. Alleen in deze tablet-kaartstand — op
-     telefoonbreedte reserveert #viewKaart's padding-bottom die ruimte al en
-     overlapt er niets. */
+  /* 2026-08-27 (vierde ronde): de eerdere "balk boven de nav uit"-regel
+     (bottom:88px) is vervangen door het omgekeerde — de balk staat weer op
+     zijn gewone plek onderaan en de NAV is omhoog geschoven (zie de
+     bottom-nav-regel hierboven). Alleen de safe-area-marge blijft hier
+     nodig, zodat de balk op een iPad zonder thuisknop niet achter de
+     home-indicator valt. */
   body.kaart-actief #viewKaart .radar-controls {
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   }
 }
 
