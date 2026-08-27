@@ -1203,24 +1203,31 @@ function centreerOpMelding(signal) {
   // eigen invalidateSize() al is geweest (die stond eerder in de wachtrij,
   // dus draait eerder) -- dan is de containermaat vanaf de eerste weergave
   // al goed.
+  // 2026-08-27 (tweede ronde), op melding van Lex: de 15-16s-freeze kwam
+  // terug bij het AANTIKKEN van een weeralarm — zelfde mechanisme als eerder
+  // bij de Kaart-knop (een geanimeerde pan/zoom die op de iPad vastloopt op
+  // het compositen van de kaartlagen), vermoedelijk verergerd doordat de
+  // verlopen (grijze) pins sinds vandaag weer op de kaart staan en juist
+  // rond NL clusteren, precies waar een weeralarm-klik heen zoomt. Zelfde
+  // bewezen remedie als in gaNaarStart(): animate:false, directe teleport.
   setTimeout(() => {
     if (gebiedBounds && signal.lat != null && signal.lon != null) {
       // Zowel een omtrek als een eigen actuele positie (orkaan) — symmetrisch
       // rond die positie, zie symmetrischeBoundsRondPunt() hierboven.
       beweegKaartProgrammatisch(() => {
-        kaart.fitBounds(symmetrischeBoundsRondPunt(signal.lat, signal.lon, gebiedBounds), { padding: [24, 24] });
+        kaart.fitBounds(symmetrischeBoundsRondPunt(signal.lat, signal.lon, gebiedBounds), { padding: [24, 24], animate: false });
         dwingRegenradarZoomAf(); // fitBounds kan met gemak onder REGENRADAR_ZOOM uitkomen bij een groot gebied
       });
     } else if (gebiedBounds) {
       // Groot gebied zonder eigen "nu"-punt (bv. een NWS-watch-polygon) —
       // gewoon de hele omtrek in beeld.
       beweegKaartProgrammatisch(() => {
-        kaart.fitBounds(gebiedBounds, { padding: [24, 24] });
+        kaart.fitBounds(gebiedBounds, { padding: [24, 24], animate: false });
         dwingRegenradarZoomAf();
       });
     } else if (signal.lat != null && signal.lon != null) {
       const minZoom = signal.categorie === 'hulpdiensten' ? HULPDIENSTEN_ZOOM : 8;
-      beweegKaartProgrammatisch(() => kaart.setView([signal.lat, signal.lon], Math.max(kaart.getZoom(), minZoom)));
+      beweegKaartProgrammatisch(() => kaart.setView([signal.lat, signal.lon], Math.max(kaart.getZoom(), minZoom), { animate: false }));
     }
   }, 0);
   // 2026-08-27, op verzoek van Lex ("dat label even terug zetten") — het
@@ -1361,18 +1368,22 @@ function ververGeselecteerdGebied(signalen) {
   }
   const gebiedBounds = gebiedBoundsVoor(actueel);
   if (!kaart) return;
+  // animate:false (2026-08-27): zelfde teleport-remedie als centreerOpMelding
+  // — dit her-fitten draait tijdens de ververscyclus terwijl je zit te
+  // kijken; juist dan is een iPad-freeze van een geanimeerde fit het
+  // vervelendst.
   if (gebiedBounds && actueel.lat != null && actueel.lon != null) {
     beweegKaartProgrammatisch(() => {
-      kaart.fitBounds(symmetrischeBoundsRondPunt(actueel.lat, actueel.lon, gebiedBounds), { padding: [24, 24] });
+      kaart.fitBounds(symmetrischeBoundsRondPunt(actueel.lat, actueel.lon, gebiedBounds), { padding: [24, 24], animate: false });
       dwingRegenradarZoomAf(); // zelfde reden als bij centreerOpMelding() hierboven
     });
   } else if (gebiedBounds) {
     beweegKaartProgrammatisch(() => {
-      kaart.fitBounds(gebiedBounds, { padding: [24, 24] });
+      kaart.fitBounds(gebiedBounds, { padding: [24, 24], animate: false });
       dwingRegenradarZoomAf();
     });
   } else if (actueel.lat != null && actueel.lon != null) {
-    beweegKaartProgrammatisch(() => kaart.setView([actueel.lat, actueel.lon], kaart.getZoom()));
+    beweegKaartProgrammatisch(() => kaart.setView([actueel.lat, actueel.lon], kaart.getZoom(), { animate: false }));
   }
 }
 
@@ -1909,7 +1920,11 @@ const REGENRADAR_ZOOM = 7;
 // zelf moet met rust blijven. Deze helper wordt daarom alleen aangeroepen
 // vanuit de bestaande programmatische sprongen zelf, nooit los.
 function dwingRegenradarZoomAf() {
-  if (regenradarAan && kaart && kaart.getZoom() < REGENRADAR_ZOOM) kaart.setZoom(REGENRADAR_ZOOM);
+  // animate:false (2026-08-27): loopt in dezelfde klikpaden als de
+  // teleport-fixes in centreerOpMelding()/gaNaarStart() — een geanimeerde
+  // zoomstap er direct achteraan zou de iPad-freeze via de achterdeur
+  // terughalen.
+  if (regenradarAan && kaart && kaart.getZoom() < REGENRADAR_ZOOM) kaart.setZoom(REGENRADAR_ZOOM, { animate: false });
 }
 
 // 2026-08-21, op verzoek van Lex ("ik kan op het play knopje drukken bij de

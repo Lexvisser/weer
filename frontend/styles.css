@@ -594,11 +594,17 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    in de CSS-cascade wint en de gloed/kleur van een actieve melding
    overstemt — geen aparte glow, duidelijk minder opvallend dan actief. */
 .hazard-pin.is-verlopen, .hazard-pin.is-haperend {
-  background: rgba(70,75,88,0.5);
+  /* 2026-08-27 (tweede ronde, iPad-freeze terug na terugkeer van de
+     verlopen pins): backdrop-filter er hier helemaal af — elke pin met
+     backdrop-filter is voor iOS een eigen dure compositor-laag, en verlopen
+     pins kunnen met 48u historie juist met tientallen tegelijk rond NL
+     clusteren. Grijs heeft het frosted-glas-effect toch niet nodig; een
+     iets vollere vaste achtergrondkleur geeft dezelfde leesbaarheid. */
+  background: rgba(58,62,74,0.75);
   border: 1.5px dashed rgba(158,164,178,0.8);
   box-shadow: 0 2px 4px rgba(10,13,22,0.25);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   filter: grayscale(1) brightness(0.85);
   opacity: 0.55;
 }
