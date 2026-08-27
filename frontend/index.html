@@ -85,10 +85,21 @@
            ("Zoom Level Not Supported") boven Nederland, oorzaak nog niet
            gevonden. Tijdelijk uitgezet voor de POC, maar de knop blijft staan
            zodat 'ie zo weer aan te zetten is zodra dat is opgelost. -->
+      <!-- 2026-08-27, op verzoek van Lex ("die groene balk onderbreken en de
+           knoppen er netjes tussen zetten, winnen we ruimte mee"): de balk-
+           inhoud is opgedeeld in twee groepen. Op telefoonbreedte zijn deze
+           wrappers onzichtbaar (display:contents — de kinderen gedragen zich
+           als directe flex-items, exact de oude weergave); in de tablet-
+           kaartstand worden het twee losse groene segmenten links en rechts,
+           met de nav-chips in de opening ertussen — alles op één rij
+           onderaan. Zie .radar-groep in styles.css. -->
+      <div class="radar-groep radar-groep-links">
       <button id="toggleRegenradar" class="radar-label satelliet-toggle">🌧️<span class="knop-tekst"> Regenradar</span></button>
       <button id="radarSpeel">▶</button>
       <span id="radarTijd">—</span>
       <button id="toggleSatelliet" class="satelliet-toggle">🛰️<span class="knop-tekst"> Satelliet</span></button>
+      </div>
+      <div class="radar-groep radar-groep-rechts">
       <!-- 2026-08-20, op verzoek van Lex ("elke icons uitzetten, of een heel
            andere zeekaart") — schakelt om naar een nautische weergave:
            gewone hazard-pins verdwijnen, een OpenSeaMap-vaarwaterlaag komt
@@ -124,6 +135,7 @@
            melding (zie eersteDataMelden() daar). Kom je die melding tegen:
            haal dan gewoon de style="display:none" hieronder weg. -->
       <button id="toggleVaarradar" class="satelliet-toggle" style="display:none">⛴️<span class="knop-tekst"> Vaart</span></button>
+      </div>
       <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
            Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS
            knop ook niet. Die zouden gewoon vanaf hemel naar de kaart moeten

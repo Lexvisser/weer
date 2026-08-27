@@ -219,13 +219,12 @@ body {
      achtergrond + blur + schaduw (zelfde familie als de radar-controls-
      knoppen). De actieve tab licht op met het bestaande app-blauw. */
   body.kaart-actief .bottom-nav {
-    /* 2026-08-27 (vierde ronde), op verzoek van Lex ("de iconen met de
-       groene balk mogen er onder komen. Niet te veel ruimte creëren"):
-       volgorde omgedraaid — de groene radar-controls-balk staat weer op
-       zijn oude plek tegen de schermonderkant (bottom:6px, zie de
-       teruggedraaide regel hieronder), en de nav-chips zweven er compact
-       net boven: 6px balk-bottom + ±36px balkhoogte + 6px lucht. */
-    bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    /* 2026-08-27 (vijfde ronde), op verzoek van Lex ("die groene balk
+       onderbreken en de knoppen er netjes tussen zetten, winnen we ruimte
+       mee"): alles op ÉÉN rij onderaan — de balk is in twee segmenten
+       gesplitst (zie .radar-groep hieronder) en de nav-chips staan in de
+       opening in het midden, op dezelfde bottom als de segmenten. */
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     right: auto;
     transform: translateX(-50%);
@@ -251,13 +250,24 @@ body {
      icoon optisch omhoog). */
   body.kaart-actief .bottom-nav .nav-btn {
     flex: none;
+    /* "dan kunnen ze allemaal even groot zijn" (Lex) — vaste vierkante maat
+       voor alle vier, icoon gecentreerd. */
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    justify-content: center;
     background: none;
     border: 1.5px solid rgba(240,244,255,0.75);
-    border-radius: 14px;
-    padding: 7px 16px 5px;
+    border-radius: 12px;
     box-shadow: 0 0 0 1.5px rgba(10,13,22,0.55);
     color: #f4f6fb;
     text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.6);
+  }
+  /* "de teksten mogen ook helemaal weg" (Lex) — alleen het icoon blijft; de
+     tekstlabel-span (geen class, i.t.t. .icon en .nav-badge) verdwijnt in
+     deze stand. Compactere vierkantjes = kleinere opening nodig in de balk. */
+  body.kaart-actief .bottom-nav .nav-btn > span:not(.icon):not(.nav-badge) {
+    display: none;
   }
   body.kaart-actief .bottom-nav .nav-btn .icon {
     filter: grayscale(1) drop-shadow(0 1px 2px rgba(0,0,0,0.75));
@@ -272,14 +282,43 @@ body {
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.75));
     opacity: 1;
   }
-  /* 2026-08-27 (vierde ronde): de eerdere "balk boven de nav uit"-regel
-     (bottom:88px) is vervangen door het omgekeerde — de balk staat weer op
-     zijn gewone plek onderaan en de NAV is omhoog geschoven (zie de
-     bottom-nav-regel hierboven). Alleen de safe-area-marge blijft hier
-     nodig, zodat de balk op een iPad zonder thuisknop niet achter de
-     home-indicator valt. */
+  /* 2026-08-27 (vijfde ronde): de doorlopende groene balk wordt hier
+     "onderbroken" — de container zelf verliest zijn achtergrond/rand en
+     wordt puur de verdeler (links- en rechtsgroep naar de randen,
+     pointer-events:none zodat de lege middenzone kaart-tikken doorlaat);
+     elk van de twee .radar-groep-wrappers krijgt de oude groene balk-opmaak
+     als eigen segment. max-width houdt het midden vrij voor de nav-chips
+     (~380px breed); wordt een groep breder, dan wrapt 'ie binnen zijn eigen
+     segment omhoog i.p.v. onder de nav te schuiven. */
   body.kaart-actief #viewKaart .radar-controls {
     bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    background: none;
+    border: none;
+    padding: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    justify-content: space-between;
+    align-items: flex-end;
+    pointer-events: none;
+  }
+  body.kaart-actief #viewKaart .radar-controls .radar-groep {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    row-gap: 6px;
+    background: rgba(45,212,191,0.22);
+    border: 1px solid rgba(110,230,215,0.45);
+    border-radius: 9px;
+    padding: 5px 10px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: auto;
+    /* nav is icoon-only nu (~220px breed) — dit houdt het midden vrij */
+    max-width: calc(50% - 130px);
+  }
+  body.kaart-actief #viewKaart .radar-controls .radar-groep-rechts {
+    justify-content: flex-end;
   }
 }
 
@@ -425,6 +464,13 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    (i.p.v. content-breed), en margin-left:auto op de Zee-knop duwt 'm (en
    alleen hem) helemaal naar rechts binnen die balk. */
 #toggleZee { margin-left: auto; }
+/* 2026-08-27: de balk-inhoud zit in twee .radar-groep-wrappers (zie
+   index.html). Op telefoonbreedte doen die niets — display:contents laat de
+   kinderen zich als directe flex-items van .radar-controls gedragen, exact
+   de oude weergave. In de tablet-kaartstand worden het twee losse groene
+   segmenten met de nav-chips ertussen (zie de media query verderop). */
+.radar-controls .radar-groep { display: contents; }
+
 .radar-controls button { border:none; background:#1c2030; color:#f4f6fb; width:22px; height:22px; border-radius:50%; cursor:pointer; font-size:10px; line-height:1; }
 /* Los label vóór de ▶-knop: zonder dit was het niet duidelijk dat deze knop
    bij regenradar hoort (i.t.t. de Satelliet-knop hiernaast, die wel een
