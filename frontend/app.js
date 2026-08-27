@@ -66,6 +66,14 @@ const MELDINGEN_STATUS_EL = document.getElementById('meldingenStatus');
 const NAVTEX_UITLEG_KNOP_EL = document.getElementById('navtexUitlegKnop');
 const NAVTEX_UITLEG_PIJL_EL = document.getElementById('navtexUitlegPijl');
 const NAVTEX_UITLEG_LIJST_EL = document.getElementById('navtexUitlegLijst');
+// 2026-08-27: ruwe-NAVTEX-ontvangst-viewer (tail -f van ~/navtex_berichten.txt
+// via /api/navtex-ruw) — zie openNavtexRuw() verderop.
+const NAVTEX_RUW_KNOP_EL = document.getElementById('toggleNavtexRuw');
+const NAVTEX_RUW_OVERLAY_EL = document.getElementById('navtexRuwOverlay');
+const NAVTEX_RUW_STATUS_EL = document.getElementById('navtexRuwStatus');
+const NAVTEX_RUW_INHOUD_EL = document.getElementById('navtexRuwInhoud');
+const NAVTEX_RUW_TEKST_EL = document.getElementById('navtexRuwTekst');
+const NAVTEX_RUW_SLUITEN_EL = document.getElementById('navtexRuwSluiten');
 const BOTTOM_NAV_EL = document.getElementById('bottomNav');
 const ZONMAAN_KAART_EL = document.getElementById('zonmaanKaart');
 const ZM_OP_EL = document.getElementById('zmOp');
@@ -901,12 +909,89 @@ function eerstvolgendeUitzendingTekst(stationId) {
 // hetzelfde bestaande knop-mechanisme.
 let navtexUitlegSectieUitgeklapt = false;
 
+// ---- Ruwe NAVTEX-ontvangst-viewer (2026-08-27) ------------------------
+// Op verzoek van Lex ("ik heb een systemd naar tail -f
+// ~/navtex_berichten.txt — kan ik de binnenkomende tekst ook tonen in de
+// app?"): de staart van het ruwe decoder-bestand, in de app, tail -f-stijl —
+// oudste boven, nieuwste onderaan, opent onderaan gescrold en ververst elke
+// 10s zolang de viewer openstaat. Als je zelf omhoog gescrold bent om iets
+// terug te lezen, laat een verversing je scrollpositie met rust (alleen
+// "vastgepind" onderaan springt 'ie mee naar het nieuwste — precies zoals
+// een terminal met tail -f aanvoelt). Te openen vanaf twee plekken (keuze
+// van Lex: "beide"): de 📻-knop in Zee-modus en de knop in Instellingen ->
+// NAVTEX-sectie. De 10s-verversing is goedkoop: /api/navtex-ruw geeft ETag +
+// gzip mee (zie server.js), dus een ongewijzigd bestand kost een 304'je.
+const NAVTEX_RUW_VERVERS_MS = 10 * 1000;
+let navtexRuwTimer = null;
+
+async function ververNavtexRuw() {
+  try {
+    const res = await fetch('/api/navtex-ruw').then((r) => r.json());
+    if (res.tekst == null) {
+      NAVTEX_RUW_TEKST_EL.textContent = 'Nog geen ontvangstbestand gevonden op de server (~/navtex_berichten.txt).';
+      NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst';
+      return;
+    }
+    // Vastgepind onderaan? (marge van 40px zodat een klein sleepje niet
+    // meteen als "omhoog gescrold" telt) — alleen dan na het verversen mee
+    // naar het nieuwste springen.
+    const vastgepind =
+      NAVTEX_RUW_INHOUD_EL.scrollHeight - NAVTEX_RUW_INHOUD_EL.scrollTop - NAVTEX_RUW_INHOUD_EL.clientHeight < 40;
+    NAVTEX_RUW_TEKST_EL.textContent = res.tekst || '(bestand is nog leeg)';
+    const tijd = res.bijgewerkt
+      ? new Date(res.bijgewerkt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : '—';
+    NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst · ${Math.round(res.bestandsBytes / 1024)} kB · laatste schrijf ${tijd}`;
+    if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
+  } catch (err) {
+    NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst · server niet bereikbaar';
+    console.warn('[weer] navtex-ruw ophalen mislukt:', err);
+  }
+}
+
+function openNavtexRuw() {
+  if (!NAVTEX_RUW_OVERLAY_EL) return;
+  NAVTEX_RUW_OVERLAY_EL.classList.remove('verborgen');
+  NAVTEX_RUW_TEKST_EL.textContent = 'Ophalen…';
+  NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst';
+  // Eerste keer: na het renderen meteen onderaan beginnen — de "vastgepind"-
+  // check in ververNavtexRuw() is dan al waar (lege inhoud = onderaan).
+  ververNavtexRuw();
+  if (!navtexRuwTimer) navtexRuwTimer = setInterval(ververNavtexRuw, NAVTEX_RUW_VERVERS_MS);
+}
+
+function sluitNavtexRuw() {
+  NAVTEX_RUW_OVERLAY_EL?.classList.add('verborgen');
+  if (navtexRuwTimer) {
+    clearInterval(navtexRuwTimer);
+    navtexRuwTimer = null;
+  }
+}
+
+NAVTEX_RUW_KNOP_EL?.addEventListener('click', openNavtexRuw);
+NAVTEX_RUW_SLUITEN_EL?.addEventListener('click', sluitNavtexRuw);
+
 function renderNavtexUitlegSectie() {
   if (NAVTEX_UITLEG_PIJL_EL) NAVTEX_UITLEG_PIJL_EL.textContent = navtexUitlegSectieUitgeklapt ? '▾' : '▸';
   if (!NAVTEX_UITLEG_LIJST_EL) return;
   NAVTEX_UITLEG_LIJST_EL.style.display = navtexUitlegSectieUitgeklapt ? '' : 'none';
   NAVTEX_UITLEG_LIJST_EL.innerHTML = '';
   if (!navtexUitlegSectieUitgeklapt) return;
+
+  // 2026-08-27: knop naar de ruwe-ontvangst-viewer, ook hier (naast de
+  // 📻-knop in Zee-modus) — keuze van Lex: "beide".
+  const ruwRij = document.createElement('div');
+  ruwRij.className = 'instelling-item';
+  const ruwLabel = document.createElement('span');
+  ruwLabel.textContent = '📻 Ruwe ontvangst (live decoder-tekst)';
+  const ruwKnop = document.createElement('button');
+  ruwKnop.type = 'button';
+  ruwKnop.className = 'alarm-toggle';
+  ruwKnop.textContent = 'BEKIJK';
+  ruwKnop.addEventListener('click', openNavtexRuw);
+  ruwRij.appendChild(ruwLabel);
+  ruwRij.appendChild(ruwKnop);
+  NAVTEX_UITLEG_LIJST_EL.appendChild(ruwRij);
 
   const uitleg = document.createElement('div');
   uitleg.className = 'instellingen-uitleg';
@@ -3117,6 +3202,11 @@ function toggleZeeModus() {
   zeeModusActief = !zeeModusActief;
   TOGGLE_ZEE_EL.classList.toggle('actief', zeeModusActief);
   kaart.getContainer().classList.toggle('zee-modus-actief', zeeModusActief);
+  // 2026-08-27: de 📻-knop (ruwe NAVTEX-ontvangst, zie openNavtexRuw())
+  // hoort bij de zeekaart — alleen tonen in Zee-modus, en de viewer sluiten
+  // als Zee-modus uitgaat zodat de 10s-ververstimer niet blijft doorlopen.
+  if (NAVTEX_RUW_KNOP_EL) NAVTEX_RUW_KNOP_EL.style.display = zeeModusActief ? '' : 'none';
+  if (!zeeModusActief) sluitNavtexRuw();
   if (zeeModusActief) {
     if (!zeeLaag) {
       zeeLaag = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {

@@ -47,7 +47,7 @@
 // GEEN harde "weiger te plotten bij twijfel"-drempel zoals eerder overwogen,
 // wel een `betrouwbaar`-vlag in detail zodat de kaart het ANDERS kan tonen
 // (bv. gedimd) zonder het te verbergen.
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { makeSignal, afstandKm } from '../normalize.js';
@@ -1423,6 +1423,33 @@ function parseBlok(blok) {
   const coords = verwijderUitschieters(coordinatenIn(body));
 
   return { code, station, typeLetter, datum, body, weergaveTekst, coords };
+}
+
+// 2026-08-27, op verzoek van Lex ("ik heb een systemd naar tail -f
+// ~/navtex_berichten.txt — kan ik de binnenkomende tekst ook tonen in de
+// app?") — de staart van het ruwe ontvangstbestand, voor de 📻-viewer in de
+// frontend (zie /api/navtex-ruw in server.js). Leest bewust alleen de
+// laatste maxBytes via een gerichte tail-read (het bestand is append-only en
+// groeit onbeperkt — het hele bestand inlezen zou hier op den duur zonde
+// zijn, en de viewer toont toch alleen het recente stuk). Bij afkappen wordt
+// de halve eerste regel weggegooid zodat de weergave nooit midden in een
+// regel begint. Zelfde pad-logica als fetchNavtexLokaal() hieronder.
+export function leesRuweOntvangst(maxBytes = 64 * 1024) {
+  const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
+  if (!existsSync(bestand)) return { tekst: null, bestandsBytes: 0, bijgewerkt: null };
+  const s = statSync(bestand);
+  const lees = Math.min(maxBytes, s.size);
+  if (lees === 0) return { tekst: '', bestandsBytes: 0, bijgewerkt: s.mtime.toISOString() };
+  const fd = openSync(bestand, 'r');
+  try {
+    const buf = Buffer.alloc(lees);
+    readSync(fd, buf, 0, lees, s.size - lees);
+    let tekst = buf.toString('utf-8').replace(/\r\n/g, '\n');
+    if (lees < s.size) tekst = tekst.slice(tekst.indexOf('\n') + 1);
+    return { tekst, bestandsBytes: s.size, bijgewerkt: s.mtime.toISOString() };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export async function fetchNavtexLokaal(env = {}) {

@@ -82,6 +82,13 @@
            over de kaart, en NAVTEX-berichten (backend/src/sources/navtex.js)
            worden getoond. Zie toggleZeeModus() in app.js. -->
       <button id="toggleZee" class="satelliet-toggle">🌊<span class="knop-tekst"> Zee</span></button>
+      <!-- 2026-08-27, op verzoek van Lex ("kan ik de binnenkomende tekst ook
+           tonen in de app?") — opent de ruwe-NAVTEX-ontvangst-viewer
+           (#navtexRuwOverlay onderaan): de staart van ~/navtex_berichten.txt
+           zoals de decoder 'm schrijft, tail -f-stijl. Alleen zichtbaar in
+           Zee-modus (display via toggleZeeModus() in app.js); dezelfde
+           viewer is ook te openen vanuit Instellingen -> NAVTEX-sectie. -->
+      <button id="toggleNavtexRuw" class="satelliet-toggle" style="display:none;">📻<span class="knop-tekst"> Ontvangst</span></button>
       <!-- 2026-08-21, op verzoek van Lex ("kunnen we een laag flight- en
            vaarradar toevoegen?") — twee "modus"-knoppen, zelfde soort
            aan/uit-gedrag als Zee hierboven maar dan voor live verkeer i.p.v.
@@ -343,6 +350,20 @@
     <button id="labelPopupSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
   </div>
   <div class="label-popup-inhoud" id="labelPopupInhoud"></div>
+</div>
+
+<!-- 2026-08-27, op verzoek van Lex: ruwe-NAVTEX-ontvangst-viewer — de staart
+     van ~/navtex_berichten.txt (via /api/navtex-ruw), tail -f-stijl: oudste
+     boven, nieuwste onderaan, opent onderaan gescrold en ververst elke 10s
+     zolang 'ie openstaat. Zelfde overlay-opmaak als labelPopupOverlay
+     hierboven; eigen inhoud-<pre> voor monospace-weergave. Te openen via de
+     📻-knop in Zee-modus én vanuit Instellingen -> NAVTEX-sectie. -->
+<div class="label-popup-overlay verborgen" id="navtexRuwOverlay">
+  <div class="label-popup-balk">
+    <span class="navtex-ruw-status" id="navtexRuwStatus">—</span>
+    <button id="navtexRuwSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
+  </div>
+  <div class="label-popup-inhoud navtex-ruw-inhoud" id="navtexRuwInhoud"><pre id="navtexRuwTekst"></pre></div>
 </div>
 
 <nav class="bottom-nav" id="bottomNav">

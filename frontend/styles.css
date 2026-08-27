@@ -430,6 +430,14 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .label-popup-tekstgrootte button:disabled { opacity:0.35; cursor:default; }
 .label-popup-sluiten { background:#ff2e6d; color:#fff; font-weight:600; }
 .label-popup-inhoud { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px)); font-family:'JetBrains Mono',monospace; }
+/* 2026-08-27: ruwe-NAVTEX-ontvangst-viewer (#navtexRuwOverlay, zie
+   openNavtexRuw() in app.js) — hergebruikt de label-popup-overlay-opmaak
+   hierboven; alleen de <pre> met de decoder-tekst en het statusregeltje in
+   de balk hebben eigen regels. pre-wrap zodat lange regels niet horizontaal
+   scrollen (op een telefoon onwerkbaar), word-break voor rauwe tekenreeksen
+   zonder spaties (bitfout-rommel kan lang aaneengesloten zijn). */
+.navtex-ruw-inhoud pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; color:#cfe3d8; }
+.navtex-ruw-status { font-family:'JetBrains Mono',monospace; font-size:11px; color:#9fb3c8; align-self:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 /* Basis ('normaal') komt overeen met de oude, compacte Leaflet-popup-opmaak
    (11.5px titel-context, 10px advies-tekst e.d. — zie .popup-titel/.popup-sub/
    .popup-advies hieronder) zodat de inhoud er vertrouwd uitziet; de stappen

@@ -35,7 +35,7 @@ import { fetchLifeliner, lifelinerRapportTekst } from './sources/lifeliner.js';
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -943,6 +943,20 @@ export function createApp(env) {
     // eerstvolgendeUitzending()/renderNavtexUitlegSectie() in app.js voor
     // het gebruik). Alleen de velden die de frontend nodig heeft -- lat/lon/
     // navarea/kleur zijn hier niet relevant.
+    // 2026-08-27, op verzoek van Lex ("kan ik de binnenkomende tekst ook
+    // tonen in de app?") — de staart van het ruwe NAVTEX-ontvangstbestand
+    // (~/navtex_berichten.txt, zie leesRuweOntvangst() in navtexLokaal.js)
+    // voor de 📻-viewer. sendJson geeft dit gzip + ETag mee, dus de
+    // 10s-autoverversing van de viewer kost bij een ongewijzigd bestand
+    // alleen een 304'je.
+    if (url === '/api/navtex-ruw') {
+      try {
+        return sendJson(res, 200, leesRuweOntvangst());
+      } catch (err) {
+        console.error('[weer] /api/navtex-ruw mislukt:', err.message ?? err);
+        return sendJson(res, 500, { fout: 'ruwe ontvangst niet leesbaar' });
+      }
+    }
     if (url === '/api/navtex-stations') {
       return sendJson(res, 200, {
         stations: NAVTEX_STATIONS.map((s) => ({ id: s.id, naam: s.naam, land: s.land, zendschema: s.zendschema })),
