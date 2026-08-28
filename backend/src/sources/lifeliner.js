@@ -128,6 +128,10 @@ export function lifelinerRapportTekst() {
     perDagTekst,
     `${budgetVol.length} tik(ken) overgeslagen omdat het dagbudget al op was.`,
     `${spaarstandOvergeslagen} tik(ken) in spaarstand overgeslagen sinds de laatste herstart (geen credit gekost).`,
+    openskyRestCredits
+      ? `OpenSky meldt zelf: ${openskyRestCredits.waarde} credit(s) over (X-Rate-Limit-Remaining, gezien ${new Date(openskyRestCredits.tijdMs).toISOString()}).`
+      : `OpenSky's eigen X-Rate-Limit-Remaining nog niet gezien sinds de laatste herstart.`,
+    `Modus: ${openskyCredsAanwezig() ? 'geauthenticeerd (API-client, 4000/dag)' : 'anoniem (~400/dag)'}.`,
     `${fouten.length} mislukte aanvraag/aanvragen (${regels.filter((p) => p.uitkomst === '429').length} × 429).`,
     regels.length ? `Eerste regel in dit venster: ${new Date(regels[0].tijdMs).toISOString()}` : null,
     regels.length ? `Laatste regel in dit venster: ${new Date(regels[regels.length - 1].tijdMs).toISOString()}` : null,
@@ -185,7 +189,12 @@ function stuurRapportBijNood(statusCode) {
 // betalen, en voor het feit dat de exacte limiet nooit officieel door
 // OpenSky gedocumenteerd is (uit eerdere 429-ervaringen afgeleid, niet uit
 // hun docs). Aanpasbaar via `OPENSKY_DAG_BUDGET` in .env zonder codewijziging.
-const OPENSKY_DAG_BUDGET = Number(process.env.OPENSKY_DAG_BUDGET ?? 300);
+// 2026-08-28: standaard-budget hangt nu af van de modus — met de OpenSky
+// API-client (zie openskyAuthHeaders() verderop; functie-hoisting maakt de
+// aanroep hier veilig) is het dagbudget 4.000, waarvan we er 3.500 nemen als
+// eigen marge; anoniem blijft de oude voorzichtige 300 onder de ~400 staan.
+// OPENSKY_DAG_BUDGET in .env overschrijft beide.
+const OPENSKY_DAG_BUDGET = Number(process.env.OPENSKY_DAG_BUDGET ?? (openskyCredsAanwezig() ? 3500 : 300));
 let budgetDatumUtc = null; // "2026-08-21" — resetpunt
 let creditsVandaag = 0;
 let laatsteSignalen = [];
@@ -356,6 +365,73 @@ function boundingBox(lat, lon, straalKm) {
 // van ~45 min kost er ~90 extra — twee missies op een dag passen dan nog
 // steeds ruim binnen het 300-budget, waar het oude gedrag al vóór de middag
 // droog stond.
+// ---- OpenSky OAuth2 (2026-08-28) -------------------------------------------
+// Op initiatief van Lex (gratis OpenSky-account 'lexvis' aangemaakt): een
+// geregistreerde API-client heeft 4.000 credits/dag i.p.v. de ~400 anoniem —
+// en als hij later gaat feeden wordt dat vanzelf 8.000, zonder codewijziging
+// hier (zelfde credentials, OpenSky hoogt server-side op). Zet in .env:
+//   OPENSKY_CLIENT_ID=...        (uit "Create & Download Credential" op de
+//   OPENSKY_CLIENT_SECRET=...     accountpagina — het bestandje credentials.json)
+// Zonder deze twee draait alles gewoon anoniem door zoals voorheen — geen
+// harde afhankelijkheid, zelfde sleutelloos-terugval-patroon als de rest.
+// Token via client_credentials op OpenSky's Keycloak; ~30 min geldig, wordt
+// 60s vóór het verlopen ververst. Een 401 (ingetrokken/verlopen token)
+// gooit de cache weg zodat de eerstvolgende poll een verse haalt.
+const OPENSKY_TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
+let openskyToken = null; // { token, verlooptMs }
+
+function openskyCredsAanwezig() {
+  return Boolean(process.env.OPENSKY_CLIENT_ID && process.env.OPENSKY_CLIENT_SECRET);
+}
+
+async function openskyAuthHeaders() {
+  if (!openskyCredsAanwezig()) return {};
+  const nu = Date.now();
+  if (openskyToken && nu < openskyToken.verlooptMs - 60 * 1000) {
+    return { Authorization: `Bearer ${openskyToken.token}` };
+  }
+  try {
+    const res = await fetch(OPENSKY_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: process.env.OPENSKY_CLIENT_ID,
+        client_secret: process.env.OPENSKY_CLIENT_SECRET,
+      }).toString(),
+    });
+    if (!res.ok) throw new Error(`token-endpoint gaf status ${res.status}`);
+    const body = await res.json();
+    if (!body.access_token) throw new Error('token-endpoint gaf geen access_token');
+    openskyToken = { token: body.access_token, verlooptMs: nu + (Number(body.expires_in) || 1800) * 1000 };
+    console.log(`[weer] lifeliner: OpenSky OAuth2-token opgehaald (geldig ~${Math.round(((Number(body.expires_in) || 1800)) / 60)} min)`);
+    return { Authorization: `Bearer ${openskyToken.token}` };
+  } catch (err) {
+    // Token-probleem mag een poll nooit blokkeren — anoniem verder (minder
+    // budget, maar werkend), en de volgende poll probeert het gewoon opnieuw.
+    console.error('[weer] lifeliner: OpenSky-token ophalen mislukt, deze poll anoniem:', err.message ?? err);
+    return {};
+  }
+}
+
+// OpenSky stuurt bij elke respons zelf de resterende credits mee
+// (X-Rate-Limit-Remaining, zie de accountpagina) — dat is de wáre stand,
+// onze eigen teller is maar een schaduwboekhouding. We onthouden de laatst
+// geziene waarde voor het rapport; zakt 'ie naar 0, dan loggen we dat
+// expliciet (de eigen dagbudget-rem hieronder blijft de echte handrem).
+let openskyRestCredits = null; // { waarde, tijdMs }
+
+function noteerRestCredits(res) {
+  const ruw = res.headers?.get?.('x-rate-limit-remaining');
+  const waarde = Number(ruw);
+  if (ruw != null && Number.isFinite(waarde)) {
+    if (waarde <= 0 && (openskyRestCredits?.waarde ?? 1) > 0) {
+      console.warn('[weer] lifeliner: OpenSky meldt 0 resterende credits voor vandaag');
+    }
+    openskyRestCredits = { waarde, tijdMs: Date.now() };
+  }
+}
+
 const LIFELINER_HEARTBEAT_MS = Number(process.env.LIFELINER_HEARTBEAT_MS ?? 10 * 60 * 1000);
 const MMT_TRIGGER_VENSTER_MS = 15 * 60 * 1000; // spiegel van LIFELINER_TRIGGER_VENSTER_MS in server.js
 const ACTIEF_NA_VLUCHT_MS = 10 * 60 * 1000; // na de laatste in-de-lucht-waarneming nog even snel blijven volgen (landing/doorstart)
@@ -376,8 +452,12 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
   const { lamin, lamax, lomin, lomax } = boundingBox(homeLat, homeLon, STRAAL_KM);
 
   const url = `${STATES_URL}?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: await openskyAuthHeaders() });
+  noteerRestCredits(res);
   if (!res.ok) {
+    // 401 met credentials = token verlopen/ingetrokken — cache weggooien
+    // zodat de eerstvolgende poll een verse haalt.
+    if (res.status === 401 && openskyCredsAanwezig()) openskyToken = null;
     loggeer(res.status === 429 ? '429' : 'fout');
     // 2026-08-23, op verzoek van Lex: precies bij een 429 het poll-rapport
     // mailen — dat is het moment waarop er iets te verbeteren valt aan het
