@@ -4957,7 +4957,16 @@ function stopKaartVolgen(terugNaarHemel) {
 function groepeerStationSignalen(lijst) {
   const groepen = new Map();
   lijst.forEach((s) => {
-    if (!s.detail?.positieIsStation) return;
+    // 2026-08-28-verbreed, op melding van Lex ("aan de versterkte gloed te
+    // zien lijkt het alsof er een aantal over elkaar heen staan"): de
+    // groepering gold alleen voor zendmast-terugval, maar het echte bestand
+    // stapelt ook op BERICHTposities — zes PA-berichten over dezelfde
+    // werklocatie op exact dezelfde coördinaat, en corrupte duplicaten van
+    // één bericht onder meerdere codes (A82/VA11/EA82, zelfde Goodwin-
+    // waarschuwing). Nu geldt de één-marker-met-lijstje-aanpak voor elke
+    // NAVTEX-stapel op exact dezelfde positie; andere categorieën blijven
+    // erbuiten (een aardbeving mag nooit in een navtex-groepje verdwijnen).
+    if (s.categorie !== 'navtex') return;
     const sleutel = `${s.lat},${s.lon}`;
     if (!groepen.has(sleutel)) groepen.set(sleutel, []);
     groepen.get(sleutel).push(s);
@@ -4994,7 +5003,12 @@ function navtexGroepPopupHtml(s) {
       return `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} - ${kenmerkTekst}${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`;
     })
     .join('');
-  return `<div class="popup-groep"><div class="popup-groep-kop">+${s._groepMeer.length} ander(e) bericht(en) van dit station</div>${items}</div>`;
+  // 2026-08-28: de groepering dekt nu ook stapels op een berichtpositie
+  // (zie groepeerStationSignalen) — dan klopt "van dit station" niet meer.
+  const kop = s.detail?.positieIsStation
+    ? `+${s._groepMeer.length} ander(e) bericht(en) van dit station`
+    : `+${s._groepMeer.length} ander(e) bericht(en) op deze positie`;
+  return `<div class="popup-groep"><div class="popup-groep-kop">${kop}</div>${items}</div>`;
 }
 
 function renderMap(signalen) {
