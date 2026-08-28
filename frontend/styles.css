@@ -219,28 +219,28 @@ body {
      achtergrond + blur + schaduw (zelfde familie als de radar-controls-
      knoppen). De actieve tab licht op met het bestaande app-blauw. */
   body.kaart-actief .bottom-nav {
-    /* 2026-08-27 (vijfde ronde), op verzoek van Lex ("die groene balk
-       onderbreken en de knoppen er netjes tussen zetten, winnen we ruimte
-       mee"): alles op ÉÉN rij onderaan — de balk is in twee segmenten
-       gesplitst (zie .radar-groep hieronder) en de nav-chips staan in de
-       opening in het midden, op dezelfde bottom als de segmenten. */
-    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
+    /* 2026-08-27 (vijfde ronde): de nav-chips stonden in de opening midden
+       in de gesplitste groene balk.
+       2026-08-28-herzien, op verzoek van Lex ("kan je alleen op de iPad de
+       4 hoofdknoppen aan de rechterkant tonen? daar staan ze altijd
+       storend"): midden-onder ligt precies boven zijn thuisgebied op de
+       kaart — nu een verticale kolom tegen de rechterrand, net boven de
+       groene balk. De balk-segmenten hoeven het midden daardoor niet meer
+       vrij te houden (zie max-width bij .radar-groep hieronder). */
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    left: auto;
+    right: 8px;
+    transform: none;
     max-width: none;
     width: auto;
+    flex-direction: column;
     background: none;
     border-top: none;
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    /* 2026-08-27 ("alle knoppen onderaan uitlijnen"): geen extra safe-area-
-       padding meer BINNEN de nav — de bottom hierboven rekent 'm al mee, en
-       dubbel geteld hingen de vierkantjes hoger dan de groene segmenten
-       (die de marge maar één keer hebben). */
     padding: 0;
-    gap: 12px;
+    gap: 10px;
   }
   /* 2026-08-27 (derde ronde), op verzoek van Lex ("een outline van de knop
      en helemaal geen vulling" + zijn Land/Zee-screenshots): het glas-vlak is
@@ -318,8 +318,10 @@ body {
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     pointer-events: auto;
-    /* nav is icoon-only nu (~220px breed) — dit houdt het midden vrij */
-    max-width: calc(50% - 130px);
+    /* 2026-08-28: de nav-chips staan nu rechts als kolom (zie .bottom-nav
+       hierboven) — het midden hoeft niet meer vrijgehouden, alleen nog een
+       kleine naad tussen de twee segmenten zelf. */
+    max-width: calc(50% - 8px);
   }
   body.kaart-actief #viewKaart .radar-controls .radar-groep-rechts {
     justify-content: flex-end;
