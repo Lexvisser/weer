@@ -36,7 +36,21 @@
 // moet vertaalRecord() hieronder bijgesteld worden.
 import { afstandKm } from '../normalize.js';
 
-const BASIS_URL = 'https://api.adsb.lol/v2/point';
+// 2026-08-28, op melding van Lex ("met die vliegradar is het ook behelpen
+// met de polls"): niet meer aan één community-bron hangen. adsb.lol blijft
+// de eerste keus (live bevestigd werkend), maar airplanes.live staat er nu
+// als vangnet achter — zelfde re-api/readsb-stack, zelfde /v2/point-URL-vorm
+// en (aangenomen, zie de eerlijke waarschuwing bovenaan; het
+// voorbeeldrecord-log bevestigt het live) hetzelfde ac[]-veldformaat. Elke
+// bron heeft een EIGEN afkoelperiode: hapert adsb.lol, dan neemt
+// airplanes.live het naadloos over i.p.v. dat de radar bevriest; pas als
+// beide in de afkoelperiode zitten krijgt de app een foutmelding. Snelle
+// controle vanaf de Minisforum:
+//   curl -s https://api.airplanes.live/v2/point/52.09/5.12/50 | head -c 300
+const BRONNEN = [
+  { naam: 'adsb.lol', basis: 'https://api.adsb.lol/v2/point' },
+  { naam: 'airplanes.live', basis: 'https://api.airplanes.live/v2/point' },
+];
 const MAX_STRAAL_NM = 250; // zelfde bovengrens als bij adsb.fi voor deze endpoint-vorm
 // 2026-08-21: 8000 -> 3000, in lijn met RADAR_POLL_MS in frontend/app.js
 // (Lex: "kan het nog sneller"). Blijft ruim onder adsb.lol's eigen limiet
@@ -73,8 +87,20 @@ const BACKOFF_MAX_MS = 60000;
 // backoff bleef het continu falen (live meegekeken via journalctl -f), MET
 // backoff herstelde het eerder vanzelf binnen een paar minuten. Dus weer aan.
 const BACKOFF_INGESCHAKELD = true;
-let backoffMs = 0;
-let backoffTotMs = 0;
+// 2026-08-28: afkoelstaat per bron i.p.v. één globale — zie BRONNEN hierboven.
+const backoffPerBron = new Map(); // naam -> { backoffMs, totMs }
+
+function bronInAfkoeling(bron, nu) {
+  const staat = backoffPerBron.get(bron.naam);
+  return BACKOFF_INGESCHAKELD && staat && nu < staat.totMs;
+}
+
+function noteerBronFout(bron) {
+  const staat = backoffPerBron.get(bron.naam) ?? { backoffMs: 0, totMs: 0 };
+  staat.backoffMs = staat.backoffMs ? Math.min(staat.backoffMs * 2, BACKOFF_MAX_MS) : BACKOFF_START_MS;
+  staat.totMs = Date.now() + staat.backoffMs;
+  backoffPerBron.set(bron.naam, staat);
+}
 
 function kmNaarNm(km) {
   return km * 0.539957;
@@ -103,12 +129,6 @@ export async function fetchVliegradar({ lat, lon, straalKm }) {
   const nu = Date.now();
   if (bestaand && nu - bestaand.tijdMs < CACHE_MS) return bestaand.data;
 
-  if (BACKOFF_INGESCHAKELD && nu < backoffTotMs) {
-    throw new Error(
-      `adsb.lol tijdelijk overgeslagen (afkoelperiode na eerdere fout, nog ${Math.ceil((backoffTotMs - nu) / 1000)}s)`
-    );
-  }
-
   const straalNm = Math.min(MAX_STRAAL_NM, Math.max(1, Math.round(kmNaarNm(straalKm))));
   // 2026-08-21-fix, op verzoek van Lex ("raar voor een 429 probleem toch?" —
   // terecht: het faalde steevast na 3-4 verzoeken, ook na minuten wachten
@@ -126,50 +146,62 @@ export async function fetchVliegradar({ lat, lon, straalKm }) {
   // het onderliggende verzoek desnoods op de achtergrond gewoon netjes laten
   // uitlopen/falen i.p.v. het abrupt te kappen. Plus Connection: close zodat
   // de verbinding sowieso niet hergebruikt wordt.
-  const fetchPromise = fetch(`${BASIS_URL}/${lat}/${lon}/${straalNm}`, {
-    headers: {
-      'User-Agent': 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)',
-      Connection: 'close',
-    },
-  });
-  // Als dit verzoek de race hieronder verliest (timeout), loopt het op de
-  // achtergrond gewoon door totdat het zelf afrondt — en als het dán alsnog
-  // faalt, moet die afwijzing ergens "opgevangen" worden, anders ziet Node
-  // dat als een onafgehandelde promise-rejection (kan het hele proces laten
-  // crashen). Dit vangt 'm stil af; de ECHTE foutafhandeling/backoff hieronder
-  // loopt gewoon via de timeoutPromise-tak van de race, dit is puur opruimen.
-  fetchPromise.catch(() => {});
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('adsb.lol antwoordde niet binnen 10s')), 10000);
-  });
-  try {
-    const res = await Promise.race([fetchPromise, timeoutPromise]);
-    if (!res.ok) throw new Error(`adsb.lol gaf HTTP ${res.status}`);
-    const body = await res.json();
-    const ruwLijst = Array.isArray(body?.ac) ? body.ac : [];
-
-    if (voorbeeldenGelogd < 3 && ruwLijst.length) {
-      voorbeeldenGelogd++;
-      console.log(`[weer] vliegradar: voorbeeldrecord ${voorbeeldenGelogd}: ${JSON.stringify(ruwLijst[0]).slice(0, 300)}`);
+  // 2026-08-28: bronnen op volgorde proberen — de eerste die niet in zijn
+  // afkoelperiode zit én een goed antwoord geeft, wint. Fouten zetten alleen
+  // de afkoelperiode van DIE bron; de volgende bron krijgt meteen de kans.
+  const fouten = [];
+  for (const bron of BRONNEN) {
+    if (bronInAfkoeling(bron, nu)) {
+      const staat = backoffPerBron.get(bron.naam);
+      fouten.push(`${bron.naam}: afkoelperiode, nog ${Math.ceil((staat.totMs - nu) / 1000)}s`);
+      continue;
     }
+    const fetchPromise = fetch(`${bron.basis}/${lat}/${lon}/${straalNm}`, {
+      headers: {
+        'User-Agent': 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)',
+        Connection: 'close',
+      },
+    });
+    // Als dit verzoek de race hieronder verliest (timeout), loopt het op de
+    // achtergrond gewoon door totdat het zelf afrondt — en als het dán alsnog
+    // faalt, moet die afwijzing ergens "opgevangen" worden, anders ziet Node
+    // dat als een onafgehandelde promise-rejection (kan het hele proces laten
+    // crashen). Dit vangt 'm stil af; de ECHTE foutafhandeling/backoff
+    // hieronder loopt gewoon via de timeoutPromise-tak van de race.
+    fetchPromise.catch(() => {});
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`${bron.naam} antwoordde niet binnen 10s`)), 10000);
+    });
+    try {
+      const res = await Promise.race([fetchPromise, timeoutPromise]);
+      if (!res.ok) throw new Error(`${bron.naam} gaf HTTP ${res.status}`);
+      const body = await res.json();
+      const ruwLijst = Array.isArray(body?.ac) ? body.ac : [];
 
-    const vliegtuigen = ruwLijst
-      .map((ac) => vertaalRecord(ac, lat, lon))
-      .filter(Boolean)
-      .filter((v) => v.afstandKm <= straalKm);
+      if (voorbeeldenGelogd < 3 && ruwLijst.length) {
+        voorbeeldenGelogd++;
+        console.log(`[weer] vliegradar: voorbeeldrecord ${voorbeeldenGelogd} (${bron.naam}): ${JSON.stringify(ruwLijst[0]).slice(0, 300)}`);
+      }
 
-    const data = { bijgewerkt: new Date().toISOString(), vliegtuigen, bron: 'adsb.lol' };
+      const vliegtuigen = ruwLijst
+        .map((ac) => vertaalRecord(ac, lat, lon))
+        .filter(Boolean)
+        .filter((v) => v.afstandKm <= straalKm);
 
-    if (cache.size >= CACHE_MAX) {
-      const oudsteSleutel = cache.keys().next().value; // Map bewaart invoegvolgorde — oudste eerst
-      cache.delete(oudsteSleutel);
+      const data = { bijgewerkt: new Date().toISOString(), vliegtuigen, bron: bron.naam };
+
+      if (cache.size >= CACHE_MAX) {
+        const oudsteSleutel = cache.keys().next().value; // Map bewaart invoegvolgorde — oudste eerst
+        cache.delete(oudsteSleutel);
+      }
+      cache.set(sleutel, { data, tijdMs: nu });
+      backoffPerBron.delete(bron.naam); // succes — afkoelperiode meteen weer resetten
+      return data;
+    } catch (err) {
+      noteerBronFout(bron);
+      fouten.push(`${bron.naam}: ${err.message ?? err}`);
+      // door naar de volgende bron
     }
-    cache.set(sleutel, { data, tijdMs: nu });
-    backoffMs = 0; // succesvol verzoek — afkoelperiode meteen weer resetten
-    return data;
-  } catch (err) {
-    backoffMs = backoffMs ? Math.min(backoffMs * 2, BACKOFF_MAX_MS) : BACKOFF_START_MS;
-    backoffTotMs = Date.now() + backoffMs;
-    throw err;
   }
+  throw new Error(`alle vliegradar-bronnen falen — ${fouten.join(' | ')}`);
 }
