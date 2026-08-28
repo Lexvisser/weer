@@ -1116,7 +1116,16 @@ async function ververNavtexRuw() {
     // naar het nieuwste springen.
     const vastgepind =
       NAVTEX_RUW_INHOUD_EL.scrollHeight - NAVTEX_RUW_INHOUD_EL.scrollTop - NAVTEX_RUW_INHOUD_EL.clientHeight < 40;
-    NAVTEX_RUW_TEKST_EL.textContent = res.tekst || '(bestand is nog leeg)';
+    // 2026-08-28, op verzoek van Lex ("de begintijd ervoor en streep
+    // eronder — groter font/kleur zal wel niet kunnen met txt"): in het
+    // .txt-bestand niet, maar hier wél. De backend geeft per ZCZC-blok de
+    // begintijd mee (zie blokken/ruweBlokTijden in navtexLokaal.js); elke
+    // blokstart krijgt een kopregel — groter, feller groen, streep eronder.
+    // Een blok dat nog geen geregistreerde tijd heeft (jonger dan de
+    // 2-minuten-pollcyclus, of ouder dan het register) krijgt alleen de
+    // streep. Opbouw via escapeHtml per stuk — de ruwe tekst zelf blijft
+    // altijd data, nooit HTML.
+    NAVTEX_RUW_TEKST_EL.innerHTML = bouwRuweOntvangstHtml(res.tekst || '(bestand is nog leeg)', res.blokken ?? []);
     const tijd = res.bijgewerkt
       ? new Date(res.bijgewerkt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       : '—';
@@ -1133,6 +1142,26 @@ async function ververNavtexRuw() {
 // `=== true`-check omdat openNavtexRuw ook direct als click-handler hangt en
 // dan een (truthy) event-object als eerste argument meekrijgt.
 let navtexRuwGeopendDoorAuto = false;
+
+// Zie de toelichting in ververNavtexRuw() — kopregel met begintijd + streep
+// per ZCZC-blok. `blokken` = [{offset, tijd}] met offsets binnen `tekst`,
+// oplopend gesorteerd door de backend.
+function bouwRuweOntvangstHtml(tekst, blokken) {
+  const geldig = blokken.filter((b) => Number.isFinite(b?.offset) && b.offset >= 0 && b.offset <= tekst.length);
+  if (!geldig.length) return escapeHtml(tekst);
+  let html = '';
+  let vorige = 0;
+  geldig.forEach((blok) => {
+    if (blok.offset > vorige) html += escapeHtml(tekst.slice(vorige, blok.offset));
+    const tijdTekst = blok.tijd
+      ? new Date(blok.tijd).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : null;
+    html += `<span class="ruw-blok-kop">${tijdTekst ? `▸ ontvangen ${escapeHtml(tijdTekst)}` : '▸'}</span>`;
+    vorige = blok.offset;
+  });
+  html += escapeHtml(tekst.slice(vorige));
+  return html;
+}
 
 function openNavtexRuw(doorAuto) {
   if (!NAVTEX_RUW_OVERLAY_EL) return;

@@ -566,6 +566,10 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    dieper zwart met een groenzweem zodat het echt als één beeldbuis oogt
    i.p.v. groene letters op de standaard app-achtergrond. */
 .navtex-ruw-inhoud { background:#030a05; }
+/* 2026-08-28, op verzoek van Lex: kopregel per bericht in de viewer — de
+   begintijd ervoor en een streep eronder, groter en feller dan de
+   berichttekst (wat in het .txt-bestand zelf nooit had gekund). */
+.navtex-ruw-inhoud .ruw-blok-kop { display:block; margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid rgba(59,255,124,0.55); font-size:14px; font-weight:700; color:#8fffb4; letter-spacing:0.03em; text-shadow:0 0 6px rgba(59,255,124,0.6); }
 .navtex-ruw-inhoud pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.55), 0 0 9px rgba(59,255,124,0.22); }
 .navtex-ruw-status { font-family:'JetBrains Mono',monospace; font-size:11px; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.45); align-self:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 

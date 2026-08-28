@@ -1434,6 +1434,68 @@ function parseBlok(blok) {
 // zijn, en de viewer toont toch alleen het recente stuk). Bij afkappen wordt
 // de halve eerste regel weggegooid zodat de weergave nooit midden in een
 // regel begint. Zelfde pad-logica als fetchNavtexLokaal() hieronder.
+// ---- Begintijden van ruwe blokken (2026-08-28) -------------------------
+// Op verzoek van Lex ("kan je achteraf in dat tekstfile de begintijd er nog
+// voor zetten, en streep eronder"): het bronbestand zelf blijft bewust rauw
+// (de decoder schrijft er live in — er tussendoor schrijven geeft races, en
+// het bestand-ertussen-patroon is juist de kracht), maar de VIEWER kan per
+// bericht een kopregel tonen — en die kan daar wél groter en in kleur, wat
+// in een .txt nooit had gekund. Hiervoor onthouden we per ZCZC-blok de
+// BESTANDSPOSITIE waar het begint en wanneer we het voor het eerst zagen.
+// De positie is het ankerpunt: het bestand is append-only, dus een offset
+// verandert nooit meer — en herhaalde uitzendingen van exact hetzelfde
+// bericht krijgen zo elk hun eigen begintijd (elke herhaling staat immers
+// op een nieuwe positie). Nauwkeurigheid = de pollcyclus van deze bron
+// (2 min), ruim genoeg voor "wanneer kwam dit binnen".
+// Zelfde persistentie-patroon als EERSTE_ONTVANGST_BESTAND hierboven.
+// Offsets zijn tekenposities in de utf-8-tekst; de decoder-uitvoer is
+// (SITOR-B) puur ASCII, dus teken- en bytepositie vallen samen — mocht er
+// ooit een multibyte-teken insluipen, dan verschuift een kopregel hooguit
+// een paar tekens, nooit fataal.
+const RUW_TIJDEN_BESTAND = path.join(homedir(), 'navtex_ruw_tijden.json');
+const RUW_TIJDEN_MAX = 800;
+
+let ruweBlokTijden = (() => {
+  try {
+    if (!existsSync(RUW_TIJDEN_BESTAND)) return [];
+    const ruw = JSON.parse(readFileSync(RUW_TIJDEN_BESTAND, 'utf-8'));
+    return Array.isArray(ruw) ? ruw.filter((b) => Number.isFinite(b?.offset) && b?.tijd) : [];
+  } catch (err) {
+    console.error('[weer] navtexLokaal: ruw-tijden-bestand niet leesbaar, begin leeg:', err.message ?? err);
+    return [];
+  }
+})();
+
+// Aangeroepen vanuit fetchNavtexLokaal() met de zojuist gelezen RAUWE tekst
+// (vóór elke normalisatie, zodat de offsets bij het bestand blijven horen).
+function registreerRuweBlokTijden(ruweTekst) {
+  try {
+    // Bestand gekrompen (handmatig geleegd/geroteerd)? Dan kloppen alle
+    // onthouden posities niet meer — opnieuw beginnen.
+    if (ruweBlokTijden.length && ruweBlokTijden[ruweBlokTijden.length - 1].offset >= ruweTekst.length) {
+      ruweBlokTijden = [];
+    }
+    const bekend = new Set(ruweBlokTijden.map((b) => b.offset));
+    const re = /ZCZC/g;
+    const nu = new Date().toISOString();
+    let m;
+    let nieuw = false;
+    while ((m = re.exec(ruweTekst)) !== null) {
+      if (!bekend.has(m.index)) {
+        ruweBlokTijden.push({ offset: m.index, tijd: nu });
+        nieuw = true;
+      }
+    }
+    if (nieuw) {
+      ruweBlokTijden.sort((a, b) => a.offset - b.offset);
+      if (ruweBlokTijden.length > RUW_TIJDEN_MAX) ruweBlokTijden = ruweBlokTijden.slice(-RUW_TIJDEN_MAX);
+      writeFileSync(RUW_TIJDEN_BESTAND, JSON.stringify(ruweBlokTijden), 'utf-8');
+    }
+  } catch (err) {
+    console.error('[weer] navtexLokaal: ruw-tijden bijwerken mislukt:', err.message ?? err);
+  }
+}
+
 // 2026-08-27 (vervolg): alleen de bestandsstatus, zonder de inhoud te lezen
 // — voor de AUTO-schakelmonitor in de frontend (zie zorgNavtexAutoMonitor()
 // in app.js), die elke ~10s alleen wil weten OF het bestand groeit. Een kale
@@ -1457,8 +1519,20 @@ export function leesRuweOntvangst(maxBytes = 64 * 1024) {
     const buf = Buffer.alloc(lees);
     readSync(fd, buf, 0, lees, s.size - lees);
     let tekst = buf.toString('utf-8').replace(/\r\n/g, '\n');
-    if (lees < s.size) tekst = tekst.slice(tekst.indexOf('\n') + 1);
-    return { tekst, bestandsBytes: s.size, bijgewerkt: s.mtime.toISOString() };
+    let weggeknipt = 0;
+    if (lees < s.size) {
+      const knip = tekst.indexOf('\n') + 1;
+      weggeknipt = Buffer.byteLength(tekst.slice(0, knip));
+      tekst = tekst.slice(knip);
+    }
+    // 2026-08-28: begintijden van de blokken in dit staartstuk meegeven —
+    // offsets omgerekend van bestandspositie naar positie binnen `tekst`
+    // (zie ruweBlokTijden hierboven). De viewer tekent er kopregels mee.
+    const startInBestand = s.size - lees + weggeknipt;
+    const blokken = ruweBlokTijden
+      .filter((b) => b.offset >= startInBestand && b.offset < s.size)
+      .map((b) => ({ offset: b.offset - startInBestand, tijd: b.tijd }));
+    return { tekst, bestandsBytes: s.size, bijgewerkt: s.mtime.toISOString(), blokken };
   } finally {
     closeSync(fd);
   }
@@ -1475,7 +1549,11 @@ export async function fetchNavtexLokaal(env = {}) {
     return [];
   }
 
-  const tekst = readFileSync(bestand, 'utf-8').replace(/\r\n/g, '\n');
+  const ruweTekst = readFileSync(bestand, 'utf-8');
+  // 2026-08-28: begintijden per ruw blok bijhouden vóór elke normalisatie,
+  // zodat de offsets bij het bestand blijven horen (zie registreerRuweBlokTijden).
+  registreerRuweBlokTijden(ruweTekst);
+  const tekst = ruweTekst.replace(/\r\n/g, '\n');
   const blokken = segmenteerBerichten(tekst);
   const ruweBerichten = blokken.map(parseBlok).filter(Boolean);
   const berichten = consolideerOpInhoud(smeltSamenOpBesteVersie(ruweBerichten));
