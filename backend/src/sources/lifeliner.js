@@ -29,6 +29,7 @@
 // PC meteen te zien is of de match iets oplevert.
 import { makeSignal, afstandKm } from '../normalize.js';
 import { stuurMailAlarm } from './email.js';
+import { msSindsLaatsteMMTMelding } from './p2000.js';
 import { readFileSync, mkdirSync, existsSync, writeFile } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -105,11 +106,28 @@ export function lifelinerRapportTekst() {
       .map(([uur, n]) => `  ${uur}:00 UTC - ${n} poll(s)`)
       .join('\n') || '  (geen polls in dit venster)';
 
+  // 2026-08-28, na Lex' vraag over het 401-getal: het rollende venster kan
+  // TWEE UTC-dagen overspannen, waardoor de venstersom boven het dagbudget
+  // uit kan komen zonder dat één dag eroverheen ging. Daarom nu ook de som
+  // per UTC-dag — dat is het getal dat echt naast het dagbudget hoort.
+  const perDag = new Map(); // "2026-08-23" -> aantal credits
+  polls.forEach((p) => {
+    const dagKey = new Date(p.tijdMs).toISOString().slice(0, 10);
+    perDag.set(dagKey, (perDag.get(dagKey) ?? 0) + 1);
+  });
+  const perDagTekst = [...perDag.entries()]
+    .sort()
+    .map(([dag, n]) => `  ${dag}: ${n} credit(s)`)
+    .join('\n') || '  (geen)';
+
   return [
     `Lifeliner-poll-rapport - rollend venster van de laatste 24 uur.`,
     ``,
-    `${polls.length} credit(s) verbruikt bij OpenSky (dagbudget: ${OPENSKY_DAG_BUDGET}/dag, reset 00:00 UTC).`,
+    `${polls.length} credit(s) verbruikt in dit venster (let op: het venster kan twee UTC-dagen overspannen).`,
+    `Per UTC-dag (dagbudget ${OPENSKY_DAG_BUDGET}/dag, reset 00:00 UTC):`,
+    perDagTekst,
     `${budgetVol.length} tik(ken) overgeslagen omdat het dagbudget al op was.`,
+    `${spaarstandOvergeslagen} tik(ken) in spaarstand overgeslagen sinds de laatste herstart (geen credit gekost).`,
     `${fouten.length} mislukte aanvraag/aanvragen (${regels.filter((p) => p.uitkomst === '429').length} × 429).`,
     regels.length ? `Eerste regel in dit venster: ${new Date(regels[0].tijdMs).toISOString()}` : null,
     regels.length ? `Laatste regel in dit venster: ${new Date(regels[regels.length - 1].tijdMs).toISOString()}` : null,
@@ -315,9 +333,46 @@ function boundingBox(lat, lon, straalKm) {
   return { lamin: lat - dLat, lamax: lat + dLat, lomin: lon - dLon, lomax: lon + dLon };
 }
 
+// ---- Spaarstand (2026-08-28) -----------------------------------------------
+// Aanleiding: Lex' poll-rapport van 23-24 aug — met de iPad-PWA de hele dag
+// open is de app nooit "idle" (het 20s-/api/signals-ritme houdt
+// laatsteClientMs vers in server.js), dus liep Lifeliner de klok rond op
+// missietempo (pieken tot 56 polls/uur) en stevende het dagbudget al vóór de
+// middag op de 300 af — precies op om leeg te zijn wanneer er WEL een inzet
+// komt. De idle-gate spaart dus alleen als er niemand kijkt; dit spaart ook
+// mét een kijkende client.
+//
+// Regel: op missietempo (het 30s-interval uit config.js) wordt alleen echt
+// gepolld zolang er iets aan de hand is — een toestel dat recent in de lucht
+// is gezien, of een MMT-dispatch (P2000) korter dan 15 min geleden (zelfde
+// venster als LIFELINER_TRIGGER_VENSTER_MS in server.js). Anders geldt de
+// hartslag: één echte poll per LIFELINER_HEARTBEAT_MS (standaard 10 min,
+// via .env aanpasbaar) om een opstijging alsnog binnen minuten te zien —
+// waarna de vlucht zelf de snelle modus weer aanzet. Overgeslagen tikken
+// kosten niets (geen API-call, geen credit) en geven de laatst bekende data
+// terug, zodat de kaart gewoon gevuld blijft.
+//
+// Rekensom: app 24/7 open zonder vluchten = ~144 credits/dag; één missie
+// van ~45 min kost er ~90 extra — twee missies op een dag passen dan nog
+// steeds ruim binnen het 300-budget, waar het oude gedrag al vóór de middag
+// droog stond.
+const LIFELINER_HEARTBEAT_MS = Number(process.env.LIFELINER_HEARTBEAT_MS ?? 10 * 60 * 1000);
+const MMT_TRIGGER_VENSTER_MS = 15 * 60 * 1000; // spiegel van LIFELINER_TRIGGER_VENSTER_MS in server.js
+const ACTIEF_NA_VLUCHT_MS = 10 * 60 * 1000; // na de laatste in-de-lucht-waarneming nog even snel blijven volgen (landing/doorstart)
+let laatsteEchtePollMs = 0;
+let actiefTotMs = 0; // tot wanneer de snelle modus aanstaat (in de lucht gezien / net geland)
+let spaarstandOvergeslagen = 0; // teller voor het rapport (sinds procesherstart; bewust niet in pollLog — 120/uur zou het venster vollopen)
+
 export async function fetchLifeliner({ homeLat, homeLon }) {
   if (homeLat == null || homeLon == null) return [];
+  const nuMs = Date.now();
+  const actief = nuMs < actiefTotMs || msSindsLaatsteMMTMelding() < MMT_TRIGGER_VENSTER_MS;
+  if (!actief && nuMs - laatsteEchtePollMs < LIFELINER_HEARTBEAT_MS) {
+    spaarstandOvergeslagen++;
+    return laatsteSignalen; // spaarstand: geen API-call, geen credit
+  }
   if (!magPollenEnTeltMee()) return laatsteSignalen; // dagbudget op — laatst bekende data laten staan
+  laatsteEchtePollMs = nuMs;
   const { lamin, lamax, lomin, lomax } = boundingBox(homeLat, homeLon, STRAAL_KM);
 
   const url = `${STATES_URL}?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
@@ -355,6 +410,10 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
     }
     trail.laatstGezienMs = nu;
     if (!aanGrond) {
+      // 2026-08-28: een toestel in de lucht houdt de snelle poll-modus aan
+      // (zie de spaarstand-toelichting bij fetchLifeliner) — en nog even
+      // erná, zodat een landing/doorstart niet gemist wordt.
+      actiefTotMs = nu + ACTIEF_NA_VLUCHT_MS;
       trail.punten.push({ lat, lon, tijdMs: nu });
       trail.punten = trail.punten
         .filter((p) => nu - p.tijdMs <= TRAIL_VENSTER_MS)
