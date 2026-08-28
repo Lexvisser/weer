@@ -3469,21 +3469,49 @@ function galeInfoUitTekst(tekst) {
   // 2026-08-27-fix, op melding van Lex ("er staat 8 terwijl de werkelijke
   // wind lager is, de trend is wel naar 8"): shipping-forecast-teksten
   // beginnen met de HUIDIGE kracht ("SE 5 TO 7, occasionally gale 8 later")
-  // — het gale-getal is dan de verwáchting, niet het nu. De huidige kracht
-  // staat direct achter de richting; alleen daar zoeken (venster van 40
-  // tekens) zodat drukwaarden/golfhoogtes verderop nooit meetellen. Bij
-  // "X TO Y" telt de bovenkant. Alleen geaccepteerd als 'ie ONDER het
-  // gale-getal ligt — anders is het gewoon hetzelfde getal.
-  let huidigeKracht = null;
-  if (richting) {
-    const venster = zonderKop.slice(richting.index, richting.index + 40);
-    const m = venster.match(/\b([1-9]|1[0-2])(?:\s*TO\s*([1-9]|1[0-2]))?\b/);
+  // — het gale-getal is dan de verwáchting, niet het nu.
+  // 2026-08-27-herzien (live Fisher-tekst van Lex: "Easterly or
+  // southeasterly veering southerly or southwesterly, 4 to 6, but 7 or gale
+  // 8 at first in north Fisher"): het oude 40-tekens-venster achter de
+  // richting was te krap — een dubbele richting + veering duwt "4 to 6" er
+  // al uit. Nu: de eerste losse kracht(range) VÓÓR de gale-term is de
+  // algemene range (patroon \b1-12\b matcht nooit drukwaarden als 1013, en
+  // golfhoogte/zicht komen in deze teksten pas ná de windzin). Bij "X TO Y"
+  // telt de bovenkant; alleen geaccepteerd als 'ie ONDER het gale-getal
+  // ligt.
+  // En de omkering: "GALE 8 AT FIRST" betekent dat de gale er NÚ is en
+  // daarna afzakt naar die algemene range — precies andersom dan "gale 8
+  // later". Dat wordt naKracht (voor de "8→6"-weergave), met trend ↘.
+  const galeIndex = zonderKop.search(/SEVERE\s+GALE|GALE|STORM|HURRICANE/);
+  let algemeneKracht = null;
+  if (galeIndex > 0) {
+    const voorGale = zonderKop.slice(0, galeIndex);
+    const m = voorGale.match(/\b([1-9]|1[0-2])(?:\s*TO\s*([1-9]|1[0-2]))?\b/);
     if (m) {
       const bovenkant = Math.max(Number(m[1]), Number(m[2] ?? 0));
-      if (bovenkant < kracht) huidigeKracht = bovenkant;
+      if (bovenkant < kracht) algemeneKracht = bovenkant;
     }
   }
-  return { kracht, trend, richting: richting ?? null, richtingNa, huidigeKracht };
+  // Staat er niets vóór de gale-term ("SW GALE 8 INCREASING SEVERE GALE 9
+  // SOON"), dan is het EERSTE gale-cijfer zelf de huidige kracht — mits
+  // lager dan het eindgetal.
+  if (algemeneKracht === null) {
+    const eersteGaleCijfer = zonderKop.match(/(?:SEVERE\s+)?GALE\s*(?:FORCE\s*)?([89])|STORM\s*(?:FORCE\s*)?(1[01])/);
+    const eerste = Number(eersteGaleCijfer?.[1] ?? eersteGaleCijfer?.[2]);
+    if (Number.isFinite(eerste) && eerste < kracht) algemeneKracht = eerste;
+  }
+  const galeEerst = galeIndex > -1 && /AT\s+FIRST/.test(zonderKop.slice(galeIndex, galeIndex + 60));
+  let huidigeKracht = null;
+  let naKracht = null;
+  let trendDefinitief = trend;
+  if (galeEerst) {
+    // Gale nu, zakt af naar de algemene range.
+    naKracht = algemeneKracht; // mag null zijn -> dan alleen "8↘"
+    trendDefinitief = '↘';
+  } else {
+    huidigeKracht = algemeneKracht;
+  }
+  return { kracht, trend: trendDefinitief, richting: richting ?? null, richtingNa, huidigeKracht, naKracht };
 }
 
 // Alle beschikbare teksten voor één gebied bij elkaar — zelfde bronnen (en
@@ -3561,9 +3589,13 @@ function verversWindvanen() {
     // wind lager is, de trend is wel naar 8"): als de huidige kracht bekend
     // is en het gale-getal de verwachting is, toon dan "7→8" i.p.v. een
     // misleidend kaal "8↗" — dat las als "nu al 8".
-    const krachtTekst = info.trend === '↗' && info.huidigeKracht != null
-      ? `${info.huidigeKracht}→${info.kracht}`
-      : `${info.kracht}${info.trend}`;
+    // Drie vormen: "8→6" (gale nu, zakt af — 'at first'), "7→8" (gale op
+    // komst) en kaal "8"/"8↘" als er geen tweede getal te vinden was.
+    const krachtTekst = info.naKracht != null
+      ? `${info.kracht}→${info.naKracht}`
+      : info.trend === '↗' && info.huidigeKracht != null
+        ? `${info.huidigeKracht}→${info.kracht}`
+        : `${info.kracht}${info.trend}`;
     const marker = L.marker(midden, {
       icon: L.divIcon({
         className: '',
