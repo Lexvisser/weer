@@ -219,12 +219,17 @@ function datumInBodyZonderGeldigheidsclausules(tekst) {
   return null;
 }
 
-// 2026-08-24: grove plausibiliteitsbox rond het ontvangstgebied (Noordzee/
-// Kanaal — ruim rond alle stations in NAVAREA I hierboven). Geen harde
-// weiger-drempel (zie de afspraak met Lex hierboven), puur om
-// `positieBinnenBereik` te kunnen zetten zodat de kaart een duidelijk-
-// onzeker punt anders kan tonen dan een plausibel punt.
-const PLAUSIBEL_BOX = { latMin: 43, latMax: 68, lonMin: -25, lonMax: 20 };
+// 2026-08-24: grove plausibiliteitsbox rond het ontvangstgebied, oorspronkelijk
+// puur om `positieBinnenBereik` te kunnen zetten (duidelijk-onzeker punt anders
+// tonen dan een plausibel punt).
+// 2026-08-28-herzien, samen met het loslaten van de 450km-grens (op verzoek
+// van Lex): de box is nu WEL een harde drempel geworden — hij is het enige
+// vangnet dat corrupte coördinaten ("94N", "204W", "0N 2E") nog van de kaart
+// houdt nu de afstandsgrens weg is. Daarom ook verruimd tot alles wat de
+// antenne realistisch kán halen: La Coruña (43N) tot Noordkaap (71N), de
+// Atlantische Met Office-gebieden (-22W gezien in echte ontvangst) tot en
+// met de Finse Golf (23.6E gezien in echte ontvangst).
+const PLAUSIBEL_BOX = { latMin: 35, latMax: 72, lonMin: -30, lonMax: 32 };
 function positiePlausibel(p) {
   return p.lat >= PLAUSIBEL_BOX.latMin && p.lat <= PLAUSIBEL_BOX.latMax && p.lon >= PLAUSIBEL_BOX.lonMin && p.lon <= PLAUSIBEL_BOX.lonMax;
 }
@@ -1541,7 +1546,14 @@ export function leesRuweOntvangst(maxBytes = 64 * 1024) {
 export async function fetchNavtexLokaal(env = {}) {
   const homeLat = env.homeLat ?? 52.0907;
   const homeLon = env.homeLon ?? 5.1214;
-  const straalKm = Number(process.env.NAVTEX_STRAAL_KM) || 450; // zelfde env-var als navtex.js/ukho.js — voor Lex "hetzelfde soort maritiem bericht"
+  // 2026-08-28, op verzoek van Lex ("de 450 km grens graag los laten"): de
+  // eigen radio-ontvangst heeft — anders dan de web-bronnen in navtex.js/
+  // ukho.js, die hun NAVTEX_STRAAL_KM houden — een NATUURLIJKE afstandsgrens:
+  // je ontvangt alleen wat de antenne haalt. Wat er doorheen komt van ver
+  // (Noorse weerbulletins, Oostzee-berichten bij goede condities) is juist
+  // interessant, en het Noorse NE35-bulletin draagt drukgebied-coördinaten
+  // die de zeekaart nu ook plot. Geen afstandsfilter meer dus; alleen een
+  // plotbare positie blijft vereist.
   const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
 
   if (!existsSync(bestand)) {
@@ -1570,8 +1582,14 @@ export async function fetchNavtexLokaal(env = {}) {
     // voorrang boven het normale eventType-icoon, want de positie zelf is
     // hier het belangrijkste te communiceren feit (dit is NIET de echte
     // locatie van het gemelde fenomeen).
-    const positieIsStation = !b.coords[0] && Boolean(b.station);
-    const positie = b.coords[0] ?? (b.station ? { lat: b.station.lat, lon: b.station.lon } : null);
+    // 2026-08-28, bij het loslaten van de 450km-grens: een berichtcoordinaat
+    // die buiten de plausibiliteitsbox valt is vrijwel zeker corrupt
+    // ("204-38.9W" gezien in echte ontvangst) — dan liever terugvallen op de
+    // zendstation-positie (met radiomast-icoon, precies waar dat voor is)
+    // dan het bericht helemaal kwijtraken of in de Indische Oceaan plotten.
+    const coordPlausibel = b.coords[0] && positiePlausibel(b.coords[0]) ? b.coords[0] : null;
+    const positieIsStation = !coordPlausibel && Boolean(b.station);
+    const positie = coordPlausibel ?? (b.station ? { lat: b.station.lat, lon: b.station.lon } : null);
     const afstandTotJouKm = positie ? afstandKm(homeLat, homeLon, positie.lat, positie.lon) : null;
     const positieBinnenBereik = positie ? positiePlausibel(positie) : null;
     const referentie = referentieIn(b.body);
@@ -1594,8 +1612,11 @@ export async function fetchNavtexLokaal(env = {}) {
   }
 
   const nu = Date.now();
-  const binnenBereik = metPositie.filter((b) => b.afstandTotJouKm != null && b.afstandTotJouKm <= straalKm);
-  const nietVervallen = binnenBereik.filter((b) => {
+  // Geen afstandsgrens meer (zie de toelichting bij fetchNavtexLokaal-start),
+  // maar wél de plausibiliteitsbox als hard vangnet: zonder de 450km-grens is
+  // dit het enige dat corrupte coördinaten (94N, 204W, ...) nog tegenhoudt.
+  const metPlek = metPositie.filter((b) => b.positie && positiePlausibel(b.positie));
+  const nietVervallen = metPlek.filter((b) => {
     if (b.zelfVervalDatum && b.zelfVervalDatum.getTime() < nu) return false; // "CANCEL THIS MSG <datum>" al gepasseerd
     if (b.referentie && GEANNULEERDE_REFERENTIES.has(b.referentie)) return false; // door een later bericht ingetrokken
     if (!b.zelfVervalDatum && b.datum && nu - b.datum.getTime() > VANGNET_MAX_OUDERDOM_MS) return false; // vangnet, geen primair mechanisme
@@ -1606,12 +1627,12 @@ export async function fetchNavtexLokaal(env = {}) {
   // bij 0 treffers, en ook hoeveel blokken sowieso geen bruikbare code/positie
   // hadden — dat is bij deze testopstelling waardevolle info op zich (hoeveel
   // van wat er binnenkwam is eigenlijk bruikbaar).
-  const zonderPositie = berichten.length - metPositie.filter((b) => b.positie).length;
-  const vervallen = binnenBereik.length - nietVervallen.length;
+  const zonderPositie = berichten.length - metPlek.length;
+  const vervallen = metPlek.length - nietVervallen.length;
   console.log(
     `[weer] navtexLokaal: ${blokken.length} blok(ken) (${ruweBerichten.length} ruw, ${berichten.length} na dedup) in ${bestand}, ` +
       `${berichten.length} met leesbare code, ${zonderPositie} zonder bruikbare positie (corrupte/onbekende station-letter of geen coordinaat), ` +
-      `${binnenBereik.length} binnen ${straalKm}km, ${vervallen} vervallen/ingetrokken, ${nietVervallen.length} blijft over.`
+      `${metPlek.length} met positie (geen afstandsgrens), ${vervallen} vervallen/ingetrokken, ${nietVervallen.length} blijft over.`
   );
 
   return nietVervallen.flatMap((b) => {

@@ -3809,12 +3809,16 @@ function verversWindvanen() {
     if (!info) {
       const voorspeld = windInfoUitTekst(synopsisBronVoorGebied(naam)?.synopsis?.tekst);
       if (voorspeld?.richting) {
+        // 2026-08-28-herzien, op verzoek van Lex: even groot als de rode
+        // gale-vanen (test), en amber i.p.v. grijs — grijs is hier al de
+        // kleur van "verlopen", en amber leest als "informatie" zonder met
+        // het rode alarm te concurreren.
         const marker = L.marker(midden, {
           icon: L.divIcon({
             className: '',
-            html: `<div class="wind-vaan wind-vaan-voorspeld" title="${escapeHtml(naam)}: voorspelde wind">${windVaanPijlSvg(voorspeld.richting.graden, '#9aa4b5', '#3d434e')}<span class="wind-vaan-kracht">${voorspeld.bereik}</span></div>`,
+            html: `<div class="wind-vaan wind-vaan-voorspeld" title="${escapeHtml(naam)}: voorspelde wind">${windVaanPijlSvg(voorspeld.richting.graden, '#ffb020', '#7a5200')}<span class="wind-vaan-kracht">${voorspeld.bereik}</span></div>`,
             iconSize: [64, 44],
-            iconAnchor: [22, 40],
+            iconAnchor: [22, 50],
           }),
         });
         marker.on('click', () => {
@@ -3985,16 +3989,24 @@ function parseDrukgebieden(tekst) {
     const soort = kop[1];
     const druk = Number(kop[2]);
     const rest = zin.slice(kop.index + kop[0].length);
-    // Positie: exacte coördinaten winnen van een benoemde plaats.
+    // Positie: exacte coördinaten winnen van een benoemde plaats. Alleen
+    // VÓÓR een eventuele "EXP ..." zoeken — in het echte (deels corrupte)
+    // Noorse NE35-bulletin was de huidige positie weggevallen maar de
+    // EXP-positie intact, en dan zou het systeem op zijn VERWACHTE plek
+    // als huidig geplot worden. Lat/lon-sanity ertegenaan ("687E" gezien).
     let positie = null;
     let benaderd = false;
-    const co = rest.match(/\b(\d{1,2}(?:[.,]\d+)?)\s*N[, ]+\s*(\d{1,3}(?:[.,]\d+)?)\s*([EW])\b/);
-    if (co) {
+    let opEigenGebied = false; // ligt het symbool op één van de 10 kaartgebieden?
+    const expIndex = rest.search(/\bEXP\b/);
+    const voorExp = expIndex === -1 ? rest : rest.slice(0, expIndex);
+    const co = voorExp.match(/\b(\d{1,2}(?:[.,]\d+)?)\s*N[, ]+\s*(\d{1,3}(?:[.,]\d+)?)\s*([EW])\b/);
+    if (co && Number(co[1].replace(',', '.')) <= 85 && Number(co[2].replace(',', '.')) <= 180) {
       positie = [Number(co[1].replace(',', '.')), Number(co[2].replace(',', '.')) * (co[3] === 'W' ? -1 : 1)];
     } else {
       const bij = rest.match(/^[,\s]*(?:HPA[,\s]*)?(?:(NORTH|SOUTH|EAST|WEST)(?:WEST|EAST)?\s+OF|OVER|NEAR)\s+(?:THE\s+)?([A-Z][A-Z ]*?)(?=\s+(?:IS|REMAINS|MOVES|MOVING|MOV|WITH|AND|TRACKING|DEVELOPING|EXTENDS|BECOMES|FOLLOWS)\b|\s*,|\s*$)/);
       if (bij) {
-        const plek = drukPlaatsVoorNaam(bij[2]);
+        const opEigen = zeeGebiedMidden(bij[2]);
+        const plek = opEigen ?? drukPlaatsVoorNaam(bij[2]);
         if (plek) {
           benaderd = true;
           positie = [...plek];
@@ -4006,6 +4018,12 @@ function parseDrukgebieden(tekst) {
             positie[0] += 2.5 * Math.cos((g * Math.PI) / 180);
             positie[1] += 4.0 * Math.sin((g * Math.PI) / 180);
           }
+          // 2026-08-28, op verzoek van Lex ("kan je zo'n drukgebied L of H
+          // een stukje boven de areanaam zetten?"): alleen als het symbool
+          // ECHT op het gebiedsmidden ligt (geen offset weggeschoven) weet
+          // verversDrukgebieden dat de gebiedsnaam + vaan eronder staan en
+          // tilt het 'm daar bovenuit.
+          opEigenGebied = !!opEigen && !offset;
         }
       }
     }
@@ -4018,9 +4036,11 @@ function parseDrukgebieden(tekst) {
     let doel = null;
     const naar = rest.match(/\bTO(?:WARDS)?\s+(?:THE\s+)?([A-Z][A-Z ]*?)(?=\s*[,.]|\s*$)/);
     if (naar) doel = drukPlaatsVoorNaam(naar[1]);
-    const exp = rest.match(/\bEXP\s+(9[4-9]\d|10[0-5]\d)\s*HPA\s+AT\s+(\d{1,2})\s*N\s+(\d{1,3})\s*([EW])/);
-    if (exp) doel = [Number(exp[2]), Number(exp[3]) * (exp[4] === 'W' ? -1 : 1)];
-    uit.push({ soort, druk, positie, benaderd, stationair, bewegingGraden, doel, zin: zin.trim() });
+    // "AT" is optioneel: "EXP 1000 HPA AT 49 N 11 W" én "EXP 995 HPA 57 N
+    // 01 E" komen allebei in de echte Noorse bulletins voor.
+    const exp = rest.match(/\bEXP\s+(9[4-9]\d|10[0-5]\d)\s*HPA\s+(?:AT\s+)?(\d{1,2})\s*N\s+(\d{1,3})\s*([EW])/);
+    if (exp && Number(exp[2]) <= 85 && Number(exp[3]) <= 180) doel = [Number(exp[2]), Number(exp[3]) * (exp[4] === 'W' ? -1 : 1)];
+    uit.push({ soort, druk, positie, benaderd, opEigenGebied, stationair, bewegingGraden, doel, zin: zin.trim() });
   }
   return uit;
 }
@@ -4041,16 +4061,29 @@ function drukgebiedenUitNavtex() {
       return Number.isFinite(tijdMs) && nu - tijdMs < DRUK_VERS_MS;
     })
     .sort((a, b) => new Date(b.tijd) - new Date(a.tijd));
+  // 2026-08-28-herzien, na het loslaten van de 450km-grens: nu de Noorse
+  // NE35-bulletins (coördinaten-vorm) ook binnenkomen zijn er MEERDERE
+  // synopsis-bronnen tegelijk die elkaar aanvullen — KNMI dekt het eigen
+  // stuk Noordzee, het Noorse bulletin de Atlantische/Arctische systemen.
+  // Daarom mergen over alle berichten in het venster i.p.v. alleen het
+  // nieuwste: nieuwste bericht eerst, en een systeem van dezelfde soort
+  // dat vlakbij een al gevonden systeem ligt (< ~2.5° lat / 4° lon) is
+  // hetzelfde systeem uit een oudere uitzending — overslaan.
+  const stelsels = [];
   for (const s of kandidaten) {
     const bericht = String(s.detail?.bericht ?? '').toUpperCase();
-    const synopsisStart = bericht.search(/\bSYNOPSIS\b/);
+    const synopsisStart = bericht.search(/\bSYNOPSIS\b|\bSYNOPTIC\s+SITUATIO\w*/);
     if (synopsisStart === -1) continue;
     const einde = bericht.search(/FORECAST\s+VALID/);
     const sectie = bericht.slice(synopsisStart, einde > synopsisStart ? einde : undefined);
-    const stelsels = parseDrukgebieden(sectie);
-    if (stelsels.length) return { stelsels, code: s.detail?.code ?? null, tijd: s.tijd };
+    for (const st of parseDrukgebieden(sectie)) {
+      const dubbel = stelsels.some((eerder) => eerder.soort === st.soort
+        && Math.abs(eerder.positie[0] - st.positie[0]) < 2.5
+        && Math.abs(eerder.positie[1] - st.positie[1]) < 4);
+      if (!dubbel) stelsels.push({ ...st, code: s.detail?.code ?? null });
+    }
   }
-  return null;
+  return stelsels.length ? { stelsels } : null;
 }
 
 let drukLaag = null;
@@ -4077,13 +4110,16 @@ function verversDrukgebieden() {
         className: '',
         html: `<div class="druk-symbool druk-${st.soort.toLowerCase()}" title="${escapeHtml(st.zin)}"><span class="druk-letter">${letter}</span><span class="druk-waarde">${st.druk}</span>${pijl}</div>`,
         iconSize: [52, 56],
-        iconAnchor: [26, 28],
+        // 2026-08-28, op verzoek van Lex: op een eigen kaartgebied staat op
+        // ditzelfde punt ook de gebiedsnaam (en evt. een vaan) — het symbool
+        // dan een stuk OMHOOG tillen zodat L/H er netjes boven zweeft.
+        iconAnchor: [26, st.opEigenGebied ? 92 : 28],
       }),
     });
     marker.on('click', () => {
       const uitleg = `<div class="popup-titel">${letter === 'L' ? 'Lagedrukgebied' : 'Hogedrukgebied'} ${st.druk} hPa</div>`
         + `<div class="popup-advies">${escapeHtml(st.zin)}</div>`
-        + `<div class="popup-sub">Bron: eigen NAVTEX-ontvangst${bron.code ? ` (${escapeHtml(bron.code)})` : ''}${st.benaderd ? ' — positie indicatief' : ''}</div>`;
+        + `<div class="popup-sub">Bron: eigen NAVTEX-ontvangst${st.code ? ` (${escapeHtml(st.code)})` : ''}${st.benaderd ? ' — positie indicatief' : ''}</div>`;
       L.popup({ maxWidth: 280 }).setLatLng(st.positie).setContent(uitleg).openOn(kaart);
     });
     lagen.push(marker);

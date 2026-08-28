@@ -166,17 +166,33 @@ check('druk: corrupte druk ("100&") geeft geen symbool',
   fns2.parseDrukgebieden('LOW 100& EXP BY LATE ON THU OVER ENGLANO.'),
   []);
 
-// drukgebiedenUitNavtex — nieuwste PE-synopsis binnen 15 uur wint
+// Noorse NE35-vormen (letterlijk uit de echte, deels corrupte ontvangst)
+check('druk: NE35-regel met corrupte huidige positie maar intacte EXP -> geen symbool (EXP nooit als huidig plotten)',
+  fns2.parseDrukgebieden('LOW 1005 HPA 5" !, 06 W MOV NE, EXP 995 HPA 57 N 01 E FRI 18 UTC.'),
+  []);
+check('druk: NE35-regel schoon, EXP zonder "AT"',
+  drukKort(fns2.parseDrukgebieden('LOW 1004 HPA 53 N 30 W MOV SE, EXP 1001 HPA 51 N 17 W FRI 18 UTC.')),
+  [{ s: 'LOW', d: 1004, pos: [53, -30], stat: false, gr: 135, doel: [51, -17] }]);
+check('druk: NE35-regel met corrupte EXP houdt wel zijn huidige positie',
+  drukKort(fns2.parseDrukgebieden("HIGH 1028 HPA, 70 N 31 E, !.9; '3 3/0 1027 HPA 60 N 36 E FRI 18 UTC.")),
+  [{ s: 'HIGH', d: 1028, pos: [70, 31], stat: false, gr: null, doel: null }]);
+check('druk: onmogelijke lengtegraad ("687E") geeft geen symbool',
+  fns2.parseDrukgebieden('LOW 988 HPA 72 N 687E MOV S.'),
+  []);
+
+// drukgebiedenUitNavtex — merge over KNMI- én Noorse synopsis binnen 15 uur
 {
   const pe24 = { categorie: 'navtex', tijd: '2026-08-27T23:38:00Z', detail: { verlopen: false, code: 'PE24', bericht: 'FORECAST DUTCH EEZ ISSUED AT 23:38 UTC 270826.\nGALE WARNINGS.\nTHAMES. HUMBER.\nNO WARNING.\nSYNOPSIS.\nLOW, 1003, OVER THE DOGGER IS MOVING NORTH TOWARDS FORTIES.\nFORECAST VALID FRIDAY 03:00 TILL FRIDAY 15:00 UTC.\nTHAMES.\nSOUTHWEST 3 - 4.' } };
+  const ne35 = { categorie: 'navtex', tijd: '2026-08-28T03:00:00Z', detail: { verlopen: false, code: 'NE35', bericht: 'WEATHER BULLETIN ISSUED BY NORWEGIAN METEOROLOGICAL INSTITUTE\nSYNOPTIC SITUATIO TODAY AT 18 UTC:\nLOW 1004 HPA 53 N 30 W MOV SE, EXP 1001 HPA 51 N 17 W FRI 18 UTC.\nFORECAST VALID NEXT 24 HOURS:\nEAST-TAMPEN\nVRB 4.' } };
+  const ouderDubbel = { categorie: 'navtex', tijd: '2026-08-27T22:00:00Z', detail: { verlopen: false, code: 'PE23', bericht: 'SYNOPSIS.\nLOW, 1005, OVER THE DOGGER IS MOVING NORTH.\nFORECAST VALID.' } };
   class NepDate extends Date { static now() { return new Date('2026-08-28T10:40:00Z').getTime(); } }
-  const bron = maak2([pe24], NepDate, Lstub, stubSynopsis({}), {}).drukgebiedenUitNavtex();
-  check('druk uit navtex: PE24-synopsis gevonden, 1 systeem, code klopt',
-    { code: bron?.code, aantal: bron?.stelsels.length, druk: bron?.stelsels[0]?.druk },
-    { code: 'PE24', aantal: 1, druk: 1003 });
-  class NepDateLaat extends Date { static now() { return new Date('2026-08-28T16:00:00Z').getTime(); } }
+  const bron = maak2([pe24, ne35, ouderDubbel], NepDate, Lstub, stubSynopsis({}), {}).drukgebiedenUitNavtex();
+  check('druk uit navtex: KNMI + Noors gemergd, oudere dubbeling van hetzelfde systeem overgeslagen',
+    bron?.stelsels.map((s) => `${s.code}:${s.soort}${s.druk}`).sort(),
+    ['NE35:LOW1004', 'PE24:LOW1003']);
+  class NepDateLaat extends Date { static now() { return new Date('2026-08-28T20:00:00Z').getTime(); } }
   check('druk uit navtex: buiten het 15-uursvenster niets meer',
-    maak2([pe24], NepDateLaat, Lstub, stubSynopsis({}), {}).drukgebiedenUitNavtex(),
+    maak2([pe24, ne35, ouderDubbel], NepDateLaat, Lstub, stubSynopsis({}), {}).drukgebiedenUitNavtex(),
     null);
 }
 

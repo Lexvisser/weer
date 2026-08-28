@@ -420,11 +420,12 @@ body {
 .zicht-label { margin-left:4px; color:#5a6b78; font-size:11px; text-shadow:0 1px 2px rgba(255,255,255,0.75); transition:font-size 0.12s ease-out; white-space:nowrap; }
 .zicht-label .golf-emoji { color:#8aa0ae; filter: drop-shadow(0 0 0.05em rgba(138,160,174,0.7)); }
 
-/* 2026-08-28: kleine grijze vaan voor de gewone voorspelde wind (gebieden
-   zonder gale) — bewust kleiner, matter en zonder rode gloed, zodat de rode
-   gale-vanen visueel dominant blijven. */
-.wind-vaan-voorspeld { transform:scale(0.62); transform-origin:top left; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4)); }
-.wind-vaan-voorspeld .wind-vaan-kracht { color:#b9c2d0; font-size:17px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+/* 2026-08-28: vaan voor de gewone voorspelde wind (gebieden zonder gale).
+   Herzien op verzoek van Lex: even groot als de gale-vanen (test) en amber
+   i.p.v. grijs — grijs is op deze kaart al "verlopen", amber leest als
+   informatie. Alleen de gloed blijft bescheidener dan bij het rode alarm. */
+.wind-vaan-voorspeld { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45)) drop-shadow(0 0 6px rgba(255,176,32,0.4)); }
+.wind-vaan-voorspeld .wind-vaan-kracht { color:#ffb020; }
 
 /* 2026-08-28: drukgebied-symbolen (rode L / blauwe H, klassieke weerkaart)
    uit de SYNOPSIS van de eigen NAVTEX-ontvangst — zie verversDrukgebieden()
