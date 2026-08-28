@@ -38,18 +38,32 @@ import { afstandKm } from '../normalize.js';
 
 // 2026-08-28, op melding van Lex ("met die vliegradar is het ook behelpen
 // met de polls"): niet meer aan één community-bron hangen. adsb.lol blijft
-// de eerste keus (live bevestigd werkend), maar airplanes.live staat er nu
-// als vangnet achter — zelfde re-api/readsb-stack, zelfde /v2/point-URL-vorm
-// en (aangenomen, zie de eerlijke waarschuwing bovenaan; het
-// voorbeeldrecord-log bevestigt het live) hetzelfde ac[]-veldformaat. Elke
-// bron heeft een EIGEN afkoelperiode: hapert adsb.lol, dan neemt
-// airplanes.live het naadloos over i.p.v. dat de radar bevriest; pas als
-// beide in de afkoelperiode zitten krijgt de app een foutmelding. Snelle
-// controle vanaf de Minisforum:
-//   curl -s https://api.airplanes.live/v2/point/52.09/5.12/50 | head -c 300
+// de eerste keus (live bevestigd werkend); daarachter twee vangnetten met
+// elk een EIGEN afkoelperiode — hapert de één, dan neemt de volgende het
+// naadloos over i.p.v. dat de radar bevriest; pas als álle bronnen in de
+// afkoelperiode zitten krijgt de app een foutmelding.
+// - airplanes.live is als vangnet GEPROBEERD en direct weer geschrapt:
+//   Lex' live curl gaf een 200 mét {"error": "Please contact us..."} — hun
+//   API is alleen nog op aanvraag. (Die ervaring leverde wel de
+//   body.error-controle hieronder op: een nette 200 met fouttekst telt nu
+//   als fout, anders zou zo'n bron als "succes met nul vliegtuigen" de
+//   radar stilletjes leeg houden.)
+// - adsb.one: zelfde /v2/point-vorm als adsb.lol (zelfde re-api-stack).
+// - adsb.fi: de 400 uit de test van 2026-08-21 kwam vermoedelijk doordat
+//   we toen hún endpoint in de /v2/point-vorm aanriepen — adsb.fi gebruikt
+//   een eigen padvorm (/api/v2/lat/{lat}/lon/{lon}/dist/{nm}), vandaar de
+//   urlVoor-functie per bron.
+// Beide vangnetten zijn NIET live bevestigd vanuit deze omgeving (geen
+// internet) — controle vanaf de Minisforum, zelfde vorm als de vorige keer:
+//   curl -s https://api.adsb.one/v2/point/52.09/5.12/50 | head -c 300
+//   curl -s "https://opendata.adsb.fi/api/v2/lat/52.09/lon/5.12/dist/50" | head -c 300
+// Een dood vangnet is dankzij de per-bron-afkoeling onschuldig: het kost
+// hooguit één mislukte poging per afkoelcyclus, alleen wanneer de bronnen
+// ervóór al faalden.
 const BRONNEN = [
-  { naam: 'adsb.lol', basis: 'https://api.adsb.lol/v2/point' },
-  { naam: 'airplanes.live', basis: 'https://api.airplanes.live/v2/point' },
+  { naam: 'adsb.lol', urlVoor: (lat, lon, nm) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${nm}` },
+  { naam: 'adsb.one', urlVoor: (lat, lon, nm) => `https://api.adsb.one/v2/point/${lat}/${lon}/${nm}` },
+  { naam: 'adsb.fi', urlVoor: (lat, lon, nm) => `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${nm}` },
 ];
 const MAX_STRAAL_NM = 250; // zelfde bovengrens als bij adsb.fi voor deze endpoint-vorm
 // 2026-08-21: 8000 -> 3000, in lijn met RADAR_POLL_MS in frontend/app.js
@@ -156,7 +170,7 @@ export async function fetchVliegradar({ lat, lon, straalKm }) {
       fouten.push(`${bron.naam}: afkoelperiode, nog ${Math.ceil((staat.totMs - nu) / 1000)}s`);
       continue;
     }
-    const fetchPromise = fetch(`${bron.basis}/${lat}/${lon}/${straalNm}`, {
+    const fetchPromise = fetch(bron.urlVoor(lat, lon, straalNm), {
       headers: {
         'User-Agent': 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)',
         Connection: 'close',
@@ -176,6 +190,9 @@ export async function fetchVliegradar({ lat, lon, straalKm }) {
       const res = await Promise.race([fetchPromise, timeoutPromise]);
       if (!res.ok) throw new Error(`${bron.naam} gaf HTTP ${res.status}`);
       const body = await res.json();
+      // Sommige diensten (airplanes.live, zie hierboven) geven een nette
+      // 200 mét een fouttekst — dat is een weigering, geen lege lucht.
+      if (body?.error) throw new Error(`${bron.naam} weigert: ${String(body.error).slice(0, 80)}`);
       const ruwLijst = Array.isArray(body?.ac) ? body.ac : [];
 
       if (voorbeeldenGelogd < 3 && ruwLijst.length) {
