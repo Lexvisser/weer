@@ -48,21 +48,17 @@ import { afstandKm } from '../normalize.js';
 //   body.error-controle hieronder op: een nette 200 met fouttekst telt nu
 //   als fout, anders zou zo'n bron als "succes met nul vliegtuigen" de
 //   radar stilletjes leeg houden.)
-// - adsb.one: zelfde /v2/point-vorm als adsb.lol (zelfde re-api-stack).
-// - adsb.fi: de 400 uit de test van 2026-08-21 kwam vermoedelijk doordat
-//   we toen hún endpoint in de /v2/point-vorm aanriepen — adsb.fi gebruikt
-//   een eigen padvorm (/api/v2/lat/{lat}/lon/{lon}/dist/{nm}), vandaar de
-//   urlVoor-functie per bron.
-// Beide vangnetten zijn NIET live bevestigd vanuit deze omgeving (geen
-// internet) — controle vanaf de Minisforum, zelfde vorm als de vorige keer:
-//   curl -s https://api.adsb.one/v2/point/52.09/5.12/50 | head -c 300
-//   curl -s "https://opendata.adsb.fi/api/v2/lat/52.09/lon/5.12/dist/50" | head -c 300
-// Een dood vangnet is dankzij de per-bron-afkoeling onschuldig: het kost
-// hooguit één mislukte poging per afkoelcyclus, alleen wanneer de bronnen
-// ervóór al faalden.
+// - adsb.one is als kandidaat GEPROBEERD en geschrapt (Lex' live curl,
+//   2026-08-28): geeft een Cloudflare-HTML-pagina terug — bot-blokkade,
+//   onbruikbaar zonder sleutel.
+// - adsb.fi: LIVE BEVESTIGD werkend (Lex' curl, 2026-08-28) — de 400 uit de
+//   test van 2026-08-21 kwam inderdaad door de verkeerde URL-vorm; adsb.fi
+//   gebruikt een eigen padvorm (/api/v2/lat/{lat}/lon/{lon}/dist/{nm}),
+//   vandaar de urlVoor-functie per bron. Let op: adsb.fi noemt de lijst
+//   "aircraft" waar adsb.lol "ac" zegt (zelfde readsb-veldnamen per record,
+//   incl. hex/flight/r/t/alt_baro/gs/track) — de parser accepteert beide.
 const BRONNEN = [
   { naam: 'adsb.lol', urlVoor: (lat, lon, nm) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${nm}` },
-  { naam: 'adsb.one', urlVoor: (lat, lon, nm) => `https://api.adsb.one/v2/point/${lat}/${lon}/${nm}` },
   { naam: 'adsb.fi', urlVoor: (lat, lon, nm) => `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${nm}` },
 ];
 const MAX_STRAAL_NM = 250; // zelfde bovengrens als bij adsb.fi voor deze endpoint-vorm
@@ -193,7 +189,13 @@ export async function fetchVliegradar({ lat, lon, straalKm }) {
       // Sommige diensten (airplanes.live, zie hierboven) geven een nette
       // 200 mét een fouttekst — dat is een weigering, geen lege lucht.
       if (body?.error) throw new Error(`${bron.naam} weigert: ${String(body.error).slice(0, 80)}`);
-      const ruwLijst = Array.isArray(body?.ac) ? body.ac : [];
+      // adsb.lol zegt "ac", adsb.fi zegt "aircraft" — beide accepteren. En
+      // ONTBREKEN beide sleutels, dan is dit geen readsb-antwoord maar iets
+      // onherkenbaars (bv. een HTML-blokkadepagina die tóch als JSON
+      // parseerde) — fout, geen lege lucht: anders maskeert deze bron
+      // stilletjes een werkend vangnet erachter.
+      const ruwLijst = Array.isArray(body?.ac) ? body.ac : Array.isArray(body?.aircraft) ? body.aircraft : null;
+      if (ruwLijst === null) throw new Error(`${bron.naam} gaf een onherkenbaar antwoord (geen ac/aircraft-lijst)`);
 
       if (voorbeeldenGelogd < 3 && ruwLijst.length) {
         voorbeeldenGelogd++;
