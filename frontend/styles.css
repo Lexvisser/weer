@@ -414,6 +414,28 @@ body {
    blijft er nu netjes omheen zitten i.p.v. 'm te overstemmen. */
 .golf-emoji { width:1.6em; height:1.6em; display:inline-block; vertical-align:middle; color:#3ec6ff; filter: drop-shadow(0 0 0.05em rgba(62,198,255,0.8)); }
 
+/* 2026-08-28: mist/slecht-zicht-badge naast het golfje (zie zichtVoorGebied()
+   in app.js) — zelfde open-lijn-icoonaanpak als het golfje, grijzige tint
+   zodat 'ie leesbaar blijft maar nooit met een waarschuwing concurreert. */
+.zicht-label { margin-left:4px; color:#5a6b78; font-size:11px; text-shadow:0 1px 2px rgba(255,255,255,0.75); transition:font-size 0.12s ease-out; white-space:nowrap; }
+.zicht-label .golf-emoji { color:#8aa0ae; filter: drop-shadow(0 0 0.05em rgba(138,160,174,0.7)); }
+
+/* 2026-08-28: kleine grijze vaan voor de gewone voorspelde wind (gebieden
+   zonder gale) — bewust kleiner, matter en zonder rode gloed, zodat de rode
+   gale-vanen visueel dominant blijven. */
+.wind-vaan-voorspeld { transform:scale(0.62); transform-origin:top left; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4)); }
+.wind-vaan-voorspeld .wind-vaan-kracht { color:#b9c2d0; font-size:17px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+
+/* 2026-08-28: drukgebied-symbolen (rode L / blauwe H, klassieke weerkaart)
+   uit de SYNOPSIS van de eigen NAVTEX-ontvangst — zie verversDrukgebieden()
+   in app.js. Grote serif-letter zoals op een echte synoptische kaart. */
+.druk-symbool { display:flex; flex-direction:column; align-items:center; line-height:1; cursor:pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+.druk-letter { font-family:Georgia,'Times New Roman',serif; font-size:34px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,0.75), 0 0 8px rgba(255,255,255,0.25); }
+.druk-waarde { font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700; margin-top:-2px; text-shadow:0 1px 2px rgba(0,0,0,0.8); }
+.druk-low .druk-letter, .druk-low .druk-waarde { color:#ff2e3f; }
+.druk-high .druk-letter, .druk-high .druk-waarde { color:#4d8dff; }
+.druk-pijl { width:16px; height:16px; margin-top:1px; color:rgba(240,244,255,0.85); }
+
 .map-toggle { position:absolute; top:10px; right:10px; z-index:1000; display:flex; background:rgba(10,11,18,0.85); border:1px solid rgba(255,255,255,0.12); border-radius:9px; padding:3px; gap:2px; }
 .map-toggle button { border:none; background:transparent; color:#9199b5; font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:6px 10px; border-radius:6px; cursor:pointer; }
 .map-toggle button.actief { background:#1c2030; color:#f4f6fb; }

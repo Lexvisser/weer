@@ -109,5 +109,76 @@ check('03:00 — nieuwere NO WARNING lost oudere warning af', perGebiedOm('2026-
 check('07:30 — verse warning wint weer van de all-clear', perGebiedOm('2026-08-28T07:30:00Z', [warning23, allClear0211, warning0702]), ['Dover=7', 'Thames=7']);
 check('13:30 — 6-uursvenster verlopen', perGebiedOm('2026-08-28T13:30:00Z', [warning23, allClear0211, warning0702]), []);
 
+// ---- 2026-08-28 (2e ronde): voorspelde wind, zicht en drukgebieden ------
+// Extractie mét ZEE_GEBIEDEN en de nieuwe functies; L en de synopsis-bron
+// worden gestubd (polygoonZwaartepunt gebruikt L.latLng).
+const deelGebieden = app.slice(app.indexOf('const ZEE_GEBIEDEN'), app.indexOf('let zeeLaag = null;'));
+const deelAllesParsers = app.slice(app.indexOf('const GALE_NIVEAUS'), app.indexOf('function bouwZeeGebiedenLaag()'));
+const Lstub = {
+  latLng: (lat, lng) => ({ lat, lng }),
+  latLngBounds: () => ({ getCenter: () => ({ lat: 0, lng: 0 }) }),
+};
+const maak2 = new Function(
+  'laatsteMeldingenSignalen', 'Date', 'L', 'synopsisBronVoorGebied', 'zeeWaarschuwingenPerGebied',
+  `${deelGebieden}${deelAllesParsers}\nreturn { windInfoUitTekst, zichtVoorGebied, parseDrukgebieden, drukgebiedenUitNavtex };`,
+);
+const stubSynopsis = (teksten) => (naam) => (teksten[naam] ? { bron: 'test', synopsis: { tekst: teksten[naam] } } : null);
+const fns2 = maak2([], Date, Lstub, stubSynopsis({}), {});
+
+// windInfoUitTekst — echte teksten van 2026-08-28
+check('voorspelde wind: KNMI-vorm ("Southerly 2-4, increasing...")',
+  (({ richting, bereik }) => ({ nl: richting.nl, bereik }))(fns2.windInfoUitTekst('Southerly 2-4, increasing southwest 4-5, later possibly 6, occasional showers.')),
+  { nl: 'Z', bereik: '2–4' });
+check('voorspelde wind: dubbele richting + veering duwt cijfer ver weg',
+  (({ richting, bereik }) => ({ nl: richting.nl, bereik }))(fns2.windInfoUitTekst('Easterly or southeasterly veering southerly or southwesterly, 4 to 6, but 7 at first.')),
+  { nl: 'O', bereik: '4–6' });
+check('voorspelde wind: puur cyclonisch zonder richting -> geen vaan',
+  fns2.windInfoUitTekst('Cyclonic 4 to 6, becoming variable.'),
+  null);
+
+// zichtVoorGebied — badge alleen bij structureel slecht zicht
+const zichtFns = maak2([], Date, Lstub, stubSynopsis({
+  Dogger: 'Thundery showers, fog patches. Moderate or good, occasionally poor.',
+  Thames: 'Southwest 4 to 6. Moderate or good, occasionally poor.',
+  Humber: 'Southwest 5. Visibility poor.',
+  Fisher: 'At times thunderstorms with poor visibility.',
+}), {});
+check('zicht: fog patches -> mist', zichtFns.zichtVoorGebied('Dogger'), 'mist');
+check('zicht: "occasionally poor" alleen -> geen badge', zichtFns.zichtVoorGebied('Thames'), null);
+check('zicht: kale "visibility poor" -> slecht zicht', zichtFns.zichtVoorGebied('Humber'), 'slecht zicht');
+check('zicht: poor door onweersbuien -> geen badge (neerslag-bijzin)', zichtFns.zichtVoorGebied('Fisher'), null);
+
+// parseDrukgebieden — de echte synopsis-vormen uit het ontvangstbestand
+const drukKort = (lijst) => lijst.map((u) => ({
+  s: u.soort, d: u.druk, pos: u.positie.map((x) => +x.toFixed(1)),
+  stat: u.stationair, gr: u.bewegingGraden, doel: u.doel ? u.doel.map((x) => +x.toFixed(1)) : null,
+}));
+check('druk: KNMI-vorm met gebied + beweging + doel (echte PE24-zin)',
+  drukKort(fns2.parseDrukgebieden('LOW, 1003, OVER THE DOGGER IS MOVING NORTH TOWARDS FORTIES.')),
+  [{ s: 'LOW', d: 1003, pos: [55.2, 1.9], stat: false, gr: 0, doel: [57.3, 1.5] }]);
+check('druk: "WEST OF BRITTANY" -> gazetteer + offset, stationair',
+  drukKort(fns2.parseDrukgebieden('LOW, 1007, WEST OF BRITTANY REMAINS FAIRLY STATIONARY.')),
+  [{ s: 'LOW', d: 1007, pos: [48, -7.5], stat: true, gr: null, doel: null }]);
+check('druk: coordinaten-vorm met EXP-positie (Noorse bulletin-stijl)',
+  drukKort(fns2.parseDrukgebieden('LOW 1001 HPA, 49 N 12 W, MOV LITTLE, EXP 1000 HPA AT 49 N 11 W THU 18 UTC.')),
+  [{ s: 'LOW', d: 1001, pos: [49, -12], stat: true, gr: null, doel: [49, -11] }]);
+check('druk: corrupte druk ("100&") geeft geen symbool',
+  fns2.parseDrukgebieden('LOW 100& EXP BY LATE ON THU OVER ENGLANO.'),
+  []);
+
+// drukgebiedenUitNavtex — nieuwste PE-synopsis binnen 15 uur wint
+{
+  const pe24 = { categorie: 'navtex', tijd: '2026-08-27T23:38:00Z', detail: { verlopen: false, code: 'PE24', bericht: 'FORECAST DUTCH EEZ ISSUED AT 23:38 UTC 270826.\nGALE WARNINGS.\nTHAMES. HUMBER.\nNO WARNING.\nSYNOPSIS.\nLOW, 1003, OVER THE DOGGER IS MOVING NORTH TOWARDS FORTIES.\nFORECAST VALID FRIDAY 03:00 TILL FRIDAY 15:00 UTC.\nTHAMES.\nSOUTHWEST 3 - 4.' } };
+  class NepDate extends Date { static now() { return new Date('2026-08-28T10:40:00Z').getTime(); } }
+  const bron = maak2([pe24], NepDate, Lstub, stubSynopsis({}), {}).drukgebiedenUitNavtex();
+  check('druk uit navtex: PE24-synopsis gevonden, 1 systeem, code klopt',
+    { code: bron?.code, aantal: bron?.stelsels.length, druk: bron?.stelsels[0]?.druk },
+    { code: 'PE24', aantal: 1, druk: 1003 });
+  class NepDateLaat extends Date { static now() { return new Date('2026-08-28T16:00:00Z').getTime(); } }
+  check('druk uit navtex: buiten het 15-uursvenster niets meer',
+    maak2([pe24], NepDateLaat, Lstub, stubSynopsis({}), {}).drukgebiedenUitNavtex(),
+    null);
+}
+
 console.log(fouten ? `\n${fouten} test(s) FALEN` : '\nAlle windvaan-tests slagen');
 process.exit(fouten ? 1 : 0);

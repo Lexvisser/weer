@@ -3379,9 +3379,14 @@ function golfHoogteVoorGebied(naam) {
 // kaart toegevoegd, dus de tooltip opent en dus deze functie herevalueert).
 function zeeGebiedLabelHtml(naam) {
   const golfbereik = golfHoogteVoorGebied(naam);
+  // 2026-08-28, op verzoek van Lex (corpus-analyse: 18 berichten met
+  // zicht-informatie): mist/slecht-zicht-badge naast het golfje, alleen
+  // bij STRUCTUREEL slecht zicht — zie zichtVoorGebied() verderop.
+  const zicht = zichtVoorGebied(naam);
+  const zichtHtml = zicht ? ` <span class="zicht-label">${mistIcoonHtml()} ${zicht}</span>` : '';
   return golfbereik
-    ? `${escapeHtml(naam)} <span class="golf-label">${golfIcoonHtml()} ${golfbereik}</span>`
-    : escapeHtml(naam);
+    ? `${escapeHtml(naam)} <span class="golf-label">${golfIcoonHtml()} ${golfbereik}</span>${zichtHtml}`
+    : `${escapeHtml(naam)}${zichtHtml}`;
 }
 
 // 2026-08-25-fix, op melding van Lex ("ik zie ook geen golfjes"): de
@@ -3723,7 +3728,7 @@ function galeInfoVoorGebied(naam) {
 // windvaan-conventie), met veerstaart aan de achterkant en een pivot-stip
 // in het midden. De kracht staat er al als getal naast; de richting zit
 // dus puur in de draaiing — niets extra's erbij.
-function windVaanPijlSvg(graden) {
+function windVaanPijlSvg(graden, kleur = '#ff2e3f', rand = '#7a0d16') {
   // 2026-08-27-fix, op melding van Lex ("de wind wordt E gegeven maar de
   // pijl wijst vanuit het westen"): de eerste versie volgde de klassieke
   // windvaan-conventie (punt prikt IN de wind, dus bij oostenwind punt naar
@@ -3734,8 +3739,8 @@ function windVaanPijlSvg(graden) {
   // `graden` blijft de aanvoerrichting uit de forecast; +180 maakt er de
   // stroomrichting van.
   return `<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
-    <g transform="rotate(${(graden + 180) % 360} 22 22)" fill="#ff2e3f" stroke="#7a0d16" stroke-linejoin="round">
-      <line x1="22" y1="8" x2="22" y2="36" stroke="#ff2e3f" stroke-width="2.6" stroke-linecap="round"/>
+    <g transform="rotate(${(graden + 180) % 360} 22 22)" fill="${kleur}" stroke="${rand}" stroke-linejoin="round">
+      <line x1="22" y1="8" x2="22" y2="36" stroke="${kleur}" stroke-width="2.6" stroke-linecap="round"/>
       <path d="M22 2 L28 13 L22 10.5 L16 13 Z" stroke-width="1.1"/>
       <path d="M22 36 L27.5 42 L22 39.5 L16.5 42 Z" stroke-width="1.1"/>
       <circle cx="22" cy="22" r="3.4" stroke-width="1.1"/>
@@ -3792,9 +3797,33 @@ function verversWindvanen() {
     const info = synopsisInfo && navtexInfo
       ? (navtexInfo.kracht >= synopsisInfo.kracht ? navtexInfo : synopsisInfo)
       : (synopsisInfo ?? navtexInfo);
-    if (!info) return;
     const ring = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
     const midden = polygoonZwaartepunt(ring); // zwaartepunt, niet rechthoek-midden — zie de fix hierboven
+    // 2026-08-28, op verzoek van Lex ("alles wat je goed kunt herleiden en
+    // herhalen"): geen gale voor dit gebied -> kleine GRIJZE vaan met de
+    // gewone voorspelde wind uit dezelfde synopsis-tekst. Bewust duidelijk
+    // kleiner en zonder gloed (zie .wind-vaan-voorspeld in styles.css),
+    // zodat 'ie nooit met de rode gale-vanen concurreert; zonder bekende
+    // richting (cyclonic/variable) tonen we niets — een grijze wimpel zou
+    // als waarschuwing lezen.
+    if (!info) {
+      const voorspeld = windInfoUitTekst(synopsisBronVoorGebied(naam)?.synopsis?.tekst);
+      if (voorspeld?.richting) {
+        const marker = L.marker(midden, {
+          icon: L.divIcon({
+            className: '',
+            html: `<div class="wind-vaan wind-vaan-voorspeld" title="${escapeHtml(naam)}: voorspelde wind">${windVaanPijlSvg(voorspeld.richting.graden, '#9aa4b5', '#3d434e')}<span class="wind-vaan-kracht">${voorspeld.bereik}</span></div>`,
+            iconSize: [64, 44],
+            iconAnchor: [22, 40],
+          }),
+        });
+        marker.on('click', () => {
+          L.popup({ maxWidth: 280 }).setLatLng(midden).setContent(zeeSynopsisPopupHtml(naam)).openOn(kaart);
+        });
+        vanen.push(marker);
+      }
+      return;
+    }
     // Richting bekend -> draaiende windvaan-pijl; onbekend (cyclonic/
     // variable) -> het statische stormsein-wimpeltje als terugval.
     const icoonSvg = info.richting ? windVaanPijlSvg(info.richting.graden) : WIND_VAAN_SVG;
@@ -3827,6 +3856,248 @@ function verversWindvanen() {
   if (vanen.length) {
     windvaanLaag = L.layerGroup(vanen).addTo(kaart);
   }
+  // Zelfde levenscyclus als de vanen (aan/uit met Zee-modus, ververst op
+  // dezelfde vier momenten) — zie verversDrukgebieden() hieronder.
+  verversDrukgebieden();
+}
+
+// ---- Voorspelde wind, zicht en drukgebieden (2026-08-28) ---------------
+// Op verzoek van Lex, na de corpus-analyse van 4+ dagen eigen ontvangst
+// ("wil je onderzoeken of we meer uit de berichten kunnen halen en plotten
+// op de zeekaart" -> "alles wat je goed kunt herleiden en herhalen"). Drie
+// uitbreidingen, alle drie uit teksten die er al zijn (geen nieuwe fetch):
+// 1. windInfoUitTekst(): gewone voorspelde wind (richting + krachtbereik)
+//    voor gebieden zonder gale -> kleine grijze vaan (zie verversWindvanen).
+// 2. zichtVoorGebied(): mist/slecht-zicht-badge naast het golfje.
+// 3. parseDrukgebieden() + verversDrukgebieden(): LOW/HIGH-druksystemen uit
+//    de SYNOPSIS-sectie van de eigen KNMI PE-ontvangst als klassieke
+//    weerkaart-symbolen (rode L / blauwe H) met bewegingspijl en stippellijn
+//    naar het genoemde doelgebied.
+
+// Richting + krachtbereik uit het begin van een synopsis-tekst. Zelfde
+// kop-strip als galeInfoUitTekst; de range moet DICHT bij de richting staan
+// (binnen 45 tekens) zodat golfhoogtes en luchtdrukcijfers verderop nooit
+// als windkracht kunnen matchen.
+function windInfoUitTekst(tekst) {
+  if (!tekst) return null;
+  let t = String(tekst).toUpperCase();
+  const dubbelePunt = t.indexOf(':');
+  if (dubbelePunt > 0 && dubbelePunt < 40 && /[A-Z]/.test(t[dubbelePunt - 1])) t = t.slice(dubbelePunt + 1);
+  const richting = eersteWindrichting(t);
+  if (!richting || richting.index > 40) return null;
+  // Tot het einde van de windzin kijken (max 90 tekens): een dubbele
+  // richting met veering ("EASTERLY OR SOUTHEASTERLY VEERING SOUTHERLY OR
+  // SOUTHWESTERLY, 4 TO 6") duwt het krachtcijfer anders buiten beeld —
+  // zelfde les als bij galeInfoUitTekst. De punt-grens voorkomt dat een
+  // golfhoogte uit een vólgende zin ooit als windkracht matcht.
+  const naRichting = t.slice(richting.index, richting.index + 90).split('.')[0];
+  const m = naRichting.match(/\b([1-9]|1[0-2])(?:\s*(?:-|–|TO|OR)\s*([1-9]|1[0-2]))?\b/);
+  if (!m) return null;
+  return { richting, bereik: m[2] ? `${m[1]}–${m[2]}` : m[1] };
+}
+
+// Mist/zicht per gebied, uit dezelfde gekozen synopsis-tekst als het
+// golfje. Vrijwel elke tekst zegt ergens "in precipitation moderate to
+// poor" — dat is gewoon "in een bui zie je minder" en verdient GEEN badge.
+// Alleen structureel slecht zicht telt: FOG (mist), of een zin met POOR
+// die niét over neerslag/buien gaat.
+function zichtVoorGebied(naam) {
+  const tekst = synopsisBronVoorGebied(naam)?.synopsis?.tekst;
+  if (!tekst) return null;
+  const zinnen = String(tekst).toUpperCase().split(/[.\n]+/);
+  let slechtZicht = false;
+  for (const zin of zinnen) {
+    if (/\bFOG\b/.test(zin)) return 'mist';
+    // "OCCASIONALLY POOR" e.d. is een bijzin, geen structureel slecht
+    // zicht — anders badgede vandaag elk gebied ("moderate or good,
+    // occasionally poor" staat in vrijwel elke Met Office-tekst).
+    if (/\bPOOR\b/.test(zin)
+      && !/PRECIPITATION|SHOWER|THUNDER|RAIN|DRIZZLE/.test(zin)
+      && !/(?:OCCASIONALLY|POSSIBLY|LOCALLY|AT\s+TIMES)\s+(?:\w+\s+)?POOR/.test(zin)) slechtZicht = true;
+  }
+  return slechtZicht ? 'slecht zicht' : null;
+}
+
+// Mist-icoontje in dezelfde open-lijn-stijl als golfIcoonHtml() (zie de
+// blob-les daar: dunne lijnen + currentColor, geen kleur-emoji met gloed).
+function mistIcoonHtml() {
+  return '<svg class="golf-emoji" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M2,9 L18,9 M5,13 L22,13 M2,17 L15,17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+    + '</svg>';
+}
+
+// Benoemde plaatsen buiten de eigen 10 kaartgebieden waar de KNMI-synopsis
+// druksystemen aan ophangt ("LOW, 1008, OVER SPAIN..."). INDICATIEVE
+// centroïden — op synoptische schaal is een drukgebied zelf honderden km
+// groot, dus een landelijk/zeegebied-middelpunt is precies de resolutie
+// die het bronbericht ook heeft. Onbekende namen worden gewoon
+// overgeslagen (liever geen symbool dan een gegokt symbool).
+const DRUK_PLAATSEN = {
+  'BRITTANY': [48.0, -3.5], 'SPAIN': [40.0, -4.0], 'PORTUGAL': [39.5, -8.0],
+  'FRANCE': [47.0, 2.0], 'ENGLAND': [52.5, -1.5], 'SCOTLAND': [56.8, -4.2],
+  'IRELAND': [53.3, -8.0], 'WALES': [52.3, -3.7], 'NORWAY': [61.0, 8.0],
+  'DENMARK': [56.0, 9.5], 'SHETLAND': [60.35, -1.25], 'ICELAND': [64.9, -18.6],
+  'FAEROES': [62.0, -6.8], 'FAEROE': [62.0, -6.8], 'AZORES': [38.5, -28.0],
+  'NORWEGIAN SEA': [66.0, 2.0], 'NORTH SEA': [56.0, 3.5], 'IRISH SEA': [53.5, -5.3],
+  'BAY OF BISCAY': [45.5, -4.0], 'BISCAY': [45.5, -4.0], 'CHANNEL': [50.2, -1.5],
+  // omliggende shipping-forecast-gebieden (benaderd middelpunt)
+  'UTSIRE': [59.3, 4.5], 'FAIR ISLE': [59.5, -2.0], 'CROMARTY': [57.7, -2.5],
+  'SOLE': [48.5, -8.0], 'FITZROY': [44.5, -9.0], 'PLYMOUTH': [49.7, -4.5],
+  'WIGHT': [50.3, -1.0], 'PORTLAND': [50.2, -2.8], 'LUNDY': [51.0, -5.3],
+  'FASTNET': [51.0, -8.5], 'SHANNON': [52.5, -10.5], 'ROCKALL': [57.0, -13.0],
+  'MALIN': [55.8, -7.5], 'HEBRIDES': [57.8, -8.0],
+};
+
+// Middelpunt (zwaartepunt) van één van de 10 eigen kaartgebieden, of null.
+function zeeGebiedMidden(naam) {
+  const kaal = String(naam ?? '').trim().toUpperCase().replace(WINDSTREEK_VOORVOEGSEL, '');
+  const feature = ZEE_GEBIEDEN.features.find((f) => f.properties.name.toUpperCase() === kaal);
+  if (!feature) return null;
+  const ring = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
+  const p = polygoonZwaartepunt(ring);
+  return [p.lat, p.lng];
+}
+
+function drukPlaatsVoorNaam(naam) {
+  const kaal = String(naam ?? '').trim().toUpperCase();
+  return zeeGebiedMidden(kaal) ?? DRUK_PLAATSEN[kaal] ?? DRUK_PLAATSEN[kaal.replace(/^THE\s+/, '')] ?? null;
+}
+
+const KOMPAS_GRADEN = {
+  N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315,
+  NORTH: 0, NORTHEAST: 45, EAST: 90, SOUTHEAST: 135, SOUTH: 180,
+  SOUTHWEST: 225, WEST: 270, NORTHWEST: 315,
+};
+
+// Druksystemen uit een SYNOPSIS-tekst. Twee vormen uit de echte ontvangst:
+// - KNMI PE: "LOW, 1003, OVER THE DOGGER IS MOVING NORTH TOWARDS FORTIES."
+//   en "LOW, 1007, WEST OF BRITTANY REMAINS FAIRLY STATIONARY."
+// - Noorse bulletin-vorm: "LOW 1001 HPA, 49 N 12 W, MOV LITTLE, EXP 1000
+//   HPA AT 49 N 11 W THU 18 UTC" (coördinaten, met verwachte positie).
+// Druk-sanity 940–1060 hPa zodat een corrupte "100&" of een jaartal nooit
+// als druk doorgaat.
+function parseDrukgebieden(tekst) {
+  const uit = [];
+  const zinnen = String(tekst ?? '').toUpperCase().split(/[.\n]+/);
+  for (const zin of zinnen) {
+    const kop = zin.match(/\b(LOW|HIGH)S?,?\s*(?:PRESSURE\s+)?(9[4-9]\d|10[0-5]\d)\b/);
+    if (!kop) continue;
+    const soort = kop[1];
+    const druk = Number(kop[2]);
+    const rest = zin.slice(kop.index + kop[0].length);
+    // Positie: exacte coördinaten winnen van een benoemde plaats.
+    let positie = null;
+    let benaderd = false;
+    const co = rest.match(/\b(\d{1,2}(?:[.,]\d+)?)\s*N[, ]+\s*(\d{1,3}(?:[.,]\d+)?)\s*([EW])\b/);
+    if (co) {
+      positie = [Number(co[1].replace(',', '.')), Number(co[2].replace(',', '.')) * (co[3] === 'W' ? -1 : 1)];
+    } else {
+      const bij = rest.match(/^[,\s]*(?:HPA[,\s]*)?(?:(NORTH|SOUTH|EAST|WEST)(?:WEST|EAST)?\s+OF|OVER|NEAR)\s+(?:THE\s+)?([A-Z][A-Z ]*?)(?=\s+(?:IS|REMAINS|MOVES|MOVING|MOV|WITH|AND|TRACKING|DEVELOPING|EXTENDS|BECOMES|FOLLOWS)\b|\s*,|\s*$)/);
+      if (bij) {
+        const plek = drukPlaatsVoorNaam(bij[2]);
+        if (plek) {
+          benaderd = true;
+          positie = [...plek];
+          // "WEST OF BRITTANY": indicatief een stuk opschuiven in de
+          // genoemde richting (synoptische schaal, dus grof is prima).
+          const offset = bij[0].match(/\b(NORTH|SOUTH|EAST|WEST)(WEST|EAST)?\s+OF\b/);
+          if (offset) {
+            const g = KOMPAS_GRADEN[offset[1] + (offset[2] ?? '')] ?? KOMPAS_GRADEN[offset[1]];
+            positie[0] += 2.5 * Math.cos((g * Math.PI) / 180);
+            positie[1] += 4.0 * Math.sin((g * Math.PI) / 180);
+          }
+        }
+      }
+    }
+    if (!positie) continue; // geen herleidbare plek -> geen symbool
+    // Beweging: stilstand, kompasrichting, en/of een benoemd doelgebied.
+    const stationair = /REMAINS\s+(?:FAIRLY\s+)?STATIONARY|MOV(?:ES|ING)?\s+LITTLE/.test(rest);
+    let bewegingGraden = null;
+    const beweegt = rest.match(/\b(?:IS\s+)?(?:MOVING|MOVES|MOV)\s+(NORTHEAST|NORTHWEST|SOUTHEAST|SOUTHWEST|NORTH|SOUTH|EAST|WEST|NE|NW|SE|SW|N|E|S|W)(?:WARDS?)?\b/);
+    if (beweegt && KOMPAS_GRADEN[beweegt[1]] != null) bewegingGraden = KOMPAS_GRADEN[beweegt[1]];
+    let doel = null;
+    const naar = rest.match(/\bTO(?:WARDS)?\s+(?:THE\s+)?([A-Z][A-Z ]*?)(?=\s*[,.]|\s*$)/);
+    if (naar) doel = drukPlaatsVoorNaam(naar[1]);
+    const exp = rest.match(/\bEXP\s+(9[4-9]\d|10[0-5]\d)\s*HPA\s+AT\s+(\d{1,2})\s*N\s+(\d{1,3})\s*([EW])/);
+    if (exp) doel = [Number(exp[2]), Number(exp[3]) * (exp[4] === 'W' ? -1 : 1)];
+    uit.push({ soort, druk, positie, benaderd, stationair, bewegingGraden, doel, zin: zin.trim() });
+  }
+  return uit;
+}
+
+// Nieuwste bruikbare SYNOPSIS uit de eigen NAVTEX-ontvangst. De KNMI
+// PE-berichten komen ~2x per dag; 15 uur venster zodat er altijd precies
+// één actuele set symbolen staat en een gemiste uitzending niet meteen een
+// lege kaart geeft. Alleen de SYNOPSIS-sectie zelf (tot FORECAST VALID) —
+// dezelfde sectiegrens als parseNavtexGaleWarning, om dezelfde reden.
+const DRUK_VERS_MS = 15 * 60 * 60 * 1000;
+
+function drukgebiedenUitNavtex() {
+  const nu = Date.now();
+  const kandidaten = (laatsteMeldingenSignalen ?? [])
+    .filter((s) => s.categorie === 'navtex' && !s.detail?.verlopen)
+    .filter((s) => {
+      const tijdMs = s.tijd ? new Date(s.tijd).getTime() : NaN;
+      return Number.isFinite(tijdMs) && nu - tijdMs < DRUK_VERS_MS;
+    })
+    .sort((a, b) => new Date(b.tijd) - new Date(a.tijd));
+  for (const s of kandidaten) {
+    const bericht = String(s.detail?.bericht ?? '').toUpperCase();
+    const synopsisStart = bericht.search(/\bSYNOPSIS\b/);
+    if (synopsisStart === -1) continue;
+    const einde = bericht.search(/FORECAST\s+VALID/);
+    const sectie = bericht.slice(synopsisStart, einde > synopsisStart ? einde : undefined);
+    const stelsels = parseDrukgebieden(sectie);
+    if (stelsels.length) return { stelsels, code: s.detail?.code ?? null, tijd: s.tijd };
+  }
+  return null;
+}
+
+let drukLaag = null;
+
+function verversDrukgebieden() {
+  if (!kaart) return;
+  if (drukLaag) {
+    kaart.removeLayer(drukLaag);
+    drukLaag = null;
+  }
+  if (!zeeModusActief) return;
+  const bron = drukgebiedenUitNavtex();
+  if (!bron) return;
+  const lagen = [];
+  for (const st of bron.stelsels) {
+    const letter = st.soort === 'LOW' ? 'L' : 'H';
+    // Bewegingspijl wijst waar het systeem HEEN gaat (dit is verplaatsing,
+    // geen wind — dus géén +180 zoals bij de windvanen).
+    const pijl = st.bewegingGraden != null
+      ? `<svg class="druk-pijl" viewBox="0 0 20 20" aria-hidden="true"><g transform="rotate(${st.bewegingGraden} 10 10)"><path d="M10 2 L14 10 L11 8.5 L11 18 L9 18 L9 8.5 L6 10 Z" fill="currentColor"/></g></svg>`
+      : '';
+    const marker = L.marker(st.positie, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="druk-symbool druk-${st.soort.toLowerCase()}" title="${escapeHtml(st.zin)}"><span class="druk-letter">${letter}</span><span class="druk-waarde">${st.druk}</span>${pijl}</div>`,
+        iconSize: [52, 56],
+        iconAnchor: [26, 28],
+      }),
+    });
+    marker.on('click', () => {
+      const uitleg = `<div class="popup-titel">${letter === 'L' ? 'Lagedrukgebied' : 'Hogedrukgebied'} ${st.druk} hPa</div>`
+        + `<div class="popup-advies">${escapeHtml(st.zin)}</div>`
+        + `<div class="popup-sub">Bron: eigen NAVTEX-ontvangst${bron.code ? ` (${escapeHtml(bron.code)})` : ''}${st.benaderd ? ' — positie indicatief' : ''}</div>`;
+      L.popup({ maxWidth: 280 }).setLatLng(st.positie).setContent(uitleg).openOn(kaart);
+    });
+    lagen.push(marker);
+    if (st.doel) {
+      lagen.push(L.polyline([st.positie, st.doel], {
+        color: st.soort === 'LOW' ? '#ff2e3f' : '#4d8dff',
+        weight: 2,
+        opacity: 0.55,
+        dashArray: '7 7',
+        interactive: false,
+      }));
+    }
+  }
+  if (lagen.length) drukLaag = L.layerGroup(lagen).addTo(kaart);
 }
 
 function bouwZeeGebiedenLaag() {
