@@ -3666,6 +3666,28 @@ const WIND_VAAN_SVG = `<svg viewBox="0 0 30 40" width="30" height="40" aria-hidd
   <path d="M8.4 4 L27 10.5 L8.4 17.5 Z" fill="#ff2e3f" stroke="#7a0d16" stroke-width="1.2" stroke-linejoin="round"/>
 </svg>`;
 
+// 2026-08-28-fix, op Lex' screenshot (Dover-vaan op het strand van
+// Boulogne): L.latLngBounds(...).getCenter() is het midden van de
+// omsluitende RECHTHOEK — bij een schuine kuststrook als Dover valt dat
+// buiten het gebied zelf, op land. Dit is het echte polygoon-zwaartepunt
+// (shoelace-formule); voor Dover: 50.83N 1.38O, netjes midden in het
+// Kanaal. Ontaarde ring (oppervlak ~0) valt terug op het rechthoek-midden.
+function polygoonZwaartepunt(ringLatLon) {
+  let a2 = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < ringLatLon.length; i++) {
+    const [y1, x1] = ringLatLon[i];
+    const [y2, x2] = ringLatLon[(i + 1) % ringLatLon.length];
+    const kruis = x1 * y2 - x2 * y1;
+    a2 += kruis;
+    cx += (x1 + x2) * kruis;
+    cy += (y1 + y2) * kruis;
+  }
+  if (Math.abs(a2) < 1e-9) return L.latLngBounds(ringLatLon).getCenter();
+  return L.latLng(cy / (3 * a2), cx / (3 * a2));
+}
+
 let windvaanLaag = null;
 
 function verversWindvanen() {
@@ -3688,7 +3710,7 @@ function verversWindvanen() {
       : (synopsisInfo ?? navtexInfo);
     if (!info) return;
     const ring = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
-    const midden = L.latLngBounds(ring).getCenter();
+    const midden = polygoonZwaartepunt(ring); // zwaartepunt, niet rechthoek-midden — zie de fix hierboven
     // Richting bekend -> draaiende windvaan-pijl; onbekend (cyclonic/
     // variable) -> het statische stormsein-wimpeltje als terugval.
     const icoonSvg = info.richting ? windVaanPijlSvg(info.richting.graden) : WIND_VAAN_SVG;
