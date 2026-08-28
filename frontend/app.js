@@ -2515,6 +2515,12 @@ function popupExtraHtml(s) {
   if (s.categorie === 'navtex') {
     const stats = [];
     if (d.station) stats.push(d.station + (d.land ? ` (${d.land})` : ''));
+    // 2026-08-28, op vraag van Lex ("hier zie ik geen GA in — wordt het
+    // zendstation afgekapt op het label?"): de zendcode-kop (ZCZC GA27 +
+    // WZ-nummer) wordt bij het parsen bewust uit de weergavetekst geknipt,
+    // dus de code stond nergens meer zichtbaar — terwijl de "+N andere
+    // berichten"-regels 'm wél tonen. Nu hier expliciet in de statregel.
+    if (d.code) stats.push(`code ${d.code}`);
     if (d.afstandTotJouKm != null) stats.push(`${d.afstandTotJouKm}km van jou`);
     if (stats.length) blokken.push(`<div class="popup-stats">${stats.join(' · ')}</div>`);
     // 2026-08-26, op verzoek van Lex ("kan ik dit schema niet ergens handig
