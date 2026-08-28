@@ -3270,6 +3270,11 @@ const ZEE_GEBIEDEN = {
 };
 
 let zeeLaag = null;
+// 2026-08-28, op verzoek van Lex ("waarom gebruiken we eigenlijk niet de
+// echte zeekaart?"): de dieptelaag (EMODnet Bathymetry, via de eigen
+// tegel-proxy) die van de kale OSM-zee een echte zeekaart maakt —
+// dieptetinten onder de seamark-laag. Zie TEGEL_DIEPTE_* in server.js.
+let zeeDiepteLaag = null;
 let zeeGebiedenLaag = null;
 let zeeModusActief = false;
 
@@ -4304,7 +4309,21 @@ function toggleZeeModus() {
         pane: 'zeePane',
       });
     }
+    // 2026-08-28: dieptelaag ÓNDER de seamarks (zelfde pane, eerder
+    // toegevoegd = eronder getekend). maxNativeZoom 12: dieper inzoomen
+    // rekt de laatste echte dieptetegel op i.p.v. grijs te worden. Opacity
+    // zodat vanen, drukgebieden en waarschuwingen leesbaar blijven.
+    if (!zeeDiepteLaag) {
+      zeeDiepteLaag = L.tileLayer('/api/tegel-diepte/{z}/{x}/{y}.png?v=d1', {
+        attribution: 'EMODnet Bathymetry',
+        maxNativeZoom: 12,
+        maxZoom: 18,
+        opacity: 0.55,
+        pane: 'zeePane',
+      });
+    }
     if (!zeeGebiedenLaag) zeeGebiedenLaag = bouwZeeGebiedenLaag();
+    kaart.addLayer(zeeDiepteLaag);
     kaart.addLayer(zeeLaag);
     kaart.addLayer(zeeGebiedenLaag);
     // 2026-08-21, op verzoek van Lex ("de knop zee moet altijd de focus
@@ -4338,6 +4357,7 @@ function toggleZeeModus() {
     if (kaartVolgType) stopKaartVolgen(false); // zie toggleVliegradar
   } else {
     if (zeeLaag) kaart.removeLayer(zeeLaag);
+    if (zeeDiepteLaag) kaart.removeLayer(zeeDiepteLaag);
     if (zeeGebiedenLaag) kaart.removeLayer(zeeGebiedenLaag);
     // Vaarradar "leunt" op Zee-modus (zie toggleVaarradar hieronder) — als
     // Zee-modus om wat voor reden dan ook uitgaat (ook via deze knop direct,

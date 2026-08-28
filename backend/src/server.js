@@ -216,6 +216,16 @@ function readJsonBody(req, maxBytes = 16 * 1024) {
 // weer terug naar `osm1`, dezelfde als vóór deze poging.
 const TEGEL_BASIS_URL = 'https://tile.openstreetmap.org';
 const TEGEL_MAX_Z = 19; // OSM's eigen standaardgrens
+// 2026-08-28, op verzoek van Lex ("waarom gebruiken we eigenlijk niet de
+// echte zeekaart?"): de ontbrekende middelste laag van de OpenSeaMap-
+// sandwich is de DIEPTELAAG — OpenSeaMap's eigen dieptetegels worden niet
+// meer betrouwbaar geserveerd, maar EMODnet Bathymetry (het Europese
+// zeebodemprogramma, vrij te gebruiken) serveert prima web-mercator-tegels.
+// Zelfde proxy-vangnetten (schijfcache, in-flight-dedup, foutcache) als de
+// OSM-tegels hierboven, eigen pad /api/tegel-diepte/. Max zoom 12: hogere
+// zooms bestaan upstream niet — de frontend rekt met maxNativeZoom op.
+const TEGEL_DIEPTE_BASIS_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator';
+const TEGEL_DIEPTE_MAX_Z = 12;
 const TEGEL_USER_AGENT = 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)';
 
 // 2026-08-25, op melding van Lex ("scherm bleef vrij lang wit voordat de
@@ -311,13 +321,17 @@ function tegelFoutStatus(foutCache, sleutel) {
 // geheugen → schijf → upstream. Gedeeld door gelijktijdige aanvragen via
 // tegelInFlight (zie punt 2 hierboven). Gooit zelf nooit — een fout komt
 // terug als { status } zonder buffer.
-function haalTegelData(sleutel, zNum, xNum, yNum) {
+function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
   const lopend = tegelInFlight.get(sleutel);
   if (lopend) return lopend;
 
   const promise = (async () => {
     // Schijfcache — overleeft de service-herstart die elke syncweer doet.
-    const schijfPad = join(TEGEL_SCHIJF_DIR, String(zNum), String(xNum), `${yNum}.png`);
+    // 2026-08-28: de dieptetegels krijgen een eigen submap; het osm-pad
+    // blijft ongewijzigd zodat de bestaande schijfcache gewoon geldig blijft.
+    const schijfPad = bron === 'osm'
+      ? join(TEGEL_SCHIJF_DIR, String(zNum), String(xNum), `${yNum}.png`)
+      : join(TEGEL_SCHIJF_DIR, bron, String(zNum), String(xNum), `${yNum}.png`);
     try {
       const s = await stat(schijfPad);
       if (Date.now() - s.mtimeMs < TEGEL_SCHIJF_MAX_LEEFTIJD_MS) {
@@ -329,8 +343,9 @@ function haalTegelData(sleutel, zNum, xNum, yNum) {
     }
 
     try {
-      // OSM gebruikt de gebruikelijke XYZ-volgorde (z/x/y), geen herordening nodig.
-      const upstream = await fetch(`${TEGEL_BASIS_URL}/${zNum}/${xNum}/${yNum}.png`, {
+      // Beide bronnen gebruiken de gebruikelijke XYZ-volgorde (z/x/y).
+      const basisUrl = bron === 'diepte' ? TEGEL_DIEPTE_BASIS_URL : TEGEL_BASIS_URL;
+      const upstream = await fetch(`${basisUrl}/${zNum}/${xNum}/${yNum}.png`, {
         headers: { 'User-Agent': TEGEL_USER_AGENT },
         signal: AbortSignal.timeout(TEGEL_FETCH_TIMEOUT_MS),
       });
@@ -359,15 +374,17 @@ function haalTegelData(sleutel, zNum, xNum, yNum) {
   return promise;
 }
 
-async function serveTegel(req, res, z, x, y) {
+async function serveTegel(req, res, z, x, y, bron = 'osm') {
   const zNum = Number(z);
   const xNum = Number(x);
   const yNum = Number(y);
-  if (!Number.isInteger(zNum) || !Number.isInteger(xNum) || !Number.isInteger(yNum) || zNum < 0 || zNum > TEGEL_MAX_Z) {
+  const maxZ = bron === 'diepte' ? TEGEL_DIEPTE_MAX_Z : TEGEL_MAX_Z;
+  if (!Number.isInteger(zNum) || !Number.isInteger(xNum) || !Number.isInteger(yNum) || zNum < 0 || zNum > maxZ) {
     res.writeHead(400).end('Ongeldige tegel-coördinaten');
     return;
   }
-  const sleutel = `${zNum}/${xNum}/${yNum}`;
+  // osm houdt de kale sleutel (bestaande geheugen-/schijfcache blijft geldig).
+  const sleutel = bron === 'osm' ? `${zNum}/${xNum}/${yNum}` : `${bron}/${zNum}/${xNum}/${yNum}`;
   const nu = Date.now();
   const bestaand = tegelCache.get(sleutel);
   if (bestaand && nu - bestaand.tijdMs < TEGEL_CACHE_MS) {
@@ -389,7 +406,7 @@ async function serveTegel(req, res, z, x, y) {
     return;
   }
 
-  const resultaat = await haalTegelData(sleutel, zNum, xNum, yNum);
+  const resultaat = await haalTegelData(sleutel, zNum, xNum, yNum, bron);
   noteerTegelStat(sleutel, nu, resultaat.bron ?? 'onbekend', resultaat.status);
   if (resultaat.status !== 200 || !resultaat.buffer) {
     res.writeHead(resultaat.status, { 'Cache-Control': 'no-store' }).end();
@@ -1082,6 +1099,12 @@ export function createApp(env) {
     const tegelMatch = url.match(/^\/api\/tegel\/(\d+)\/(\d+)\/(\d+)\.png$/);
     if (tegelMatch) {
       return serveTegel(req, res, tegelMatch[1], tegelMatch[2], tegelMatch[3]);
+    }
+    // 2026-08-28: EMODnet-dieptetegels voor de zeekaart-look in Zee-modus —
+    // zelfde proxy/caches, eigen bron. Zie TEGEL_DIEPTE_BASIS_URL hierboven.
+    const tegelDiepteMatch = url.match(/^\/api\/tegel-diepte\/(\d+)\/(\d+)\/(\d+)\.png$/);
+    if (tegelDiepteMatch) {
+      return serveTegel(req, res, tegelDiepteMatch[1], tegelDiepteMatch[2], tegelDiepteMatch[3], 'diepte');
     }
     const regenradarMatch = url.match(/^\/api\/regenradar\/(.+)$/);
     if (regenradarMatch) {
