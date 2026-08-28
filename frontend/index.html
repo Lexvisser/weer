@@ -53,7 +53,14 @@
     <div class="navtex-volgende verborgen" id="navtexVolgendeUitzending">
       <span id="navtexVolgendeTekst"></span>
       <button type="button" id="navtexAutoKnop" title="Automatisch de ruwe-ontvangst-viewer openen zodra er tekst binnenkomt">AUTO UIT</button>
+      <button type="button" id="navtexDxKnop" title="Bijzondere (verre) ontvangst van de afgelopen 24 uur tonen/verbergen">DX</button>
     </div>
+    <!-- 2026-08-28, op verzoek van Lex ("een lijstje met DX bijzonderheden...
+         onder de melding voor de uitzendingen met een toon en verberg knop,
+         zelfde stijl"): verre-ontvangst-lijst onder het uitzending-plaatje,
+         zelfde fosforgroen. Gevuld/ververst in ververNavtexVolgende();
+         tonen/verbergen via de DX-knop hierboven (per toestel bewaard). -->
+    <div class="navtex-dx verborgen" id="navtexDxPaneel"></div>
     <!-- Gevaren/Weer-schakelaar is op 2026-08-18 weggehaald: die deed toch
          alleen de radar-controls-balk hieronder tonen/verbergen, niet welke
          gevaren-iconen je zag — dus pure overhead. Radar en Satelliet staan

@@ -607,6 +607,17 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    kaart-tikken gewoon door (pointer-events:none op de container hierboven). */
 .navtex-volgende button { pointer-events:auto; font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:0.04em; color:#3bff7c; background:rgba(59,255,124,0.12); border:1px solid rgba(59,255,124,0.45); border-radius:6px; padding:2px 7px; cursor:pointer; white-space:nowrap; }
 .navtex-volgende button.aan { background:rgba(59,255,124,0.32); color:#062b12; text-shadow:none; font-weight:700; }
+/* 2026-08-28: DX-lijst (bijzondere verre ontvangst, 24 uur) onder het
+   uitzending-plaatje — zelfde fosforgroene stijl, zie renderNavtexDx() in
+   app.js. Regels zijn knoppen: tikken centreert op het nieuwste bericht. */
+.navtex-dx { position:absolute; top:42px; right:10px; z-index:1000; display:flex; flex-direction:column; gap:3px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.45); background:rgba(3,10,5,0.78); border:1px solid rgba(59,255,124,0.35); border-radius:8px; padding:6px 9px; max-width:72%; max-height:40vh; overflow-y:auto; }
+.navtex-dx.verborgen { display:none; }
+.dx-kop { font-size:9.5px; letter-spacing:0.06em; opacity:0.85; border-bottom:1px solid rgba(59,255,124,0.25); padding-bottom:3px; margin-bottom:2px; }
+.dx-leeg { opacity:0.65; font-size:10px; }
+.dx-regel { display:flex; flex-direction:column; align-items:flex-start; gap:1px; background:none; border:none; padding:2px 0; cursor:pointer; font-family:inherit; color:inherit; text-shadow:inherit; text-align:left; }
+.dx-regel:hover .dx-station { text-decoration:underline; }
+.dx-station { font-size:11px; font-weight:700; }
+.dx-info { font-size:9.5px; opacity:0.8; }
 /* Basis ('normaal') komt overeen met de oude, compacte Leaflet-popup-opmaak
    (11.5px titel-context, 10px advies-tekst e.d. — zie .popup-titel/.popup-sub/
    .popup-advies hieronder) zodat de inhoud er vertrouwd uitziet; de stappen

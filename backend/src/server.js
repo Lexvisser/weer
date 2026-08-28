@@ -970,8 +970,11 @@ export function createApp(env) {
       }
     }
     if (url === '/api/navtex-stations') {
+      // 2026-08-28: lat/lon erbij voor de DX-lijst in de app (mastafstand
+      // vanaf thuis bepaalt wat "bijzondere ontvangst" is) — zie dxLijst()
+      // in app.js.
       return sendJson(res, 200, {
-        stations: NAVTEX_STATIONS.map((s) => ({ id: s.id, naam: s.naam, land: s.land, zendschema: s.zendschema })),
+        stations: NAVTEX_STATIONS.map((s) => ({ id: s.id, naam: s.naam, land: s.land, lat: s.lat, lon: s.lon, zendschema: s.zendschema })),
       });
     }
     if (url === '/api/zee-synopsis') {

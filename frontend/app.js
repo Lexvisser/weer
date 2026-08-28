@@ -79,6 +79,10 @@ const NAVTEX_RUW_SLUITEN_EL = document.getElementById('navtexRuwSluiten');
 const NAVTEX_VOLGENDE_EL = document.getElementById('navtexVolgendeUitzending');
 const NAVTEX_VOLGENDE_TEKST_EL = document.getElementById('navtexVolgendeTekst');
 const NAVTEX_AUTO_KNOP_EL = document.getElementById('navtexAutoKnop');
+// 2026-08-28: DX-lijst (bijzondere verre ontvangst) onder het plaatje —
+// zie dxLijst()/renderNavtexDx() verderop.
+const NAVTEX_DX_KNOP_EL = document.getElementById('navtexDxKnop');
+const NAVTEX_DX_PANEEL_EL = document.getElementById('navtexDxPaneel');
 const BOTTOM_NAV_EL = document.getElementById('bottomNav');
 const ZONMAAN_KAART_EL = document.getElementById('zonmaanKaart');
 const ZM_OP_EL = document.getElementById('zmOp');
@@ -971,6 +975,7 @@ function volgendeNavtexUitzending() {
 
 function ververNavtexVolgende() {
   if (!NAVTEX_VOLGENDE_EL) return;
+  renderNavtexDx(); // DX-lijst lift mee op hetzelfde klok-ritme en dezelfde zichtbaarheidsregels
   const volgende = zeeModusActief ? volgendeNavtexUitzending() : null;
   if (!volgende) {
     NAVTEX_VOLGENDE_EL.classList.add('verborgen');
@@ -1078,6 +1083,91 @@ NAVTEX_AUTO_KNOP_EL?.addEventListener('click', () => {
   }
   renderNavtexAutoKnop();
   zorgNavtexAutoMonitor();
+});
+
+// ---- DX-lijst: bijzondere (verre) ontvangst (2026-08-28) ---------------
+// Op verzoek van Lex ("een lijstje met DX bijzonderheden... onder de melding
+// voor de uitzendingen, met een toon en verberg knop, zelfde stijl" — en
+// "niet per se 's morgens", dus gewoon altijd beschikbaar): welke VERRE
+// stations zaten er de afgelopen 24 uur in de eigen ontvangst. "Ver" is de
+// MASTafstand (niet de berichtpositie — een Scheveningen-bericht over een
+// verre positie is geen DX), drempel 500 km: de vaste kring (Scheveningen,
+// Oostende, Niton, Hamburg) valt eronder, Cullercoats en verder erboven.
+// Per station één regel: mastafstand, aantal berichten, laatste ontvangst;
+// tikken centreert de kaart op het nieuwste bericht van dat station.
+// Toon/verberg per toestel bewaard (zelfde patroon als de AUTO-knop);
+// ververst mee op het klok-ritme via ververNavtexVolgende().
+const NAVTEX_DX_KEY = 'weerNavtexDxOpen';
+const NAVTEX_DX_VENSTER_MS = 24 * 60 * 60 * 1000;
+const NAVTEX_DX_MAST_KM = 500;
+let navtexDxOpen = false;
+try {
+  navtexDxOpen = localStorage.getItem(NAVTEX_DX_KEY) === 'aan';
+} catch {
+  // privé-venster/geblokkeerde site-data — standaard dicht
+}
+
+function dxLijst() {
+  if (!Array.isArray(NAVTEX_STATIONS_DATA)) return [];
+  const nu = Date.now();
+  const perStation = new Map();
+  for (const s of laatsteMeldingenSignalen ?? []) {
+    if (s.categorie !== 'navtex' || s.detail?.verlopen) continue;
+    const stationId = s.detail?.stationId;
+    if (!stationId) continue;
+    const station = NAVTEX_STATIONS_DATA.find((st) => st.id === stationId);
+    if (!station || !Number.isFinite(station.lat)) continue;
+    const mastKm = afstandKm(THUIS.homeLat, THUIS.homeLon, station.lat, station.lon);
+    if (mastKm < NAVTEX_DX_MAST_KM) continue;
+    const laatst = new Date(s.detail?.laatstGezien ?? s.tijd).getTime();
+    if (!Number.isFinite(laatst) || nu - laatst > NAVTEX_DX_VENSTER_MS) continue;
+    const rec = perStation.get(stationId) ?? { station, mastKm, aantal: 0, laatst: 0, signaal: null };
+    rec.aantal += 1;
+    if (laatst > rec.laatst) {
+      rec.laatst = laatst;
+      rec.signaal = s;
+    }
+    perStation.set(stationId, rec);
+  }
+  return [...perStation.values()].sort((a, b) => b.mastKm - a.mastKm);
+}
+
+function renderNavtexDx() {
+  if (!NAVTEX_DX_PANEEL_EL) return;
+  if (NAVTEX_DX_KNOP_EL) NAVTEX_DX_KNOP_EL.classList.toggle('aan', navtexDxOpen);
+  if (!zeeModusActief || !navtexDxOpen) {
+    NAVTEX_DX_PANEEL_EL.classList.add('verborgen');
+    return;
+  }
+  const lijst = dxLijst();
+  const kop = '<div class="dx-kop">DX-ontvangst · afgelopen 24 uur</div>';
+  if (!lijst.length) {
+    NAVTEX_DX_PANEEL_EL.innerHTML = `${kop}<div class="dx-leeg">geen verre ontvangst</div>`;
+  } else {
+    NAVTEX_DX_PANEEL_EL.innerHTML = kop + lijst.map((r, i) => (
+      `<button type="button" class="dx-regel" data-dx="${i}">`
+      + `<span class="dx-station">${escapeHtml(r.station.naam)}${r.station.land ? ` (${escapeHtml(r.station.land)})` : ''}</span>`
+      + `<span class="dx-info">${Math.round(r.mastKm)} km · ${r.aantal} ber. · ${new Date(r.laatst).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })}</span>`
+      + '</button>'
+    )).join('');
+    NAVTEX_DX_PANEEL_EL.querySelectorAll('.dx-regel').forEach((knop) => {
+      knop.addEventListener('click', () => {
+        const r = lijst[Number(knop.dataset.dx)];
+        if (r?.signaal) centreerOpMelding(r.signaal);
+      });
+    });
+  }
+  NAVTEX_DX_PANEEL_EL.classList.remove('verborgen');
+}
+
+NAVTEX_DX_KNOP_EL?.addEventListener('click', () => {
+  navtexDxOpen = !navtexDxOpen;
+  try {
+    localStorage.setItem(NAVTEX_DX_KEY, navtexDxOpen ? 'aan' : 'uit');
+  } catch (err) {
+    console.warn('[weer] navtex-dx-voorkeur opslaan mislukt (blijft wel actief voor deze sessie):', err);
+  }
+  renderNavtexDx();
 });
 
 // 2026-08-26: zelfde dicht-tot-je-erop-tikt uitklap-idioom (booleaanse vlag
