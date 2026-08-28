@@ -710,6 +710,10 @@ function ontvangstStatsVoorBericht(bericht, ruweBerichten) {
   const codeSleutel = dedupSleutel(bericht.code, bericht.typeLetter);
   let aantalOntvangsten = 0;
   let laatsteDatum = null;
+  // 2026-08-28 (DX-lijst): ook het nieuwste ONTVANGST-moment over alle
+  // duplicaten heen — de blok-begintijd uit het viewer-register (zie
+  // fetchNavtexLokaal), niet de DTG. ISO-strings, dus kaal vergelijkbaar.
+  let laatsteOntvangst = null;
   for (const rb of ruweBerichten) {
     const hoortErbij = inhoudSleutel
       ? inhoudsSleutel(rb) === inhoudSleutel
@@ -717,13 +721,17 @@ function ontvangstStatsVoorBericht(bericht, ruweBerichten) {
     if (!hoortErbij) continue;
     aantalOntvangsten += 1;
     if (rb.datum && (!laatsteDatum || rb.datum.getTime() > laatsteDatum.getTime())) laatsteDatum = rb.datum;
+    if (rb.ontvangstTijd && (!laatsteOntvangst || rb.ontvangstTijd > laatsteOntvangst)) laatsteOntvangst = rb.ontvangstTijd;
   }
   // Geen inhouds- of code-sleutel (te vage station/type-lezing, zie
   // dedupSleutel()/inhoudsSleutel() hierboven) -- dan is er niets om tegen te
   // matchen, en telt het bericht zichzelf als enige ontvangst, net zoals de
   // rest van dit bestand zulke berichten al ongemoeid/los behandelt.
-  if (aantalOntvangsten === 0) aantalOntvangsten = 1;
-  return { aantalOntvangsten, laatsteDatum };
+  if (aantalOntvangsten === 0) {
+    aantalOntvangsten = 1;
+    laatsteOntvangst = bericht.ontvangstTijd ?? null;
+  }
+  return { aantalOntvangsten, laatsteDatum, laatsteOntvangst };
 }
 
 // 2026-08-24, op verzoek van Lex ("er staat best vaak cancel in een bericht
@@ -1582,9 +1590,29 @@ export async function fetchNavtexLokaal(env = {}) {
   // 2026-08-28: begintijden per ruw blok bijhouden vóór elke normalisatie,
   // zodat de offsets bij het bestand blijven horen (zie registreerRuweBlokTijden).
   registreerRuweBlokTijden(ruweTekst);
+  // 2026-08-28 (DX-lijst, vraag van Lex "wordt dat straks de tijd van het
+  // laatst ontvangen bericht?"): de ECHTE ontvangsttijd per blok bestaat al
+  // — het begintijden-register van de viewer hierboven. Hier per blok
+  // doorgekoppeld: het i-de blok uit segmenteerBerichten is de i-de
+  // ZCZC-treffer, en die offset staat (voor de laatste RUW_TIJDEN_MAX
+  // blokken) in ruweBlokTijden. Blokken van vóór het register of buiten de
+  // cap krijgen null — liever geen tijd dan een verzonnen tijd.
+  const tijdPerOffset = new Map(ruweBlokTijden.map((b) => [b.offset, b.tijd]));
+  const ruweOffsets = [];
+  {
+    const re = /ZCZC/gi;
+    let tref;
+    while ((tref = re.exec(ruweTekst)) !== null) ruweOffsets.push(tref.index);
+  }
   const tekst = ruweTekst.replace(/\r\n/g, '\n');
   const blokken = segmenteerBerichten(tekst);
-  const ruweBerichten = blokken.map(parseBlok).filter(Boolean);
+  const ruweBerichten = blokken
+    .map((blok, i) => {
+      const b = parseBlok(blok);
+      if (b) b.ontvangstTijd = tijdPerOffset.get(ruweOffsets[i]) ?? null;
+      return b;
+    })
+    .filter(Boolean);
   const berichten = consolideerOpInhoud(smeltSamenOpBesteVersie(ruweBerichten));
 
   const metPositie = berichten.map((b) => {
@@ -1612,12 +1640,12 @@ export async function fetchNavtexLokaal(env = {}) {
     const referentie = referentieIn(b.body);
     const zelfVervalDatum = zelfVervalDatumIn(b.body);
     // 2026-08-26, zie ontvangstStatsVoorBericht() hierboven.
-    const { aantalOntvangsten, laatsteDatum } = ontvangstStatsVoorBericht(b, ruweBerichten);
+    const { aantalOntvangsten, laatsteDatum, laatsteOntvangst } = ontvangstStatsVoorBericht(b, ruweBerichten);
     // "laatst gezien" alleen doorgeven als het ECHT een latere waarde is dan
     // de toch al getoonde b.datum -- op Lex' verzoek ("dubbele info anders"
     // naast de bestaande tijdregel), zie tijdregelVoorSignaal() in app.js.
     const laatstGezien = b.datum && laatsteDatum && laatsteDatum.getTime() > b.datum.getTime() ? laatsteDatum : null;
-    return { ...b, eventInfo, positie, positieIsStation, afstandTotJouKm, positieBinnenBereik, referentie, zelfVervalDatum, aantalOntvangsten, laatstGezien };
+    return { ...b, eventInfo, positie, positieIsStation, afstandTotJouKm, positieBinnenBereik, referentie, zelfVervalDatum, aantalOntvangsten, laatstGezien, laatstOntvangen: laatsteOntvangst ?? null };
   });
 
   // Elk bericht (ongeacht bereik/positie) kan een ANDER bericht intrekken —
@@ -1685,6 +1713,10 @@ export async function fetchNavtexLokaal(env = {}) {
       // getoond via navtexNummerBadge()/de sub-regel in app.js.
       aantalOntvangsten: b.aantalOntvangsten,
       laatstGezien: b.laatstGezien ? b.laatstGezien.toISOString() : null,
+      // 2026-08-28 (DX-lijst): het echte laatste ONTVANGST-moment (blok-
+      // begintijd uit het viewer-register, over alle duplicaten heen) —
+      // los van laatstGezien hierboven, dat het nieuwste DTG is.
+      laatstOntvangen: b.laatstOntvangen ?? null,
       // 2026-08-26, zie positieIsStation hierboven.
       positieIsStation: b.positieIsStation,
       // 2026-08-26, op verzoek van Lex ("noodberichten via navtex met een

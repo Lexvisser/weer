@@ -1119,7 +1119,12 @@ function dxLijst() {
     if (!station || !Number.isFinite(station.lat)) continue;
     const mastKm = afstandKm(THUIS.homeLat, THUIS.homeLon, station.lat, station.lon);
     if (mastKm < NAVTEX_DX_MAST_KM) continue;
-    const laatst = new Date(s.detail?.laatstGezien ?? s.tijd).getTime();
+    // 2026-08-28-herzien, op vraag van Lex ("welke tijd zie ik hier nu?"):
+    // eerst het echte laatste ONTVANGST-moment (blok-begintijd uit het
+    // viewer-register, nieuw meegegeven door de backend), dan pas de oudere
+    // terugvallen — laatstGezien is het nieuwste DTG en s.tijd kan het
+    // "eerst gezien"-moment zijn, wat na een deploy voor alles hetzelfde is.
+    const laatst = new Date(s.detail?.laatstOntvangen ?? s.detail?.laatstGezien ?? s.tijd).getTime();
     if (!Number.isFinite(laatst) || nu - laatst > NAVTEX_DX_VENSTER_MS) continue;
     const rec = perStation.get(stationId) ?? { station, mastKm, aantal: 0, laatst: 0, signaal: null };
     rec.aantal += 1;
