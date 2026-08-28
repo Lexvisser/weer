@@ -3453,7 +3453,51 @@ function eersteWindrichting(t, vanaf = 0) {
   return beste;
 }
 
-function galeInfoUitTekst(tekst) {
+// 2026-08-28-fix, uit Lex' echte data ("een aantal vermeldingen met Gale
+// niet terug zoals verwacht" — en het omgekeerde bleek ook te spelen): de
+// Met Office deelt één tekst over meerdere gebieden, en een gale kan daarin
+// expliciet aan een ANDER gebied hangen ("...4 to 6, but 7 or gale 8 at
+// first in north Fisher" staat óók in de German Bight-tekst; "occasionally
+// gale 8 in South Utsire" in die van Forties). Zonder deze check kreeg
+// German Bight een 8-vaan die van Fisher was. Oplossing: elk gale-woord
+// dat binnen zijn eigen zin door "IN <bekend zeegebied>" wordt ingeperkt
+// telt alleen mee als dat gebied het eigen gebied is — anders wordt het
+// woord uitgewist en valt de tekst terug op wat er wél voor dit gebied
+// staat. "IN PRECIPITATION" e.d. is géén gebied en perkt dus niets in.
+const BEKENDE_ZEEGEBIEDEN = new Set([
+  'VIKING', 'UTSIRE', 'FORTIES', 'CROMARTY', 'FORTH', 'TYNE', 'DOGGER',
+  'FISHER', 'GERMAN BIGHT', 'HUMBER', 'THAMES', 'DOVER', 'WIGHT', 'PORTLAND',
+  'PLYMOUTH', 'BISCAY', 'TRAFALGAR', 'FITZROY', 'SOLE', 'LUNDY', 'FASTNET',
+  'IRISH SEA', 'SHANNON', 'ROCKALL', 'MALIN', 'HEBRIDES', 'BAILEY',
+  'FAIR ISLE', 'FAEROES', 'SOUTHEAST ICELAND',
+]);
+const WINDSTREEK_VOORVOEGSEL = /^(?:NORTH|SOUTH|EAST|WEST)(?:ERN|EAST|WEST)?\s+/;
+
+function wisGaleVoorAndereGebieden(t, gebiedNaam) {
+  if (!gebiedNaam) return t;
+  const eigen = String(gebiedNaam).toUpperCase().replace(WINDSTREEK_VOORVOEGSEL, '');
+  const re = /SEVERE\s+GALE|GALE|(?<!THUNDER)STORM|HURRICANE/g;
+  const wissen = [];
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    const zinEinde = t.indexOf('.', m.index);
+    const zin = t.slice(m.index, zinEinde === -1 ? t.length : zinEinde);
+    const q = zin.match(/\bIN\s+((?:NORTH|SOUTH|EAST|WEST)(?:ERN)?\s+)?([A-Z]+(?:\s+[A-Z]+)?)/);
+    if (!q) continue;
+    // Twee woorden proberen ("GERMAN BIGHT", "FAIR ISLE"), dan één —
+    // UTSIRE dekt north/south Utsire, de windstreek is al apart gestript.
+    const woorden = q[2].trim().split(/\s+/);
+    const twee = woorden.slice(0, 2).join(' ');
+    const genoemd = BEKENDE_ZEEGEBIEDEN.has(twee) ? twee : BEKENDE_ZEEGEBIEDEN.has(woorden[0]) ? woorden[0] : null;
+    if (genoemd && genoemd !== eigen && !eigen.startsWith(genoemd)) wissen.push([m.index, m.index + m[0].length]);
+  }
+  if (!wissen.length) return t;
+  let uit = t;
+  for (const [van, tot] of wissen) uit = uit.slice(0, van) + ' '.repeat(tot - van) + uit.slice(tot);
+  return uit;
+}
+
+function galeInfoUitTekst(tekst, gebiedNaam = null) {
   if (!tekst) return null;
   let t = String(tekst).toUpperCase();
   // 2026-08-27-fix (live voorbeeld van Lex: "Northeast Forties:
@@ -3467,8 +3511,10 @@ function galeInfoUitTekst(tekst) {
   if (dubbelePunt > 0 && dubbelePunt < 40 && /[A-Z]/.test(t[dubbelePunt - 1])) t = t.slice(dubbelePunt + 1);
   // "GALE WARNINGS. ... NO WARNING." (eigen-ontvangst/KNMI-vorm) is juist
   // de mededeling dat er NIETS is — niet op de sectiekop afgaan.
-  const zonderKop = t.replace(/GALE\s+WARNINGS?\s*[.:]/g, ' ');
-  if (/NO\s+(?:GALE\s+)?WARNINGS?/.test(t) && !/GALE\s*(?:FORCE\s*)?[89]|SEVERE\s+GALE|STORM|HURRICANE/.test(zonderKop)) return null;
+  // 2026-08-28: (?<!THUNDER) — de KNMI-teksten zeggen "risk of a
+  // thunderstorm" en dat mag hier nooit als STORM meetellen.
+  const zonderKop = wisGaleVoorAndereGebieden(t.replace(/GALE\s+WARNINGS?\s*[.:]/g, ' '), gebiedNaam);
+  if (/NO\s+(?:GALE\s+)?WARNINGS?/.test(t) && !/GALE\s*(?:FORCE\s*)?[89]|SEVERE\s+GALE|(?<!THUNDER)STORM|HURRICANE/.test(zonderKop)) return null;
   let kracht = null;
   for (const niveau of GALE_NIVEAUS) {
     if (niveau.regex.test(zonderKop)) {
@@ -3511,7 +3557,7 @@ function galeInfoUitTekst(tekst) {
   // En de omkering: "GALE 8 AT FIRST" betekent dat de gale er NÚ is en
   // daarna afzakt naar die algemene range — precies andersom dan "gale 8
   // later". Dat wordt naKracht (voor de "8→6"-weergave), met trend ↘.
-  const galeIndex = zonderKop.search(/SEVERE\s+GALE|GALE|STORM|HURRICANE/);
+  const galeIndex = zonderKop.search(/SEVERE\s+GALE|GALE|(?<!THUNDER)STORM|HURRICANE/);
   let algemeneKracht = null;
   if (galeIndex > 0) {
     const voorGale = zonderKop.slice(0, galeIndex);
@@ -3562,8 +3608,17 @@ const NAVTEX_GEBIED_NAMEN = {
 const NAVTEX_GALE_VERS_MS = 6 * 60 * 60 * 1000;
 
 function parseNavtexGaleWarning(tekst) {
-  const t = String(tekst ?? '').toUpperCase();
-  if (!/GALE\s*WARNING/.test(t.replace(/GALEWARNING/g, 'GALE WARNING'))) return [];
+  const heel = String(tekst ?? '').toUpperCase();
+  if (!/GALE\s*WARNING/.test(heel.replace(/GALEWARNING/g, 'GALE WARNING'))) return [];
+  // 2026-08-28-fix, uit Lex' echte ontvangstbestand: de KNMI "FORECAST
+  // DUTCH EEZ"-berichten (PE-codes) beginnen met een "GALE WARNINGS."-
+  // sectie (die passeert de poort hierboven terecht), maar daarná volgen
+  // SYNOPSIS en een verwachting per gebied waarin dezelfde gebiedsnamen
+  // ("THAMES.") opnieuw langskomen mét gewone krachtcijfers — de replay op
+  // het echte bestand gaf zo spookvanen (Thames 6 uit een routineverwachting).
+  // Alleen het stuk vóór SYNOPSIS/FORECAST VALID is de warning-sectie.
+  const sectieEinde = heel.search(/\bSYNOPSIS\b|\bFORECAST\s+VALID\b/);
+  const t = sectieEinde > -1 ? heel.slice(0, sectieEinde) : heel;
   const delen = t.split(/[.\n]+/).map((d) => d.trim()).filter(Boolean);
   const uit = [];
   let verzameld = [];
@@ -3577,16 +3632,35 @@ function parseNavtexGaleWarning(tekst) {
       verzameld.push(gebied);
       continue;
     }
+    // 2026-08-28-fix (Lex' eigen ontvangst, PB01 van de kustwacht:
+    // "GERMAN BIGHT EAST TO SOUTHEAST 7."): gebiedsnaam en windzin kunnen
+    // ook in ÉÉN zin staan — dan is de rest van de zin de windbeschrijving
+    // voor dat gebied. Zonder dit werd die 7 volledig gemist.
+    let zin = deel;
+    for (const naam of Object.keys(NAVTEX_GEBIED_NAMEN)) {
+      const bronDeel = kaal.startsWith(`${naam} `) ? kaal : deel.startsWith(`${naam} `) ? deel : null;
+      if (bronDeel) {
+        verzameld.push(NAVTEX_GEBIED_NAMEN[naam]);
+        zin = bronDeel.slice(naam.length + 1);
+        break;
+      }
+    }
     if (!verzameld.length) continue; // kop/DTG-zin vóór de eerste gebiedsnaam
-    if (/NO\s+WARNING/.test(deel)) {
-      verzameld = []; // expliciet: deze gebieden hebben NIETS
+    if (/NO\s+WARNING/.test(zin)) {
+      // 2026-08-28: expliciet doorgeven i.p.v. stilletjes overslaan — een
+      // NIEUWERE "NO WARNING" (zoals PB03 om 02:11) moet een oudere
+      // warning voor hetzelfde gebied kunnen aflossen, anders blijft een
+      // vaan tot het eind van het 6-uursvenster hangen terwijl de KNMI 'm
+      // al heeft ingetrokken. kracht:null = "dit gebied is nu schoon".
+      for (const g of verzameld) uit.push({ gebied: g, kracht: null, trend: '', richting: null, richtingNa: null });
+      verzameld = [];
       continue;
     }
-    const cijfer = deel.match(/\b([6-9]|1[0-2])\b/);
+    const cijfer = zin.match(/\b([6-9]|1[0-2])\b/);
     if (cijfer) {
       const kracht = Number(cijfer[1]);
-      const richting = eersteWindrichting(deel);
-      const trend = /INCREASING|LATER|SOON|EXPECTED/.test(deel) ? '↗' : /DECREASING|MODERATING/.test(deel) ? '↘' : '';
+      const richting = eersteWindrichting(zin);
+      const trend = /INCREASING|LATER|SOON|EXPECTED/.test(zin) ? '↗' : /DECREASING|MODERATING/.test(zin) ? '↘' : '';
       for (const g of verzameld) uit.push({ gebied: g, kracht, trend, richting: richting ?? null, richtingNa: null });
     }
     verzameld = [];
@@ -3611,6 +3685,13 @@ function navtexGaleInfoPerGebied() {
       if (!uit.has(info.gebied)) uit.set(info.gebied, info);
     }
   }
+  // 2026-08-28: kracht:null is de expliciete "NO WARNING"-aflossing uit
+  // parseNavtexGaleWarning — die heeft z'n werk (nieuwere all-clear blokkeert
+  // een oudere warning via de eerste-schrijver-regel hierboven) nu gedaan en
+  // mag zelf nooit een vaan worden.
+  for (const [gebiedNaam, info] of uit) {
+    if (info.kracht == null) uit.delete(gebiedNaam);
+  }
   return uit;
 }
 
@@ -3625,7 +3706,10 @@ function galeInfoVoorGebied(naam) {
   }
   let beste = null;
   for (const tekst of teksten) {
-    const info = galeInfoUitTekst(tekst);
+    // 2026-08-28: naam meegeven zodat een gale die de tekst expliciet aan
+    // een ANDER gebied hangt ("gale 8 in South Utsire" in de Forties-tekst)
+    // hier niet meetelt — zie wisGaleVoorAndereGebieden().
+    const info = galeInfoUitTekst(tekst, naam);
     if (info && (!beste || info.kracht > beste.kracht)) beste = info;
   }
   return beste;
