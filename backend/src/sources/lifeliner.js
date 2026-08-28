@@ -124,7 +124,7 @@ export function lifelinerRapportTekst() {
     `Lifeliner-poll-rapport - rollend venster van de laatste 24 uur.`,
     ``,
     `${polls.length} credit(s) verbruikt in dit venster (let op: het venster kan twee UTC-dagen overspannen).`,
-    `Per UTC-dag (dagbudget ${OPENSKY_DAG_BUDGET}/dag, reset 00:00 UTC):`,
+    `Per UTC-dag (dagbudget ${openskyDagBudget()}/dag, reset 00:00 UTC):`,
     perDagTekst,
     `${budgetVol.length} tik(ken) overgeslagen omdat het dagbudget al op was.`,
     `${spaarstandOvergeslagen} tik(ken) in spaarstand overgeslagen sinds de laatste herstart (geen credit gekost).`,
@@ -190,11 +190,18 @@ function stuurRapportBijNood(statusCode) {
 // OpenSky gedocumenteerd is (uit eerdere 429-ervaringen afgeleid, niet uit
 // hun docs). Aanpasbaar via `OPENSKY_DAG_BUDGET` in .env zonder codewijziging.
 // 2026-08-28: standaard-budget hangt nu af van de modus — met de OpenSky
-// API-client (zie openskyAuthHeaders() verderop; functie-hoisting maakt de
-// aanroep hier veilig) is het dagbudget 4.000, waarvan we er 3.500 nemen als
-// eigen marge; anoniem blijft de oude voorzichtige 300 onder de ~400 staan.
+// API-client is het dagbudget 4.000, waarvan we er 3.500 nemen als eigen
+// marge; anoniem blijft de oude voorzichtige 300 onder de ~400 staan.
 // OPENSKY_DAG_BUDGET in .env overschrijft beide.
-const OPENSKY_DAG_BUDGET = Number(process.env.OPENSKY_DAG_BUDGET ?? (openskyCredsAanwezig() ? 3500 : 300));
+// LIVE-BUG-FIX (gezien op het echte rapport, direct na de eerste deploy):
+// dit was eerst een const op moduleniveau — maar ES-imports worden
+// geëvalueerd VÓÓRDAT index.js loadEnvFile() draait, dus op dat moment zijn
+// OPENSKY_CLIENT_ID/SECRET nog leeg en bleef het budget op 300 staan
+// terwijl de authenticatie zelf (die de env pas bij gebruik leest) wél
+// werkte. Daarom nu een functie: elke check leest de env vers.
+function openskyDagBudget() {
+  return Number(process.env.OPENSKY_DAG_BUDGET ?? (openskyCredsAanwezig() ? 3500 : 300));
+}
 let budgetDatumUtc = null; // "2026-08-21" — resetpunt
 let creditsVandaag = 0;
 let laatsteSignalen = [];
@@ -222,7 +229,7 @@ try {
     if (typeof ruw.creditsVandaag === 'number') creditsVandaag = ruw.creditsVandaag;
     if (typeof ruw.rapportVerstuurdOpUtcDatum === 'string') rapportVerstuurdOpUtcDatum = ruw.rapportVerstuurdOpUtcDatum;
     console.log(
-      `[weer] lifeliner: staat teruggeladen van schijf (${pollLog.length} poll-log-regel(s), ${creditsVandaag}/${OPENSKY_DAG_BUDGET} credits vandaag al verbruikt) — overleeft nu een herstart/deploy.`
+      `[weer] lifeliner: staat teruggeladen van schijf (${pollLog.length} poll-log-regel(s), ${creditsVandaag}/${openskyDagBudget()} credits vandaag al verbruikt) — overleeft nu een herstart/deploy.`
     );
   }
 } catch (err) {
@@ -247,11 +254,11 @@ function magPollenEnTeltMee() {
     creditsVandaag = 0;
     budgetOpGelogd = false;
   }
-  if (creditsVandaag >= OPENSKY_DAG_BUDGET) {
+  if (creditsVandaag >= openskyDagBudget()) {
     if (!budgetOpGelogd) {
       budgetOpGelogd = true;
       console.warn(
-        `[weer] lifeliner: dagbudget (${OPENSKY_DAG_BUDGET} credits) bereikt — pollen gepauzeerd tot 00:00 UTC, laatst bekende data blijft staan`
+        `[weer] lifeliner: dagbudget (${openskyDagBudget()} credits) bereikt — pollen gepauzeerd tot 00:00 UTC, laatst bekende data blijft staan`
       );
     }
     loggeer('budget-vol');
