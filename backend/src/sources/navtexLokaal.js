@@ -122,18 +122,27 @@ export const STATIONS = [
   // berichten"-uitzending van Niton, dus een ANDER tijdvak dan 'E' hierboven.
   { id: 'K', naam: 'Niton Radio', land: 'UK', lat: 50.6, lon: -1.3, navarea: 'I', kleur: '#c8f04c', zendschema: ['01:40', '05:40', '09:40', '13:40', '17:40', '21:40'] },
   { id: 'G', naam: 'Cullercoats Radio', land: 'UK', lat: 55.0, lon: -1.4, navarea: 'I', kleur: '#6bf07a', zendschema: ['01:00', '05:00', '09:00', '13:00', '17:00', '21:00'] },
-  { id: 'A', naam: 'Portpatrick Radio', land: 'UK', lat: 54.85, lon: -5.12, navarea: 'I', kleur: '#4cf0c8', zendschema: null },
-  { id: 'B', naam: 'Bodo Radio', land: 'NO', lat: 67.283, lon: 14.383, navarea: 'I', kleur: '#4cd9f0', zendschema: null },
-  { id: 'N', naam: 'Torshavn Radio', land: 'FO', lat: 62.02, lon: -6.77, navarea: 'I', kleur: '#4c9df0', zendschema: null },
-  { id: 'D', naam: 'Egersund Radio', land: 'NO', lat: 58.45, lon: 6.0, navarea: 'I', kleur: '#4c63f0', zendschema: null },
-  { id: 'O', naam: 'Stockholm Radio', land: 'SE', lat: 59.33, lon: 18.05, navarea: 'I', kleur: '#7b4cf0', zendschema: null },
-  { id: 'C', naam: 'Copenhagen Radio', land: 'DK', lat: 55.68, lon: 12.57, navarea: 'I', kleur: '#a84cf0', zendschema: null },
-  { id: 'H', naam: 'Den Helder Kust', land: 'NL', lat: 52.96, lon: 4.76, navarea: 'I', kleur: '#d94cf0', zendschema: null },
-  { id: 'M', naam: 'Grindavik Radio', land: 'IS', lat: 63.84, lon: -22.43, navarea: 'I', kleur: '#f04ca8', zendschema: null },
-  { id: 'F', naam: 'Brest Radio', land: 'FR', lat: 48.39, lon: -4.49, navarea: 'II', kleur: '#f04c6b', zendschema: null },
-  { id: 'L', naam: 'La Coruna Radio', land: 'ES', lat: 43.37, lon: -8.41, navarea: 'II', kleur: '#f0824c', zendschema: null },
-  { id: 'Q', naam: 'Grindavik Radio (reserve)', land: 'IS', lat: 63.83, lon: -22.4, navarea: 'I', kleur: '#e0c14c', zendschema: null },
-  { id: 'R', naam: 'Lyngby Radio', land: 'DK', lat: 55.77, lon: 12.52, navarea: 'I', kleur: '#9ee04c', zendschema: null },
+  // 2026-08-28, op vraag van Lex ("zitten deze stations al in het schema?")
+  // nu de 450km-grens weg is en Torshavn/Egersund/Brest/La Coruña e.d. echt
+  // op de kaart verschijnen: de twaalf ontbrekende zendschema's ingevuld via
+  // de internationale 518 kHz-letterformule (slotstart = letterpositie × 10
+  // minuten, herhaald elke 4 uur). Geen gok: alle zeven schema's die al wél
+  // bevestigd in deze tabel stonden (E 00:40, G 01:00, K 01:40, P 02:30,
+  // S 03:00, T 03:10, V 03:30) volgen die formule exact. Individuele
+  // stations kúnnen officieel afwijken — mocht eigen ontvangst dat ooit
+  // laten zien, dan wint de waarneming en passen we die regel aan.
+  { id: 'A', naam: 'Portpatrick Radio', land: 'UK', lat: 54.85, lon: -5.12, navarea: 'I', kleur: '#4cf0c8', zendschema: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'] },
+  { id: 'B', naam: 'Bodo Radio', land: 'NO', lat: 67.283, lon: 14.383, navarea: 'I', kleur: '#4cd9f0', zendschema: ['00:10', '04:10', '08:10', '12:10', '16:10', '20:10'] },
+  { id: 'N', naam: 'Torshavn Radio', land: 'FO', lat: 62.02, lon: -6.77, navarea: 'I', kleur: '#4c9df0', zendschema: ['02:10', '06:10', '10:10', '14:10', '18:10', '22:10'] },
+  { id: 'D', naam: 'Egersund Radio', land: 'NO', lat: 58.45, lon: 6.0, navarea: 'I', kleur: '#4c63f0', zendschema: ['00:30', '04:30', '08:30', '12:30', '16:30', '20:30'] },
+  { id: 'O', naam: 'Stockholm Radio', land: 'SE', lat: 59.33, lon: 18.05, navarea: 'I', kleur: '#7b4cf0', zendschema: ['02:20', '06:20', '10:20', '14:20', '18:20', '22:20'] },
+  { id: 'C', naam: 'Copenhagen Radio', land: 'DK', lat: 55.68, lon: 12.57, navarea: 'I', kleur: '#a84cf0', zendschema: ['00:20', '04:20', '08:20', '12:20', '16:20', '20:20'] },
+  { id: 'H', naam: 'Den Helder Kust', land: 'NL', lat: 52.96, lon: 4.76, navarea: 'I', kleur: '#d94cf0', zendschema: ['01:10', '05:10', '09:10', '13:10', '17:10', '21:10'] },
+  { id: 'M', naam: 'Grindavik Radio', land: 'IS', lat: 63.84, lon: -22.43, navarea: 'I', kleur: '#f04ca8', zendschema: ['02:00', '06:00', '10:00', '14:00', '18:00', '22:00'] },
+  { id: 'F', naam: 'Brest Radio', land: 'FR', lat: 48.39, lon: -4.49, navarea: 'II', kleur: '#f04c6b', zendschema: ['00:50', '04:50', '08:50', '12:50', '16:50', '20:50'] },
+  { id: 'L', naam: 'La Coruna Radio', land: 'ES', lat: 43.37, lon: -8.41, navarea: 'II', kleur: '#f0824c', zendschema: ['01:50', '05:50', '09:50', '13:50', '17:50', '21:50'] },
+  { id: 'Q', naam: 'Grindavik Radio (reserve)', land: 'IS', lat: 63.83, lon: -22.4, navarea: 'I', kleur: '#e0c14c', zendschema: ['02:40', '06:40', '10:40', '14:40', '18:40', '22:40'] },
+  { id: 'R', naam: 'Lyngby Radio', land: 'DK', lat: 55.77, lon: 12.52, navarea: 'I', kleur: '#9ee04c', zendschema: ['02:50', '06:50', '10:50', '14:50', '18:50', '22:50'] },
   // 2026-08-26, toegevoegd op verzoek van Lex (had tot nu toe helemaal geen
   // record — stationscode 'S' ontbrak in deze lijst). Coördinaat is de
   // plaatscoördinaat van Pinneberg zelf (bij gebrek aan een preciezere
