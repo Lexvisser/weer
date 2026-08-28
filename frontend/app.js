@@ -3543,6 +3543,77 @@ function galeInfoUitTekst(tekst) {
   return { kracht, trend: trendDefinitief, richting: richting ?? null, richtingNa, huidigeKracht, naKracht };
 }
 
+// ---- Gale-warnings uit de eigen NAVTEX-ontvangst (2026-08-28) ---------
+// Op melding van Lex: een échte, zelf ontvangen KNMI-galewarning
+// ("GALEWARNING, DTG 28 AUG 0702 UTC. DOVER. THAMES. SOUTHWEST 7. HUMBER.
+// GERMAN BIGHT. DOGGER. NO WARNING.") gaf geen vanen — de vanen keken
+// alleen naar de synopsis-bronnen, en dit meergebieden-format zou de
+// algemene parser bovendien breken (het "NO WARNING" aan het eind — dat
+// alleen over de LAATSTE gebieden gaat — zou het hele bericht wegvagen).
+// Eigen parser dus: gebiedsnamen verzamelen tot er een wind- of
+// NO WARNING-zin volgt, en die zin geldt dan precies voor de verzamelde
+// gebieden. Alleen berichten met GALE(-)WARNING erin en jonger dan 6 uur
+// (KNMI herhaalt/vernieuwt ruim binnen die termijn) tellen mee.
+const NAVTEX_GEBIED_NAMEN = {
+  DOVER: 'Dover', THAMES: 'Thames', HUMBER: 'Humber', 'GERMAN BIGHT': 'German Bight',
+  DOGGER: 'Dogger', FISHER: 'Fisher', FORTIES: 'Forties', VIKING: 'Viking',
+  TYNE: 'Tyne', FORTH: 'Forth',
+};
+const NAVTEX_GALE_VERS_MS = 6 * 60 * 60 * 1000;
+
+function parseNavtexGaleWarning(tekst) {
+  const t = String(tekst ?? '').toUpperCase();
+  if (!/GALE\s*WARNING/.test(t.replace(/GALEWARNING/g, 'GALE WARNING'))) return [];
+  const delen = t.split(/[.\n]+/).map((d) => d.trim()).filter(Boolean);
+  const uit = [];
+  let verzameld = [];
+  for (const deel of delen) {
+    // "NORTH GERMAN BIGHT" e.d.: windstreek-voorvoegsel op een gebiedsnaam
+    // strippen en opnieuw proberen — zelfde valkuil als bij de Met Office-
+    // koppen ("Northeast Forties").
+    const kaal = deel.replace(/^(?:NORTH|SOUTH|EAST|WEST)\s+/, '');
+    const gebied = NAVTEX_GEBIED_NAMEN[deel] ?? NAVTEX_GEBIED_NAMEN[kaal];
+    if (gebied) {
+      verzameld.push(gebied);
+      continue;
+    }
+    if (!verzameld.length) continue; // kop/DTG-zin vóór de eerste gebiedsnaam
+    if (/NO\s+WARNING/.test(deel)) {
+      verzameld = []; // expliciet: deze gebieden hebben NIETS
+      continue;
+    }
+    const cijfer = deel.match(/\b([6-9]|1[0-2])\b/);
+    if (cijfer) {
+      const kracht = Number(cijfer[1]);
+      const richting = eersteWindrichting(deel);
+      const trend = /INCREASING|LATER|SOON|EXPECTED/.test(deel) ? '↗' : /DECREASING|MODERATING/.test(deel) ? '↘' : '';
+      for (const g of verzameld) uit.push({ gebied: g, kracht, trend, richting: richting ?? null, richtingNa: null });
+    }
+    verzameld = [];
+  }
+  return uit;
+}
+
+// Nieuwste galewarning per gebied uit de actuele navtex-signalen — nieuwste
+// bericht wint (eerste schrijver per gebied, na sorteren op tijd aflopend).
+function navtexGaleInfoPerGebied() {
+  const uit = new Map();
+  const nu = Date.now();
+  const kandidaten = (laatsteMeldingenSignalen ?? [])
+    .filter((s) => s.categorie === 'navtex' && !s.detail?.verlopen)
+    .filter((s) => {
+      const tijdMs = s.tijd ? new Date(s.tijd).getTime() : NaN;
+      return Number.isFinite(tijdMs) && nu - tijdMs < NAVTEX_GALE_VERS_MS;
+    })
+    .sort((a, b) => new Date(b.tijd) - new Date(a.tijd));
+  for (const s of kandidaten) {
+    for (const info of parseNavtexGaleWarning(s.detail?.bericht)) {
+      if (!uit.has(info.gebied)) uit.set(info.gebied, info);
+    }
+  }
+  return uit;
+}
+
 // Alle beschikbare teksten voor één gebied bij elkaar — zelfde bronnen (en
 // voorrangsvolgorde qua beschikbaarheid) als de synopsis-popup.
 function galeInfoVoorGebied(naam) {
@@ -3605,9 +3676,16 @@ function verversWindvanen() {
   }
   if (!zeeModusActief) return;
   const vanen = [];
+  // 2026-08-28: de eigen NAVTEX-ontvangst telt nu ook mee als vanenbron —
+  // per gebied wint de hoogste kracht van beide bronnen.
+  const navtexPerGebied = navtexGaleInfoPerGebied();
   ZEE_GEBIEDEN.features.forEach((feature) => {
     const naam = feature.properties.name;
-    const info = galeInfoVoorGebied(naam);
+    const synopsisInfo = galeInfoVoorGebied(naam);
+    const navtexInfo = navtexPerGebied.get(naam) ?? null;
+    const info = synopsisInfo && navtexInfo
+      ? (navtexInfo.kracht >= synopsisInfo.kracht ? navtexInfo : synopsisInfo)
+      : (synopsisInfo ?? navtexInfo);
     if (!info) return;
     const ring = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
     const midden = L.latLngBounds(ring).getCenter();
@@ -4557,6 +4635,10 @@ function renderMap(signalen) {
   // nog de kaartpositie bij (tekenen gebeurt hierboven al voor iedereen).
   ververGeselecteerdeFlitsen(signalen);
   ververGeselecteerdGebied(signalen);
+  // 2026-08-28: verse signalen kunnen een (nieuwe of vervallen) NAVTEX-
+  // galewarning bevatten — vanen meteen bijwerken. Goedkoop en zelf-
+  // beschermend (doet niets buiten Zee-modus).
+  verversWindvanen();
 }
 
 // ---- Meldingen-lijst (vervangt de horizontale sleepbalk) --------------
