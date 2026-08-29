@@ -690,6 +690,35 @@ export function createApp(env) {
     }
   }
 
+  // 2026-08-29: hier heeft een front-/troglagen-feature gestaan (koufront/
+  // warmtefront/occlusie, knop "Fronten" op de kaart, tekst geparset uit
+  // NWS/WPC's coded surface bulletin ASUS02 KWBC) — gebouwd, getest, en
+  // dezelfde dag weer teruggedraaid op verzoek van Lex ("wat er nu is is
+  // volstrekt nutteloos"). Reden: die bulletin is volgens NOAA's eigen
+  // TIN-document officieel gescoped op "North America and the adjacent
+  // oceans" — in de praktijk toonde 'm zelden of nooit een front dat echt in
+  // de Noordzee/Scandinavië zelf ligt, alleen af en toe iets bij de verre
+  // Atlantische naderingsroute (Kanaal/Golf van Biskaje). De volledige
+  // werkende implementatie (incl. twee tekenbugs die onderweg gevonden en
+  // gefixt zijn: symbool-afwisseling die per bulletin-regel resette i.p.v.
+  // per echt front, en een vaste in plaats van wisselende kleur bij het
+  // stationaire front) staat bewaard in commit fa2966e, mocht dit ooit
+  // alsnog nuttig blijken (bijvoorbeeld gecombineerd met een andere bron).
+  //
+  // Kansrijker, nog niet gebouwd alternatief: fronten met kleurherkenning
+  // uit KNMI's eigen "AL"-weerkaart trekken (dataplatform.knmi.nl, dataset
+  // "Weather maps", CC-BY-4.0 dus vrij te gebruiken). Een losse test op een
+  // echte KNMI-kaart (zie de sessie-chat van 2026-08-29) liet zien dat
+  // front-kleuren (blauw/rood/paars) zich heel schoon laten isoleren van de
+  // isobaren (cyaan) — dat deel is dus aantoonbaar haalbaar. Nog open: (1)
+  // de lijn zelf uit dat kleurmasker trekken (de driehoekje/bolletje-
+  // symbolen op de lijn versmelten ermee, dus simpel uitdunnen geeft
+  // vertakkingen op elk symbool), en (2) georefereren (een gewone
+  // screenshot heeft geen zichtbare graad-labels, dus daarvoor is de
+  // originele, ongebijgesneden bronafbeelding of bevestigde hoekpunten
+  // nodig — zoals de NOAA-KML die destijds gratis gaf). Een apart project,
+  // geen quick fix bovenop wat hier stond.
+
   // 2026-08-21, op verzoek van Lex ("kunnen we een laag flight- en vaarradar
   // toevoegen?") — vaarradar (AIS) is een permanente streaming-verbinding
   // (zie sources/vaarradar.js, zelfde soort opzet als Blitzortung hierboven),

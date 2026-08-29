@@ -2108,6 +2108,12 @@ function toggleSatelliet() {
   satellietLagen.eumetsat.addTo(kaart);
 }
 
+// 2026-08-29: hier stond de tekenlogica voor een fronten-kaartlaag
+// (driehoekjes/bolletjes langs koufront/warmtefront/occlusie) — gebouwd en
+// dezelfde dag teruggedraaid, de bron bleek de Noordzee niet te dekken. Zie
+// de uitgebreide aantekening bij de vaarradar-sectie in server.js en commit
+// fa2966e voor de volledige (werkende) implementatie.
+
 // ---- "Aarde nu" — EUMETSAT's eigen live YouTube-stream, 2026-08-19 ---------
 // Op verzoek van Lex, n.a.v. het "draaiende bol"-idee: een zelf-gebouwde 3D-
 // bol (Three.js/globe.gl) is een fors project; EUMETSAT biedt op
