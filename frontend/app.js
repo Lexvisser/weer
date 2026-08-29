@@ -1137,6 +1137,20 @@ function dxLijst() {
   return [...perStation.values()].sort((a, b) => b.mastKm - a.mastKm);
 }
 
+// 2026-08-28, op melding van Lex ("ik vind de nieuwe dx-tijden wat vreemd —
+// zou je daar ook de datum bij willen zetten? die 24 uur is heel etmaal
+// toch?"): klopt, het venster is een rollend etmaal, dus een kale kloktijd
+// kan óók gisteren zijn. Binnen 24 uur zijn er maar twee dagen mogelijk —
+// vandaag toont alleen de tijd, anders "gisteren HH:MM". hour12:false
+// expliciet, zelfde AM/PM-les als elders (2026-08-26).
+function dxOntvangstTekst(ms) {
+  const d = new Date(ms);
+  const opties = { timeZone: 'Europe/Amsterdam' };
+  const tijd = d.toLocaleTimeString('nl-NL', { ...opties, hour: '2-digit', minute: '2-digit', hour12: false });
+  const dagVan = (x) => x.toLocaleDateString('nl-NL', opties);
+  return dagVan(d) === dagVan(new Date()) ? tijd : `gisteren ${tijd}`;
+}
+
 function renderNavtexDx() {
   if (!NAVTEX_DX_PANEEL_EL) return;
   if (NAVTEX_DX_KNOP_EL) NAVTEX_DX_KNOP_EL.classList.toggle('aan', navtexDxOpen);
@@ -1152,7 +1166,7 @@ function renderNavtexDx() {
     NAVTEX_DX_PANEEL_EL.innerHTML = kop + lijst.map((r, i) => (
       `<button type="button" class="dx-regel" data-dx="${i}">`
       + `<span class="dx-station">${escapeHtml(r.station.naam)}${r.station.land ? ` (${escapeHtml(r.station.land)})` : ''}</span>`
-      + `<span class="dx-info">${Math.round(r.mastKm)} km · ${r.aantal} ber. · ${new Date(r.laatst).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })}</span>`
+      + `<span class="dx-info">${Math.round(r.mastKm)} km · ${r.aantal} ber. · ${dxOntvangstTekst(r.laatst)}</span>`
       + '</button>'
     )).join('');
     NAVTEX_DX_PANEEL_EL.querySelectorAll('.dx-regel').forEach((knop) => {
@@ -2522,6 +2536,16 @@ function popupExtraHtml(s) {
     // berichten"-regels 'm wél tonen. Nu hier expliciet in de statregel.
     if (d.code) stats.push(`code ${d.code}`);
     if (d.afstandTotJouKm != null) stats.push(`${d.afstandTotJouKm}km van jou`);
+    // 2026-08-28, op verzoek van Lex ("ook de datum en tijd van ontvangst
+    // willen zien"): het echte laatste ontvangstmoment uit het blok-
+    // tijdenregister (zie laatstOntvangen in navtexLokaal.js) — dit is
+    // wanneer JOUW antenne 'm binnenkreeg, los van de DTG in het bericht.
+    if (d.laatstOntvangen) {
+      const o = new Date(d.laatstOntvangen);
+      if (!Number.isNaN(o.getTime())) {
+        stats.push(`ontvangen ${o.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Amsterdam' })}`);
+      }
+    }
     if (stats.length) blokken.push(`<div class="popup-stats">${stats.join(' · ')}</div>`);
     // 2026-08-26, op verzoek van Lex ("kan ik dit schema niet ergens handig
     // in de app beschikbaar hebben") -- alleen tonen als het zendschema van
