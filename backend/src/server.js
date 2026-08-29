@@ -37,7 +37,6 @@ import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
 import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
-import { fetchFronten } from './sources/fronten.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
 import { fetchVliegradar } from './sources/vliegradar.js';
@@ -691,24 +690,6 @@ export function createApp(env) {
     }
   }
 
-  // 2026-08-29, op verzoek van Lex ("meteoinfo als fronten met dan die
-  // driehoekjes aan de frontlijn") — front-/troglijnen uit de WPC coded
-  // surface bulletin, zie sources/fronten.js voor het formaat en de
-  // eigenaardigheden. Zelfde eigen-kleine-cache-aanpak als de zee-synopsis-
-  // bronnen hierboven (geen hazard-signaal, dus niet via SOURCES/
-  // SourceState): de bulletin zelf ververst 4x/dag (00/06/12/18 UTC), elk
-  // uur pollen is dus ruim voldoende en past bij de cadans van
-  // ververZeeWaarschuwingen hierboven.
-  let frontenData = { bron: null, bijgewerkt: null, fronten: [] };
-
-  async function ververFronten() {
-    try {
-      frontenData = await fetchFronten();
-    } catch (err) {
-      console.error('[weer] fronten poll mislukt:', err.message ?? err);
-    }
-  }
-
   // 2026-08-21, op verzoek van Lex ("kunnen we een laag flight- en vaarradar
   // toevoegen?") — vaarradar (AIS) is een permanente streaming-verbinding
   // (zie sources/vaarradar.js, zelfde soort opzet als Blitzortung hierboven),
@@ -780,9 +761,6 @@ export function createApp(env) {
     timers.push(setInterval(ververZeeWaarschuwingen, 60 * 60 * 1000));
     ververMetOfficeForecast();
     timers.push(setInterval(ververMetOfficeForecast, 3 * 60 * 60 * 1000));
-
-    ververFronten();
-    timers.push(setInterval(ververFronten, 60 * 60 * 1000));
 
     // 2026-08-22, ISS-passagemelding (zie controleerIssAlarm() in
     // celestrak.js) — bewust een eigen, snelle 30s-timer los van celestrak's
@@ -1024,9 +1002,6 @@ export function createApp(env) {
     }
     if (url === '/api/zee-synopsis-metoffice') {
       return sendJson(res, 200, metOfficeForecast);
-    }
-    if (url === '/api/fronten') {
-      return sendJson(res, 200, frontenData);
     }
     // 2026-08-21: vliegradar/vaarradar — beide met dezelfde ?lat=&lon=&straal=
     // query-vorm (straal in km, rond de meegegeven positie — de frontend

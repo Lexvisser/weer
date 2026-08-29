@@ -38,7 +38,6 @@ const DOPPLER_PRODUCTEN_EL = document.getElementById('dopplerProducten');
 const RADAR_SPEEL_EL = document.getElementById('radarSpeel');
 const RADAR_TIJD_EL = document.getElementById('radarTijd');
 const TOGGLE_SATELLIET_EL = document.getElementById('toggleSatelliet');
-const TOGGLE_FRONTEN_EL = document.getElementById('toggleFronten');
 const TOGGLE_REGENRADAR_EL = document.getElementById('toggleRegenradar');
 const TOGGLE_ZEE_EL = document.getElementById('toggleZee');
 const TOGGLE_VLIEGRADAR_EL = document.getElementById('toggleVliegradar');
@@ -559,12 +558,6 @@ function initMap() {
   // boven de kaarttegels zelf — zie satellietLaag hieronder.
   kaart.createPane('satellietPane');
   kaart.getPane('satellietPane').style.zIndex = 350;
-  // 2026-08-29: eigen pane voor de fronten-laag (zie tekenFront()/
-  // toggleFronten() verderop) — boven radar/satelliet (zodat een front
-  // zichtbaar blijft als beide ook aanstaan), onder de gewone hazard-markers
-  // (die zitten in Leaflet's standaard markerPane, zIndex 600).
-  kaart.createPane('frontenPane');
-  kaart.getPane('frontenPane').style.zIndex = 460;
   // 2026-08-20: eigen pane voor de OpenSeaMap-vaarwaterlaag (Zee-modus, zie
   // toggleZeeModus hieronder) — zonder eigen pane erft die de standaard
   // 'leaflet-tile-pane'-klasse en daarmee de donkere-modus-CSS-filter
@@ -641,7 +634,6 @@ function initMap() {
   });
   RADAR_SPEEL_EL.addEventListener('click', () => (radarSpelend ? radarAfspelenStop() : radarAfspelenStart()));
   TOGGLE_SATELLIET_EL.addEventListener('click', toggleSatelliet);
-  TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
   TOGGLE_REGENRADAR_EL.addEventListener('click', toggleRegenradar);
   TOGGLE_AARDE_EL.addEventListener('click', toggleAarde);
   AARDE_SLUITEN_EL.addEventListener('click', verbergAarde);
@@ -2114,153 +2106,6 @@ function toggleSatelliet() {
   satellietLagen.oost.addTo(kaart);
   satellietLagen.west.addTo(kaart);
   satellietLagen.eumetsat.addTo(kaart);
-}
-
-// ---- Fronten (koufront/warmtefront/occlusie), 2026-08-29 -------------------
-// Op verzoek van Lex ("ik ben echt op zoek naar meteoinfo als fronten met dan
-// die driehoekjes aan de frontlijn"). Bron: backend/src/sources/fronten.js
-// (WPC coded surface bulletin, backend ververst elk uur). Puur vector-
-// tekenwerk, geen plugin: elk lijnstuk krijgt om de ~50km een eigen
-// driehoekje (koufront) of bolletje (warmtefront), gedraaid op de
-// werkelijke richting van dat stuk lijn (via kaart.project() — Web Mercator
-// is hoekgetrouw, dus de hoek klopt op elk zoomniveau, ongeacht de actuele
-// kaartzoom). Zelfde aanpak als het losse testplaatje dat Lex eerder
-// beoordeelde ("ik zie het al, prima laten we het bouwen"), nu ingebouwd als
-// schakelbare laag i.p.v. een losstaande testpagina.
-//
-// EERSTE VERSIE — met Lex afgesproken: eerst bouwen, dan bijstellen o.b.v.
-// hoe het er in het echt uitziet, niet blind vooraf perfectioneren:
-// - De kant waarop de symbolen staan (FRONTEN_ZIJDE hieronder) is een eerste
-//   aanname, nog niet geverifieerd tegen de officiële "welke kant is de
-//   koude/warme lucht"-conventie.
-// - OCFNT (occlusie) wisselt driehoekje/bolletje af op DEZELFDE kant; STNRY
-//   (stationair) wisselt ook af maar dan MET een kantwissel (koude kant
-//   driehoekjes, warme kant bolletjes) — TROF (trog) krijgt bewust geen
-//   symbolen, alleen een dunne gestreepte lijn.
-let frontenActief = false;
-let frontenLaag = null;
-let frontenPollTimer = null;
-const FRONTEN_POLL_MS = 5 * 60 * 1000; // backend zelf ververst elk uur; dit is alleen de frontend-ophaalfrequentie
-const FRONTEN_KLEUR = { COLD: '#2b7fe0', WARM: '#e0342f', OCFNT: '#a24fe0', STNRY: '#777777', TROF: '#8a8a8a' };
-const FRONTEN_ZIJDE = { COLD: 1, WARM: -1, OCFNT: 1 };
-const FRONTEN_REF_ZOOM = 6; // vaste projectiezoom voor de hoekberekening, zie module-comment hierboven
-
-function bouwFrontIcoon(soort, kleur, maat, hoekGraden) {
-  let vorm;
-  if (soort === 'COLD') {
-    vorm = `<polygon points="0,0 0,${maat} ${maat},${maat / 2}" fill="${kleur}" stroke="${kleur}"/>`;
-  } else {
-    const r = maat / 2;
-    vorm = `<path d="M0,0 A${r},${r} 0 0 1 0,${maat} Z" fill="${kleur}" stroke="${kleur}"/>`;
-  }
-  const html = `<svg width="${maat}" height="${maat}" style="overflow:visible;transform:rotate(${hoekGraden}deg);transform-origin:0px ${maat / 2}px;">${vorm}</svg>`;
-  return L.divIcon({ html, className: 'front-symbool', iconSize: [maat, maat], iconAnchor: [0, maat / 2] });
-}
-
-// Plaatst symbolen om de ~50km langs één front-lijnstuk in `laag`. Voor
-// OCFNT/STNRY wisselt het symbooltype (en bij STNRY ook de kant) om de beurt
-// af — zie de module-comment hierboven.
-function tekenFrontSymbolen(laag, punten, type) {
-  const pts = punten.map((p) => L.latLng(p[0], p[1]));
-  const segAfstanden = [];
-  let totaal = 0;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const d = pts[i].distanceTo(pts[i + 1]) / 1000;
-    segAfstanden.push(d);
-    totaal += d;
-  }
-  const spacingKm = 50;
-  const maat = 16;
-  let afstand = spacingKm * 0.5;
-  let idx = 0;
-  let cum = 0;
-  let teller = 0;
-  while (afstand < totaal && idx < segAfstanden.length) {
-    while (idx < segAfstanden.length && cum + segAfstanden[idx] < afstand) {
-      cum += segAfstanden[idx];
-      idx++;
-    }
-    if (idx >= segAfstanden.length) break;
-    const frac = (afstand - cum) / segAfstanden[idx];
-    const p1 = pts[idx];
-    const p2 = pts[idx + 1];
-    const lat = p1.lat + (p2.lat - p1.lat) * frac;
-    const lng = p1.lng + (p2.lng - p1.lng) * frac;
-    const proj1 = kaart.project(p1, FRONTEN_REF_ZOOM);
-    const proj2 = kaart.project(p2, FRONTEN_REF_ZOOM);
-    const hoek = (Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x) * 180) / Math.PI;
-
-    let soort = type;
-    let zijde = FRONTEN_ZIJDE[type] ?? 1;
-    let kleur = FRONTEN_KLEUR[type];
-    if (type === 'OCFNT') {
-      // Occlusie: vorm wisselt, kleur blijft één en dezelfde (paars) --
-      // klopt met de officiele conventie, dus hier ONgewijzigd t.o.v. eerder.
-      soort = teller % 2 === 0 ? 'COLD' : 'WARM';
-    }
-    if (type === 'STNRY') {
-      // 2026-08-29-fix, op melding van Lex (live screenshot: het stationaire
-      // front was overal even rood, ook op de stukken met een driehoekje) --
-      // een stationair front is GEEN front met één vaste kleur: het wisselt
-      // net als koufront/warmtefront blauw/rood af, alleen dan symbool-voor-
-      // symbool i.p.v. in lange stukken. FRONTEN_KLEUR['STNRY'] hierboven is
-      // nu de kleur van de VERBINDINGSLIJN (neutraal grijs, zie tekenFront),
-      // niet meer van de symbolen zelf.
-      soort = teller % 2 === 0 ? 'COLD' : 'WARM';
-      zijde = soort === 'COLD' ? 1 : -1;
-      kleur = FRONTEN_KLEUR[soort];
-    }
-
-    const icoon = bouwFrontIcoon(soort, kleur, maat, hoek + 90 * zijde);
-    L.marker([lat, lng], { icon: icoon, interactive: false, pane: 'frontenPane' }).addTo(laag);
-
-    teller++;
-    afstand += spacingKm;
-  }
-}
-
-function tekenFront(laag, front) {
-  const kleur = FRONTEN_KLEUR[front.type] || '#999';
-  const opties = {
-    color: kleur,
-    weight: front.type === 'TROF' ? 1.5 : 2.5,
-    opacity: front.type === 'TROF' ? 0.6 : 0.9,
-    pane: 'frontenPane',
-  };
-  if (front.type === 'TROF') opties.dashArray = '6 5';
-  L.polyline(front.punten, opties).addTo(laag);
-  if (front.type !== 'TROF') tekenFrontSymbolen(laag, front.punten, front.type);
-}
-
-async function ververFronten() {
-  if (!frontenActief || !kaart) return;
-  try {
-    const data = await fetch('/api/fronten').then((r) => r.json());
-    if (!frontenActief) return; // ondertussen uitgezet terwijl de fetch liep
-    if (!frontenLaag) frontenLaag = L.layerGroup().addTo(kaart);
-    frontenLaag.clearLayers();
-    (data.fronten ?? []).forEach((front) => tekenFront(frontenLaag, front));
-  } catch (err) {
-    console.error('fronten ophalen mislukt', err);
-  }
-}
-
-function toggleFronten() {
-  frontenActief = !frontenActief;
-  TOGGLE_FRONTEN_EL.classList.toggle('actief', frontenActief);
-  if (frontenActief) {
-    ververFronten();
-    frontenPollTimer = setInterval(ververFronten, FRONTEN_POLL_MS);
-  } else {
-    if (frontenPollTimer) {
-      clearInterval(frontenPollTimer);
-      frontenPollTimer = null;
-    }
-    if (frontenLaag) {
-      kaart.removeLayer(frontenLaag);
-      frontenLaag = null;
-    }
-  }
 }
 
 // ---- "Aarde nu" — EUMETSAT's eigen live YouTube-stream, 2026-08-19 ---------

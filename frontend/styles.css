@@ -1415,6 +1415,3 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .alarm-popup-knoppen button { border:none; border-radius:10px; padding:12px; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
 #alarmPopupBekijk { background:#ff2e6d; color:#0e111c; }
 #alarmPopupSluit { background:rgba(255,255,255,0.08); color:#e8eaed; }
-
-/* 2026-08-29: front-symbolen (driehoekjes/bolletjes) mogen geen klikken/hover onderscheppen. */
-.front-symbool { pointer-events: none; }
