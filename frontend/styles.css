@@ -618,7 +618,12 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    zit het NAVTEX-uitzendplaatje, rechtsonder de Leaflet-attributie). Zelfde
    niet-klikbare, donker-halfdoorzichtige stijl als .navtex-volgende, maar
    neutraal wit i.p.v. fosfor-groen -- dit is geen ontvangst-info. */
-.fronten-info { position:absolute; left:10px; bottom:26px; z-index:1000; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#e6e9f2; background:rgba(10,11,18,0.72); border:1px solid rgba(255,255,255,0.18); border-radius:8px; padding:4px 9px; pointer-events:none; max-width:70%; }
+/* 2026-08-30 (2e ronde), op melding van Lex ("valt achter mijn knoppen,
+   iets omhoog en mag ook transparant"): de knoppenbalk (.radar-controls)
+   wikkelt op een telefoon over meerdere rijen, dus de hoogte is niet vast --
+   `bottom` wordt in app.js gezet op balkhoogte + marge (ResizeObserver, zie
+   positioneerFrontenInfo()). Achtergrond lichter/doorzichtiger. */
+.fronten-info { position:absolute; left:10px; bottom:60px; z-index:1000; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#e6e9f2; background:rgba(10,11,18,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:4px 9px; pointer-events:none; max-width:70%; }
 .fronten-info.verborgen { display:none; }
 /* 2026-08-30: schermvullende DWD-bronkaart (#dwdKaartOverlay). "passend" =
    hele kaart in beeld; zonder die klasse op natuurlijke grootte, scrollbaar

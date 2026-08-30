@@ -4453,8 +4453,21 @@ let frontenActief = false;
 let frontenTimer = null;
 let frontenLaatsteBijgewerkt = null;
 
+// Bijschrift net boven de knoppenbalk houden, ook als die balk over meer
+// rijen wikkelt (zie .fronten-info in styles.css).
+function positioneerFrontenInfo() {
+  const balk = document.querySelector('.radar-controls');
+  if (!balk || !FRONTEN_INFO_EL) return;
+  const h = balk.offsetParent ? balk.getBoundingClientRect().height : 0;
+  FRONTEN_INFO_EL.style.bottom = `${Math.round(h + 14)}px`;
+}
+if (window.ResizeObserver && document.querySelector('.radar-controls')) {
+  new ResizeObserver(positioneerFrontenInfo).observe(document.querySelector('.radar-controls'));
+}
+
 async function verversFronten() {
   if (!kaart || !frontenActief) return;
+  positioneerFrontenInfo();
   let info;
   try {
     info = await fetch('/api/fronten-info').then((r) => r.json());
