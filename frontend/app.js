@@ -523,6 +523,49 @@ const ERNST_PRIORITEIT = { kritiek: 0, waarschuwing: 1, 'let-op': 2, info: 3 };
 // geen kaartlocatie hebben — die horen niet nogmaals in de Meldingen-lijst.
 const MELDINGEN_CATEGORIEEN_UITGESLOTEN = new Set(['hemel', 'algemeen-weer']);
 
+// 2026-08-30, op verzoek van Lex ("de teller loopt flink op door de
+// navtexberichten en de aardbevingen") — LOS van de Meldingen-lijst zelf
+// (die blijft alles tonen, niets wordt hier weggefilterd): dit bepaalt
+// alleen hoever de teller op de Meldingen-knop (MELDINGEN_BADGE_EL)
+// oploopt. Lex' eigen keuze na overleg:
+// - aardbeving: pas vanaf M4.5 meetellen. USGS/EMSC leveren een
+//   detail.magnitude; GDACS' aardbeving-vangnet (zie gdacs.js) heeft geen
+//   magnitude-veld maar is al op Orange/Red (echte impact) gefilterd, dus
+//   die tellen gewoon mee.
+// - navtex: elke ontvangst blijft een eigen kaartje in de lijst (ook een
+//   letterlijke herhaling), maar een bericht dat in de kern hetzelfde is
+//   als eentje dat al meetelt (zelfde station + eventType + berichttekst)
+//   verhoogt de teller niet nogmaals — NAVTEX-stations zenden dezelfde
+//   waarschuwing standaard meerdere keren uit, telkens met een nieuw
+//   volgnummer/tijdstip.
+const AARDBEVING_TELLER_MIN_MAGNITUDE = 4.5;
+
+function normaliseerNavtexTekstVoorTeller(tekst) {
+  return (tekst ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+}
+
+function navtexTellerSleutel(s) {
+  const tekst = normaliseerNavtexTekstVoorTeller(s.detail?.bericht);
+  return `${s.detail?.station ?? ''}|${s.detail?.eventType ?? ''}|${tekst}`;
+}
+
+// gezienNavtexSleutels wordt per renderMeldingen()-aanroep vers aangemaakt
+// (zie hieronder) — dus telt een sleutel alleen binnen de nu actieve
+// signalen mee, niet blijvend over herstarts/dagen heen.
+function moetMeetellenVoorTeller(s, gezienNavtexSleutels) {
+  if (s.categorie === 'aardbeving') {
+    const mag = s.detail?.magnitude;
+    return typeof mag !== 'number' || mag >= AARDBEVING_TELLER_MIN_MAGNITUDE;
+  }
+  if (s.categorie === 'navtex') {
+    const sleutel = navtexTellerSleutel(s);
+    if (gezienNavtexSleutels.has(sleutel)) return false;
+    gezienNavtexSleutels.add(sleutel);
+    return true;
+  }
+  return true;
+}
+
 function initMap() {
   kaart = L.map('map', { attributionControl: true, zoomControl: true, maxZoom: 18 }).setView([THUIS.homeLat, THUIS.homeLon], 6);
 
@@ -5553,8 +5596,14 @@ function renderMeldingen(signalen) {
   // categorie-uitsluiting hieronder.
   const relevant = signalen.filter((s) => !MELDINGEN_CATEGORIEEN_UITGESLOTEN.has(s.categorie) && !s.detail?.verlopen);
 
-  MELDINGEN_BADGE_EL.style.display = relevant.length ? 'flex' : 'none';
-  MELDINGEN_BADGE_EL.textContent = String(relevant.length);
+  // 2026-08-30: teller op de knop gebruikt een eigen, strengere telling
+  // (zie moetMeetellenVoorTeller hierboven) — de lijst hieronder blijft
+  // gewoon op `relevant` gebaseerd, dus ongewijzigd.
+  const gezienNavtexSleutels = new Set();
+  const tellerRelevant = relevant.filter((s) => moetMeetellenVoorTeller(s, gezienNavtexSleutels));
+
+  MELDINGEN_BADGE_EL.style.display = tellerRelevant.length ? 'flex' : 'none';
+  MELDINGEN_BADGE_EL.textContent = String(tellerRelevant.length);
 
   const perCategorie = {};
   relevant.forEach((s) => (perCategorie[s.categorie] ??= []).push(s));
