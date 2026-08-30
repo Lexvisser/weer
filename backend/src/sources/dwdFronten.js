@@ -48,8 +48,12 @@ const PROJ = { x0: 2961.16, y0: 339.49, k: 2312.65, lon0: 9.9905 };
 // Doelgebied (WGS84): ruim om de tien ZEE_GEBIEDEN uit app.js heen, incl.
 // de Noorse kust en de Golf van Biskaje zodat een naderend front al te
 // zien is voor het de Noordzee bereikt.
-export const BBOX = { lonW: -15, lonE: 30, latS: 42, latN: 70 };
-const DOEL_BREEDTE = 1400;
+// 2026-08-30 (4e ronde), op verzoek van Lex ("een stukje bijpakken zodat
+// IJsland meekomt"): verruimd van -15..30E / 42..70N naar -30..35E / 40..75N.
+// Kost weinig: de breedte gaat mee omhoog (zelfde pixeldichtheid, ~1800x2100
+// px), PNG ~2x zo groot (nog steeds < 1 MB), verwerking nauwelijks langer.
+export const BBOX = { lonW: -30, lonE: 35, latS: 40, latN: 75 };
+const DOEL_BREEDTE = 1800;
 
 const SEA = [133, 146, 163];
 
