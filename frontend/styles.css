@@ -620,6 +620,14 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    neutraal wit i.p.v. fosfor-groen -- dit is geen ontvangst-info. */
 .fronten-info { position:absolute; left:10px; bottom:26px; z-index:1000; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#e6e9f2; background:rgba(10,11,18,0.72); border:1px solid rgba(255,255,255,0.18); border-radius:8px; padding:4px 9px; pointer-events:none; max-width:70%; }
 .fronten-info.verborgen { display:none; }
+/* 2026-08-30: schermvullende DWD-bronkaart (#dwdKaartOverlay). "passend" =
+   hele kaart in beeld; zonder die klasse op natuurlijke grootte, scrollbaar
+   in beide richtingen (touch-action laat pinch-zoom aan de browser). */
+.dwd-kaart-inhoud { padding:0; overflow:auto; background:#0e111c; touch-action:pan-x pan-y pinch-zoom; }
+.dwd-kaart-inhoud img { display:block; cursor:zoom-in; }
+.dwd-kaart-inhoud img.passend { max-width:100%; max-height:100%; width:auto; height:auto; margin:0 auto; }
+.dwd-kaart-inhoud img:not(.passend) { max-width:none; cursor:zoom-out; }
+.dwd-kaart-status { color:#e6e9f2; text-shadow:none; }
 /* De gewarpte DWD-PNG staat in een eigen pane (zie toggleFronten() in
    app.js) zodat de donkere-modus-filter op de tile-pane 'm niet raakt;
    fronten zijn al fel genoeg op de donkere kaart. */

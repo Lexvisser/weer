@@ -1058,6 +1058,14 @@ export function createApp(env) {
       const f = huidigeFronten();
       return sendJson(res, 200, f ? { beschikbaar: true, analyseTijd: f.analyseTijd, gepubliceerd: f.gepubliceerd, bijgewerkt: f.bijgewerkt, bbox: f.bbox, breedte: f.breedte, hoogte: f.hoogte } : { beschikbaar: false });
     }
+    if (url === '/api/fronten-bron.png') {
+      const f = huidigeFronten();
+      if (!f?.bron) { res.writeHead(404); return res.end(); }
+      const etag = `"fronten-bron-${f.bijgewerkt}"`;
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': f.bron.length, ETag: etag, 'Cache-Control': 'no-cache' });
+      return res.end(f.bron);
+    }
     if (url === '/api/fronten.png') {
       const f = huidigeFronten();
       if (!f) { res.writeHead(404); return res.end(); }

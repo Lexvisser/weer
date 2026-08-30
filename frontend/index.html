@@ -125,6 +125,10 @@
       <button id="radarSpeel">▶</button>
       <span id="radarTijd">—</span>
       <button id="toggleSatelliet" class="satelliet-toggle">🛰️<span class="knop-tekst"> Satelliet</span></button>
+      <!-- 2026-08-30, op verzoek van Lex: de complete DWD-Bodenanalyse (de
+           bron van de fronten-laag, Florida tot Rusland) schermvullend
+           bekijken. Zie openDwdKaart() in app.js. -->
+      <button id="toggleDwdKaart" class="satelliet-toggle" title="Volledige DWD-Bodenanalyse (bron van de fronten-laag) schermvullend">🗺️<span class="knop-tekst"> DWD</span></button>
       </div>
       <div class="radar-groep radar-groep-rechts">
       <!-- 2026-08-20, op verzoek van Lex ("elke icons uitzetten, of een heel
@@ -410,6 +414,18 @@
      zolang 'ie openstaat. Zelfde overlay-opmaak als labelPopupOverlay
      hierboven; eigen inhoud-<pre> voor monospace-weergave. Te openen via de
      📻-knop in Zee-modus én vanuit Instellingen -> NAVTEX-sectie. -->
+<!-- 2026-08-30: schermvullende weergave van de DWD-bronkaart (zie
+     openDwdKaart() in app.js). Zelfde overlay-opmaak als hierboven; de
+     inhoud is een scrollbare <img> — één tik wisselt tussen "passend" en
+     100% (4379x3269 px, dan scrollen/pinchen). -->
+<div class="label-popup-overlay verborgen" id="dwdKaartOverlay">
+  <div class="label-popup-balk">
+    <span class="navtex-ruw-status dwd-kaart-status" id="dwdKaartStatus">DWD-Bodenanalyse</span>
+    <button id="dwdKaartSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
+  </div>
+  <div class="label-popup-inhoud dwd-kaart-inhoud" id="dwdKaartInhoud"><img id="dwdKaartImg" alt="DWD-Bodenanalyse" class="passend"></div>
+</div>
+
 <div class="label-popup-overlay verborgen" id="navtexRuwOverlay">
   <div class="label-popup-balk">
     <span class="navtex-ruw-status" id="navtexRuwStatus">—</span>

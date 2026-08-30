@@ -39,6 +39,25 @@
 // 3. warp naar Web Mercator (EPSG:3857) voor de bbox hieronder, bilineair
 //    — per doelpixel lat/lon -> chartpixel via de forward-projectie;
 // 4. encode als RGBA-PNG, in geheugen, geserveerd via /api/fronten.png.
+//    De ONBEWERKTE bronkaart blijft ook in geheugen (5 MB) voor
+//    /api/fronten-bron.png -- de DWD-knop naast Satelliet toont 'm
+//    schermvullend (2026-08-30, op verzoek van Lex).
+//
+// OPENSTAAND (2026-08-30, "onthoud hem, we doen hem niet nu"): de kleine
+// stationsplot-cijfers die tegen een isobaar aan liggen blijven als
+// stompjes aan de lijn hangen (ze vormen één samenhangende figuur met de
+// isobaar en de "lange lijnen houden"-filter neemt ze mee). "Alleen
+// hoofdisobaren tonen" is geen oplossing: DWD tekent alle isobaren (5 hPa)
+// met dezelfde pen, er is geen zwaardere hoofdisobaar. Twee routes besproken:
+//   1. snoeien -- isobaren skeletteren, zijtakjes < ~25 px afknippen en de
+//      lijn met vaste dikte opnieuw tekenen (puur JS, ~1 uur; risico: een
+//      scherpe knik of label-onderbreking verliest plaatselijk een stukje);
+//   2. isobaren zelf tekenen uit een drukveld (Open-Meteo-raster + contouren)
+//      -- perfect schoon, eigen stijl, evt. om de 10 hPa; nadeel: fronten
+//      (DWD-analyse) en isobaren (model, later uur) kunnen net niet op de
+//      pixel passen; meer werk.
+//   Advies was: eerst 1, dan pas 2. Derde optie: isobaren dunner/lichter
+//   zodat de stompjes niet opvallen.
 import { PNG } from 'pngjs';
 
 export const BRON_URL = 'https://opendata.dwd.de/weather/charts/analysis/Z__C_EDZW_LATEST_tka01,ana_bwkman_dwdc_O_000000_000000_LATEST_WV12.png';
@@ -328,5 +347,5 @@ export function verwerkKaart(buffer, lastModified) {
     }
   }
   console.log(`[weer] dwd-fronten: kaart verwerkt in ${Date.now() - t0} ms (${png.width}x${png.height} -> ${uit.width}x${uit.height}, ${Math.round(out.length / 1024)} kB, kalibratie ${kalibratie.goed}/${kalibratie.totaal})`);
-  return { png: out, analyseTijd, gepubliceerd: lastModified ? new Date(lastModified).toISOString() : null, bijgewerkt: new Date().toISOString(), breedte: uit.width, hoogte: uit.height, bbox: BBOX, kalibratie };
+  return { png: out, bron: buffer, analyseTijd, gepubliceerd: lastModified ? new Date(lastModified).toISOString() : null, bijgewerkt: new Date().toISOString(), breedte: uit.width, hoogte: uit.height, bbox: BBOX, kalibratie };
 }

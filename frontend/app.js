@@ -43,6 +43,10 @@ const TOGGLE_ZEE_EL = document.getElementById('toggleZee');
 const TOGGLE_VLIEGRADAR_EL = document.getElementById('toggleVliegradar');
 const TOGGLE_FRONTEN_EL = document.getElementById('toggleFronten'); // 2026-08-30, zie toggleFronten()
 const FRONTEN_INFO_EL = document.getElementById('frontenInfo');
+const TOGGLE_DWD_KAART_EL = document.getElementById('toggleDwdKaart'); // 2026-08-30, zie openDwdKaart()
+const DWD_KAART_OVERLAY_EL = document.getElementById('dwdKaartOverlay');
+const DWD_KAART_IMG_EL = document.getElementById('dwdKaartImg');
+const DWD_KAART_STATUS_EL = document.getElementById('dwdKaartStatus');
 const TOGGLE_VAARRADAR_EL = document.getElementById('toggleVaarradar');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
 // zijn weg, zie index.html) — één gedeelde Stop-knop voor kaartVolgType,
@@ -689,6 +693,10 @@ function initMap() {
   TOGGLE_ZEE_EL.addEventListener('click', toggleZeeModus);
   TOGGLE_VLIEGRADAR_EL.addEventListener('click', toggleVliegradar);
   if (TOGGLE_FRONTEN_EL) TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
+  if (TOGGLE_DWD_KAART_EL) TOGGLE_DWD_KAART_EL.addEventListener('click', openDwdKaart);
+  document.getElementById('dwdKaartSluiten')?.addEventListener('click', sluitDwdKaart);
+  // Tik op de kaart: wisselen tussen passend en 100% (dan scrollen/pinchen).
+  DWD_KAART_IMG_EL?.addEventListener('click', () => DWD_KAART_IMG_EL.classList.toggle('passend'));
   TOGGLE_VAARRADAR_EL.addEventListener('click', toggleVaarradar);
   // Lex: "...waarna er een knop Stop zichtbaar is. Waarmee ISS/Starlink
   // wordt verborgen, alle hazards weer terugkomen en er wordt
@@ -4474,6 +4482,27 @@ async function verversFronten() {
   FRONTEN_INFO_EL.textContent = `Fronten: DWD-analyse${tijd ? ` ${tijd}` : ''}`;
   FRONTEN_INFO_EL.title = info.gepubliceerd ? `gepubliceerd ${nieuwSindsTekst(info.gepubliceerd)} · opgehaald ${nieuwSindsTekst(info.bijgewerkt)}` : '';
   FRONTEN_INFO_EL.classList.remove('verborgen');
+}
+
+// 2026-08-30, op verzoek van Lex: de complete DWD-bronkaart schermvullend
+// (knop DWD naast Satelliet). De backend houdt de onbewerkte PNG (5 MB) in
+// geheugen (/api/fronten-bron.png); de analysetijd komt uit /api/fronten-info.
+async function openDwdKaart() {
+  DWD_KAART_OVERLAY_EL.classList.remove('verborgen');
+  DWD_KAART_IMG_EL.classList.add('passend');
+  let info = null;
+  try { info = await fetch('/api/fronten-info').then((r) => r.json()); } catch { /* status blijft kaal */ }
+  if (!info?.beschikbaar) {
+    DWD_KAART_STATUS_EL.textContent = 'DWD-Bodenanalyse — nog niet opgehaald';
+    DWD_KAART_IMG_EL.removeAttribute('src');
+    return;
+  }
+  DWD_KAART_STATUS_EL.textContent = `DWD-Bodenanalyse ${info.analyseTijd ? nieuwSindsTekst(info.analyseTijd) : ''} · tik = zoom`;
+  DWD_KAART_IMG_EL.src = `/api/fronten-bron.png?v=${encodeURIComponent(info.bijgewerkt)}`;
+}
+
+function sluitDwdKaart() {
+  DWD_KAART_OVERLAY_EL.classList.add('verborgen');
 }
 
 function toggleFronten() {
