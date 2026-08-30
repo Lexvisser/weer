@@ -4632,14 +4632,14 @@ function tekenIsobaren(iso) {
       const p = lijn.punten[Math.min(n - 1, Math.floor(n * f))];
       labels.push(L.marker(p, {
         pane: 'frontenPane', interactive: false, keyboard: false,
-        icon: L.divIcon({ className: 'isobaar-label', html: String(lijn.hpa), iconSize: [30, 12], iconAnchor: [15, 6] }),
+        icon: L.divIcon({ className: 'isobaar-label', html: String(lijn.hpa), iconSize: [38, 17], iconAnchor: [19, 8] }),
       }));
     }
   }
   for (const e of iso.extrema ?? []) {
     labels.push(L.marker([e.lat, e.lon], {
       pane: 'frontenPane', interactive: false, keyboard: false,
-      icon: L.divIcon({ className: `drukcentrum drukcentrum-${e.type.toLowerCase()}`, html: `<span class="drukcentrum-letter">${e.type}</span><span class="drukcentrum-hpa">${e.hpa}</span>`, iconSize: [30, 26], iconAnchor: [15, 13] }),
+      icon: L.divIcon({ className: `drukcentrum drukcentrum-${e.type.toLowerCase()}`, html: `<span class="drukcentrum-letter">${e.type}</span><span class="drukcentrum-hpa">${e.hpa}</span>`, iconSize: [34, 32], iconAnchor: [17, 16] }),
     }));
   }
   isobarenLaag = L.layerGroup(lagen).addTo(kaart);

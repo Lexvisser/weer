@@ -60,7 +60,7 @@ const BATCH_GROOTTE = 40;
 const BATCH_PAUZE_MS = 5000;
 const BACKOFF_MS = 65 * 1000;
 export const VERVERS_INTERVAL_MS = 4 * 60 * 60 * 1000;
-const EXTREMUM_PROMINENTIE_HPA = 1.5; // t.o.v. de ring op EXTREMUM_RING rasterpunten afstand
+const EXTREMUM_PROMINENTIE_HPA = 1.0; // t.o.v. de ring op EXTREMUM_RING rasterpunten afstand; 2026-08-30 1.5 -> 1.0: een vlak hoog (gesloten 1020 boven de Alpen) kreeg anders geen H
 const EXTREMUM_RING = 3; // 4,5 graad: een hogedrukgebied is breed en vlak, bij 2 werd 'ie gemist
 
 export const BRON_URL = 'https://api.open-meteo.com/v1/forecast';

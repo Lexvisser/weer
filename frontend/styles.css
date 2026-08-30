@@ -631,10 +631,12 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    klassieke kleuren (H blauw, L rood — KNMI-conventie) met de druk eronder.
    Bewust veel kleiner dan de vette H/T/1000 uit de DWD-bitmap. pointer-
    events uit: de laag mag nooit een klik op een marker eronder wegvangen. */
-.isobaar-label { font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:600; line-height:12px; text-align:center; color:#1b1e2a; background:rgba(236,239,246,0.78); border-radius:3px; pointer-events:none; white-space:nowrap; }
+/* 2026-08-30 (2e ronde), op verzoek van Lex ("de getallen toch wel iets
+   prominenter"): 9.5 -> 11.5 px, vetter, wit kader met dun randje. */
+.isobaar-label { font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:700; line-height:15px; text-align:center; color:#1b1e2a; background:rgba(255,255,255,0.88); border:1px solid rgba(27,30,42,0.45); border-radius:3px; pointer-events:none; white-space:nowrap; }
 .drukcentrum { display:flex; flex-direction:column; align-items:center; line-height:1; pointer-events:none; text-shadow:0 0 3px rgba(255,255,255,0.9), 0 0 6px rgba(255,255,255,0.7); }
-.drukcentrum-letter { font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:800; }
-.drukcentrum-hpa { font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:600; color:#1b1e2a; margin-top:1px; }
+.drukcentrum-letter { font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:800; }
+.drukcentrum-hpa { font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; color:#1b1e2a; margin-top:1px; }
 .drukcentrum-h .drukcentrum-letter { color:#1f5fbf; }
 .drukcentrum-l .drukcentrum-letter { color:#c8102e; }
 /* 2026-08-30: schermvullende DWD-bronkaart (#dwdKaartOverlay). "passend" =
