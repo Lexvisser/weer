@@ -625,6 +625,12 @@ function initMap() {
   kaart.getPane('gradenPane').style.zIndex = 370;
   kaart.getPane('gradenPane').style.pointerEvents = 'none';
   kaart.on('moveend zoomend', () => { if (gradenActief) tekenGradenGrid(); });
+  // 2026-08-30, op verzoek van Lex ("in welk gridvak de cursor is"): vak
+  // onder de muis oplichten + uitlezen. Op touch geen hover, dus daar telt
+  // een tik op de kaart als 'cursor'. Zie toonGradenVak().
+  kaart.on('mousemove', (e) => { if (gradenActief) toonGradenVak(e.latlng); });
+  kaart.on('mouseout', () => { if (gradenActief) verbergGradenVak(); });
+  kaart.on('click', (e) => { if (gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
 
   // 2026-08-19: basiskaart-geschiedenis (kort) — CARTO's gratis dark_all gaf
@@ -4565,6 +4571,7 @@ function tekenGradenGrid() {
   if (!kaart) return;
   if (!gradenLaag) gradenLaag = L.layerGroup().addTo(kaart);
   gradenLaag.clearLayers();
+  gradenVakLaag = null; gradenVakSleutel = null; // vak-markering is mee gewist; volgende mousemove tekent 'm opnieuw
   const stap = gradenStapVoorZoom(kaart.getZoom());
   const grenzen = kaart.getBounds().pad(0.1);
   const lijnStijl = { pane: 'gradenPane', color: '#1a2233', weight: 0.8, opacity: 0.6, interactive: false }; // 2026-08-30, Lex: donkere lijnen i.p.v. lichtblauw
@@ -4594,12 +4601,80 @@ function tekenGradenGrid() {
   }
 }
 
+// Vak-markering + uitlezing (zie kaart.on('mousemove') in initMap): een
+// rechthoek over het gridvak waar de cursor in zit, plus een klein kaartje
+// linksboven (onder de zoomknoppen) met de vakgrenzen en de exacte
+// cursorpositie. Het vak wordt alleen opnieuw getekend als de cursor een
+// ANDER vak binnengaat (sleutel), de cursorpositie ververst wel elke keer.
+const GRADEN_SUBVAKKEN = 10; // onderverdeling van het actieve vak (10 = tienden van de stap)
+let gradenVakLaag = null;
+let gradenVakSleutel = null;
+const GRADEN_VAK_EL = document.getElementById('gradenVak');
+
+function toonGradenVak(latlng) {
+  if (!kaart || !gradenLaag) return;
+  const stap = gradenStapVoorZoom(kaart.getZoom());
+  const zuid = parseFloat((Math.floor(latlng.lat / stap) * stap).toFixed(6));
+  const west = parseFloat((Math.floor(latlng.lng / stap) * stap).toFixed(6));
+  const noord = parseFloat((zuid + stap).toFixed(6));
+  const oost = parseFloat((west + stap).toFixed(6));
+  const sleutel = `${stap}|${zuid}|${west}`;
+  if (sleutel !== gradenVakSleutel) {
+    gradenVakSleutel = sleutel;
+    if (gradenVakLaag) gradenLaag.removeLayer(gradenVakLaag);
+    gradenVakLaag = L.layerGroup().addTo(gradenLaag);
+    L.rectangle([[zuid, west], [noord, oost]], {
+      pane: 'gradenPane', color: '#3ec6ff', weight: 1.2, opacity: 0.8, fillColor: '#3ec6ff', fillOpacity: 0.06, interactive: false,
+    }).addTo(gradenVakLaag);
+    // 2026-08-30, op verzoek van Lex: het actieve vak krijgt een fijnere
+    // onderverdeling (GRADEN_SUBVAKKEN gelijke delen, dus bij 1° per 0.1°),
+    // met de middellijn iets sterker en kleine labels langs de linker- en
+    // bovenrand van het vak.
+    const sub = stap / GRADEN_SUBVAKKEN;
+    const subStijl = (i) => ({ pane: 'gradenPane', color: '#3ec6ff', weight: i === GRADEN_SUBVAKKEN / 2 ? 0.9 : 0.5, opacity: i === GRADEN_SUBVAKKEN / 2 ? 0.7 : 0.45, dashArray: i === GRADEN_SUBVAKKEN / 2 ? null : '3 3', interactive: false });
+    const subLabel = (tekst) => L.divIcon({ className: 'graden-label graden-sublabel', html: tekst, iconSize: null, iconAnchor: [0, 0] });
+    for (let i = 1; i < GRADEN_SUBVAKKEN; i++) {
+      const lat = parseFloat((zuid + i * sub).toFixed(6));
+      const lon = parseFloat((west + i * sub).toFixed(6));
+      L.polyline([[lat, west], [lat, oost]], subStijl(i)).addTo(gradenVakLaag);
+      L.polyline([[zuid, lon], [noord, lon]], subStijl(i)).addTo(gradenVakLaag);
+      L.marker([lat, west], { icon: subLabel(gradenLabel(lat, true)), pane: 'gradenPane', interactive: false, keyboard: false }).addTo(gradenVakLaag);
+      L.marker([noord, lon], { icon: subLabel(gradenLabel(lon, false)), pane: 'gradenPane', interactive: false, keyboard: false }).addTo(gradenVakLaag);
+    }
+  }
+  if (GRADEN_VAK_EL) {
+    const dec = stap >= 1 ? 2 : stap >= 0.25 ? 3 : 4;
+    GRADEN_VAK_EL.innerHTML =
+      `<div class="graden-vak-regel">vak ${gradenLabel(zuid, true)}–${gradenLabel(noord, true)} · ${gradenLabel(west, false)}–${gradenLabel(oost, false)}</div>` +
+      `<div class="graden-vak-regel graden-vak-cursor">${latlng.lat.toFixed(dec)}°, ${latlng.lng.toFixed(dec)}° · ${graadNaarMinuten(latlng.lat, true)} ${graadNaarMinuten(latlng.lng, false)}</div>`;
+    GRADEN_VAK_EL.classList.remove('verborgen');
+  }
+}
+
+function verbergGradenVak() {
+  if (gradenVakLaag && gradenLaag) gradenLaag.removeLayer(gradenVakLaag);
+  gradenVakLaag = null;
+  gradenVakSleutel = null;
+  GRADEN_VAK_EL?.classList.add('verborgen');
+}
+
+// 51.6487 -> "51-38.92N": dezelfde schrijfwijze als in de NAVTEX-berichten
+// zelf, zodat je een positie uit een bericht direct kunt vergelijken.
+function graadNaarMinuten(waarde, isBreedte) {
+  const abs = Math.abs(waarde);
+  const graden = Math.floor(abs);
+  const minuten = ((abs - graden) * 60).toFixed(2).padStart(5, '0');
+  const kant = isBreedte ? (waarde < 0 ? 'S' : 'N') : (waarde < 0 ? 'W' : 'E');
+  return `${String(graden).padStart(isBreedte ? 2 : 3, '0')}-${minuten}${kant}`;
+}
+
 function toggleGradenGrid() {
   gradenActief = !gradenActief;
   TOGGLE_GRADEN_EL?.classList.toggle('actief', gradenActief);
   if (gradenActief) {
     tekenGradenGrid();
   } else if (gradenLaag) {
+    verbergGradenVak();
     kaart.removeLayer(gradenLaag);
     gradenLaag = null;
   }
