@@ -30,13 +30,12 @@
 //
 // VERWERKING (puur JS, pngjs — geen GDAL/sharp nodig op lexdev-nw):
 // 1. decode PNG;
-// 2. masker: gekleurde pixels (verzadiging > 60) = fronten, altijd
-//    zichtbaar; zwarte pixels alleen als ze een 5x5-opening overleven
-//    (= dikke, vette tekst: H/T en de isobaar-getallen) MINUS kleine
-//    compacte blobs (de gevulde stationsbolletjes). Dunne zwarte lijnen
-//    (isobaren én stationsplots — even dik, niet uit elkaar te houden)
-//    vallen weg: bewust, de druk-info komt al uit de NAVTEX-synopsis en de
-//    stationsplots zouden alleen maar ruis zijn op de zeekaart;
+// 2. masker: gekleurde pixels (verzadiging > 60) = fronten (iets versmald);
+//    zwarte pixels in twee smaken: vette tekst (H/T, isobaar-getallen —
+//    overleeft een 5x5-opening, minus de gevulde stationsbolletjes) en
+//    isobaren (~4 px dik: overleeft een 3x3-opening, in tegenstelling tot
+//    graadnet en stationsplot-streepjes, en is daarna de enige LANGE
+//    component). Stationsplots vallen zo weg — zie bouwMasker();
 // 3. warp naar Web Mercator (EPSG:3857) voor de bbox hieronder, bilineair
 //    — per doelpixel lat/lon -> chartpixel via de forward-projectie;
 // 4. encode als RGBA-PNG, in geheugen, geserveerd via /api/fronten.png.
@@ -109,100 +108,119 @@ function bouwMasker(png) {
     if (sat > 60 && !isZee) gekleurd[i] = 1;
     else if (mx < 110 && sat < 40) donker[i] = 1;
   }
-  // 5x5-opening op `donker`: erosie dan dilatie.
-  const erosie = new Uint8Array(n);
-  for (let y = 2; y < height - 2; y++) {
-    for (let x = 2; x < width - 2; x++) {
+  // Kaartrand/legenda-kader (raakt alle isobaren die tot de rand doorlopen)
+  // buiten beschouwing laten: 12 px rand wissen.
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (x < 12 || y < 12 || x >= width - 12 || y >= height - 12) donker[y * width + x] = 0;
+  }
+
+  // (a) Vette tekst (H/T en de isobaar-getallen): overleeft een 5x5-opening;
+  //     daarna kleine compacte blobs (gevulde stationsbolletjes) eruit.
+  const dik = verwijderBlobs(opening(donker, width, height, 2), width, height);
+
+  // (b) 2026-08-30 (3e ronde), op verzoek van Lex ("ik mis ook nog de zwarte
+  //     lijnen"): isobaren. Gemeten op een echte kaart: isobaren zijn ~4 px
+  //     dik, graadnetlijnen ~2 px, stationsplot-streepjes 1-2 px. Een
+  //     3x3-opening (straal 1) laat dus alleen de isobaren en de dikkere
+  //     glyph-delen over; van wat overblijft zijn de isobaren de enige LANGE
+  //     samenhangende componenten (bbox >= ISOBAAR_MIN_PX in een richting)
+  //     -- losse glyphs/cijfers zijn klein en vallen zo weg.
+  const isobaren = houdLangeComponenten(opening(donker, width, height, 1), width, height, ISOBAAR_MIN_PX);
+
+  // Frontlijnen: gemeten ~8 px dik (halve breedte 4); schijf-erosie straal 2
+  // -> ~4 px, de halve cirkels/driehoekjes (veel groter) blijven staan.
+  const gekleurdDun = erodeer(gekleurd, width, height, FRONT_DUN_PX);
+  const dikDun = erodeer(dik, width, height, TEKST_DUN_PX);
+  // alpha-masker: 255 fronten, 230 vette tekst, 190 isobaren, 0 rest
+  const alpha = new Uint8Array(n);
+  for (let i = 0; i < n; i++) alpha[i] = gekleurdDun[i] ? 255 : dikDun[i] ? 230 : isobaren[i] ? 190 : 0;
+  // Spikkels (erosie-restjes van antialiasing/glyph-fragmenten) weg: alles
+  // kleiner dan 12 px samenhangend is nooit een front, letter of isobaar.
+  const zonderSpikkels = filterComponenten(alpha, width, height, (bw, bh, aantal) => aantal >= 12);
+  for (let i = 0; i < n; i++) if (!zonderSpikkels[i]) alpha[i] = 0;
+  return alpha;
+}
+
+const FRONT_DUN_PX = 2;
+const TEKST_DUN_PX = 1;
+const ISOBAAR_MIN_PX = 120;
+
+// Binaire erosie/dilatie met een schijfvormig element (straal r). Bij de
+// erosie worden alleen gezette pixels geëvalueerd, bij de dilatie alleen
+// vanuit gezette pixels uitgestrooid -- fronten/tekst/lijnen zijn een klein
+// deel van het blad, dus dit blijft ruim binnen een seconde.
+function schijfOffsets(r) {
+  const offsets = [];
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r) offsets.push([dx, dy]);
+  return offsets;
+}
+function erodeer(masker, width, height, r) {
+  if (r <= 0) return masker;
+  const offsets = schijfOffsets(r);
+  const uit = new Uint8Array(width * height);
+  for (let y = r; y < height - r; y++) {
+    for (let x = r; x < width - r; x++) {
+      const i = y * width + x;
+      if (!masker[i]) continue;
       let ok = 1;
-      for (let dy = -2; dy <= 2 && ok; dy++) {
-        const rij = (y + dy) * width + x;
-        for (let dx = -2; dx <= 2; dx++) if (!donker[rij + dx]) { ok = 0; break; }
-      }
-      erosie[y * width + x] = ok;
+      for (const [dx, dy] of offsets) if (!masker[i + dy * width + dx]) { ok = 0; break; }
+      uit[i] = ok;
     }
   }
-  const dik = new Uint8Array(n);
-  for (let y = 2; y < height - 2; y++) {
-    for (let x = 2; x < width - 2; x++) {
-      if (!erosie[y * width + x]) continue;
-      for (let dy = -2; dy <= 2; dy++) {
-        const rij = (y + dy) * width + x;
-        for (let dx = -2; dx <= 2; dx++) dik[rij + dx] = 1;
-      }
+  return uit;
+}
+function dilateer(masker, width, height, r) {
+  if (r <= 0) return masker;
+  const offsets = schijfOffsets(r);
+  const uit = new Uint8Array(width * height);
+  for (let y = r; y < height - r; y++) {
+    for (let x = r; x < width - r; x++) {
+      const i = y * width + x;
+      if (!masker[i]) continue;
+      for (const [dx, dy] of offsets) uit[i + dy * width + dx] = 1;
     }
   }
-  // Kleine compacte blobs (stationsbolletjes) uit `dik` halen: samenhangende
-  // componenten met bounding box <= 22 px en vulgraad > 0.55 (een rond
-  // bolletje vult z'n box voor ~78%, een cijfer/letter veel minder).
+  return uit;
+}
+function opening(masker, width, height, r) {
+  return dilateer(erodeer(masker, width, height, r), width, height, r);
+}
+
+// Samenhangende componenten (4-buren) langslopen; `beslis(bboxBreedte,
+// bboxHoogte, aantalPixels)` zegt of de component BLIJFT. Iteratief met een
+// expliciete stapel (geen recursie: een isobaar kan 100k pixels lang zijn).
+function filterComponenten(masker, width, height, beslis) {
+  const n = width * height;
+  const uit = new Uint8Array(n);
   const gezien = new Uint8Array(n);
   const stapel = new Int32Array(n);
+  const leden = new Int32Array(n);
   for (let s = 0; s < n; s++) {
-    if (!dik[s] || gezien[s]) continue;
-    let top = 0; stapel[top++] = s; gezien[s] = 1;
-    const leden = [];
+    if (!masker[s] || gezien[s]) continue;
+    let top = 0, aantal = 0; stapel[top++] = s; gezien[s] = 1;
     let minX = width, maxX = 0, minY = height, maxY = 0;
     while (top > 0) {
       const i = stapel[--top];
-      leden.push(i);
+      leden[aantal++] = i;
       const x = i % width, y = (i - x) / width;
       if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
       const buren = [i - 1, i + 1, i - width, i + width];
       for (const j of buren) {
-        if (j < 0 || j >= n || gezien[j] || !dik[j]) continue;
+        if (j < 0 || j >= n || gezien[j] || !masker[j]) continue;
         gezien[j] = 1; stapel[top++] = j;
       }
     }
-    const bw = maxX - minX + 1, bh = maxY - minY + 1;
-    if (bw <= 22 && bh <= 22 && leden.length / (bw * bh) > 0.55) for (const i of leden) dik[i] = 0;
-  }
-  // 2026-08-30 (2e ronde), op melding van Lex ("mag wat doorzichtiger en is
-  // het niet wat groot?"): DWD tekent de fronten ~15 px dik op een blad van
-  // 4379 px -- na de warp is dat ~18 px in de uitvoer, wat op de uitgezoomde
-  // zeekaart als een dikke worst oogt. Daarom de frontlijnen hier met een
-  // erosie (straal FRONT_DUN_PX) versmald; de halve-cirkels en driehoekjes
-  // op de lijn zijn veel groter dan de lijndikte en overleven de erosie dus
-  // gewoon (iets kleiner, prima). Zelfde behandeling, lichter, voor de vette
-  // tekst (H/T/druklabels), zodat die minder domineert.
-  const gekleurdDun = erodeer(gekleurd, width, height, FRONT_DUN_PX);
-  const dikDun = erodeer(dik, width, height, TEKST_DUN_PX);
-  // alpha-masker: 255 fronten, 230 vette tekst, 0 rest
-  const alpha = new Uint8Array(n);
-  for (let i = 0; i < n; i++) alpha[i] = gekleurdDun[i] ? 255 : dikDun[i] ? 230 : 0;
-  return alpha;
-}
-
-const FRONT_DUN_PX = 5; // erosiestraal: lijn van ~15 px wordt ~5 px
-const TEKST_DUN_PX = 2;
-
-// Binaire erosie met een vierkant (2r+1)^2-element, gescheiden in een
-// horizontale en een verticale pass (O(n*r) i.p.v. O(n*r^2)).
-function erodeer(masker, width, height, r) {
-  if (r <= 0) return masker;
-  const n = width * height;
-  const tussen = new Uint8Array(n);
-  for (let y = 0; y < height; y++) {
-    const rij = y * width;
-    for (let x = 0; x < width; x++) {
-      let ok = 1;
-      for (let dx = -r; dx <= r; dx++) {
-        const xx = x + dx;
-        if (xx < 0 || xx >= width || !masker[rij + xx]) { ok = 0; break; }
-      }
-      tussen[rij + x] = ok;
-    }
-  }
-  const uit = new Uint8Array(n);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let ok = 1;
-      for (let dy = -r; dy <= r; dy++) {
-        const yy = y + dy;
-        if (yy < 0 || yy >= height || !tussen[yy * width + x]) { ok = 0; break; }
-      }
-      uit[y * width + x] = ok;
-    }
+    if (beslis(maxX - minX + 1, maxY - minY + 1, aantal)) for (let k = 0; k < aantal; k++) uit[leden[k]] = 1;
   }
   return uit;
+}
+// Kleine compacte blobs weg (stationsbolletjes: bbox <= 22 px en vulgraad
+// > 0.55 -- een rond bolletje vult z'n box voor ~78%, een letter veel minder).
+function verwijderBlobs(masker, width, height) {
+  return filterComponenten(masker, width, height, (bw, bh, aantal) => !(bw <= 22 && bh <= 22 && aantal / (bw * bh) > 0.55));
+}
+function houdLangeComponenten(masker, width, height, minPx) {
+  return filterComponenten(masker, width, height, (bw, bh) => bw >= minPx || bh >= minPx);
 }
 
 function warp(png, alpha) {
