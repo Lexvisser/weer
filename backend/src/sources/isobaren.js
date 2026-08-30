@@ -45,7 +45,16 @@ const FIJN_STAP = 0.25;
 export const ISOBAAR_STAP = 5;
 const HOOFD_ISOBAAR_STAP = 10; // krijgt een label en een iets dikkere lijn
 const FORECAST_UREN = 9;
-const BATCH_GROOTTE = 150;
+// 2026-08-30 (eerste run op lexdev-nw): 150 locaties per request gaf
+// meteen "HTTP 429" op batch 1 — Open-Meteo weegt/burst-limiteert een
+// multi-locatie-request kennelijk strenger dan de documentatie doet
+// vermoeden. Daarom: kleine batches, een adempauze ertussen, en bij een
+// 429 wachten (Retry-After als ze die meegeven, anders BACKOFF_MS) en die
+// batch één keer opnieuw proberen. Lukt het dan nog niet, dan is de hele
+// ronde mislukt en probeert server.js het bij de volgende 30-min-tik weer.
+const BATCH_GROOTTE = 40;
+const BATCH_PAUZE_MS = 2500;
+const BACKOFF_MS = 65 * 1000;
 export const VERVERS_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const EXTREMUM_PROMINENTIE_HPA = 1.5; // t.o.v. de ring op EXTREMUM_RING rasterpunten afstand
 const EXTREMUM_RING = 3; // 4,5 graad: een hogedrukgebied is breed en vlak, bij 2 werd 'ie gemist
@@ -85,11 +94,17 @@ export async function fetchIsobaren() {
       timezone: 'UTC',
       cell_selection: 'nearest',
     });
-    const res = await fetch(`${BRON_URL}?${params}`, {
-      headers: { 'User-Agent': 'weer-app (lexvisser@gmail.com)' },
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!res.ok) throw new Error(`Open-Meteo gaf HTTP ${res.status} (batch ${start / BATCH_GROOTTE + 1})`);
+    if (start > 0) await new Promise((r) => setTimeout(r, BATCH_PAUZE_MS));
+    const batchNr = start / BATCH_GROOTTE + 1;
+    let res = await haalBatch(params);
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get('retry-after'));
+      const wacht = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : BACKOFF_MS;
+      console.warn(`[weer] isobaren: HTTP 429 op batch ${batchNr}, ${Math.round(wacht / 1000)} s wachten en opnieuw`);
+      await new Promise((r) => setTimeout(r, wacht));
+      res = await haalBatch(params);
+    }
+    if (!res.ok) throw new Error(`Open-Meteo gaf HTTP ${res.status} (batch ${batchNr} van ${Math.ceil(punten.length / BATCH_GROOTTE)})`);
     const body = await res.json();
     // Eén locatie -> object, meerdere -> array; beide netjes afhandelen.
     const lijst = Array.isArray(body) ? body : [body];
@@ -119,6 +134,13 @@ export async function fetchIsobaren() {
   contourCache.clear();
   console.log(`[weer] isobaren: drukveld opgehaald in ${Date.now() - t0} ms (${lats.length}x${lons.length} punten, ${tijden.length} uren vanaf ${tijden[0]})`);
   return laatsteVeld;
+}
+
+function haalBatch(params) {
+  return fetch(`${BRON_URL}?${params}`, {
+    headers: { 'User-Agent': 'weer-app (lexvisser@gmail.com)' },
+    signal: AbortSignal.timeout(30000),
+  });
 }
 
 export function noteerIsobarenFout(err) {
