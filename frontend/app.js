@@ -625,6 +625,8 @@ function initMap() {
   kaart.getPane('gradenPane').style.zIndex = 370;
   kaart.getPane('gradenPane').style.pointerEvents = 'none';
   kaart.on('moveend zoomend', () => { if (gradenActief) tekenGradenGrid(); });
+  // 2026-08-30: isobaar-labels/H-L alleen vanaf ISOBAAR_LABEL_MIN_ZOOM, zie tekenIsobaren().
+  kaart.on('zoomend', zetIsobaarLabelsZichtbaar);
   // 2026-08-30, op verzoek van Lex ("in welk gridvak de cursor is"): vak
   // onder de muis oplichten + uitlezen. Op touch geen hover, dus daar telt
   // een tik op de kaart als 'cursor'. Zie toonGradenVak().
@@ -4508,6 +4510,18 @@ let frontenLaag = null;
 let frontenActief = false;
 let frontenTimer = null;
 let frontenLaatsteBijgewerkt = null;
+// 2026-08-30 (isobaren zelf tekenen, op verzoek van Lex — "kan dan ook de
+// grote waarde 1000 en T kleiner"): de backend levert via /api/isobaren
+// isobaren + H/L-centra uit een modeldrukveld (sources/isobaren.js). Zolang
+// die beschikbaar zijn, tonen we de DWD-PNG met ALLEEN de fronten
+// (/api/fronten-alleen.png) en tekenen we de isobaren hier zelf als
+// Leaflet-polylines met eigen, kleine labels. Valt het drukveld weg, dan
+// schakelt de laag terug naar de volledige DWD-PNG (met DWD's eigen
+// isobaren en labels) — de laag is dus nooit leeg.
+let isobarenLaag = null; // L.layerGroup: lijnen + labels + H/L
+let isobarenLaatsteSleutel = null; // geldig+bijgewerkt van de getekende set
+let frontenPngVariant = null; // 'alleen' | 'vol' — welke DWD-PNG nu in frontenLaag zit
+const ISOBAAR_LABEL_MIN_ZOOM = 4;
 
 // Bijschrift net boven de knoppenbalk houden, ook als die balk over meer
 // rijen wikkelt (zie .fronten-info in styles.css).
@@ -4540,15 +4554,30 @@ async function verversFronten() {
     console.error('fronten-info ophalen mislukt', err);
     return;
   }
+  // Eigen isobaren erbij (zie toelichting bij isobarenLaag). Mislukt dit
+  // (backend nog niet zover, netwerk), dan gedragen we ons als "niet
+  // beschikbaar" en valt de laag terug op de volledige DWD-PNG.
+  let iso = null;
+  try {
+    iso = await fetch('/api/isobaren').then((r) => r.json());
+  } catch (err) {
+    console.error('isobaren ophalen mislukt', err);
+  }
+  const eigenIsobaren = !!iso?.beschikbaar && Array.isArray(iso.lijnen);
   if (!info?.beschikbaar) {
-    FRONTEN_INFO_EL.textContent = 'Fronten: nog geen DWD-analyse beschikbaar';
+    // Geen DWD-kaart: dan toch de eigen isobaren tonen als die er zijn —
+    // beter een drukkaart zonder fronten dan helemaal niets.
+    if (eigenIsobaren) tekenIsobaren(iso);
+    FRONTEN_INFO_EL.textContent = `Fronten: nog geen DWD-analyse beschikbaar${eigenIsobaren ? ` · ${isobarenInfoTekst(iso)}` : ''}`;
     FRONTEN_INFO_EL.classList.remove('verborgen');
     return;
   }
-  if (info.bijgewerkt !== frontenLaatsteBijgewerkt) {
+  const variant = eigenIsobaren ? 'alleen' : 'vol';
+  if (info.bijgewerkt !== frontenLaatsteBijgewerkt || variant !== frontenPngVariant) {
     frontenLaatsteBijgewerkt = info.bijgewerkt;
+    frontenPngVariant = variant;
     const grenzen = [[info.bbox.latS, info.bbox.lonW], [info.bbox.latN, info.bbox.lonE]];
-    const url = `/api/fronten.png?v=${encodeURIComponent(info.bijgewerkt)}`;
+    const url = `/api/${variant === 'alleen' ? 'fronten-alleen' : 'fronten'}.png?v=${encodeURIComponent(info.bijgewerkt)}`;
     if (frontenLaag) {
       frontenLaag.setUrl(url);
     } else {
@@ -4556,10 +4585,81 @@ async function verversFronten() {
          attribution: 'Fronten: © Deutscher Wetterdienst' }).addTo(kaart);
     }
   }
+  if (eigenIsobaren) tekenIsobaren(iso);
+  else verwijderIsobaren();
   const tijd = info.analyseTijd ? nieuwSindsTekst(info.analyseTijd) : null;
-  FRONTEN_INFO_EL.textContent = `Fronten: DWD-analyse${tijd ? ` ${tijd}` : ''}`;
-  FRONTEN_INFO_EL.title = info.gepubliceerd ? `gepubliceerd ${nieuwSindsTekst(info.gepubliceerd)} · opgehaald ${nieuwSindsTekst(info.bijgewerkt)}` : '';
+  const isoTekst = eigenIsobaren ? isobarenInfoTekst(iso) : 'Isobaren: DWD-kaart (drukveld niet beschikbaar)';
+  FRONTEN_INFO_EL.textContent = `Fronten: DWD-analyse${tijd ? ` ${tijd}` : ''} · ${isoTekst}`;
+  const isoTitel = eigenIsobaren
+    ? ` · isobaren: Open-Meteo-model, geldig ${nieuwSindsTekst(iso.geldig)}, drukveld opgehaald ${nieuwSindsTekst(iso.bijgewerkt)}`
+    : iso?.fout ? ` · isobaren-drukveld mislukt: ${iso.fout.melding}` : '';
+  FRONTEN_INFO_EL.title = `${info.gepubliceerd ? `fronten gepubliceerd ${nieuwSindsTekst(info.gepubliceerd)} · opgehaald ${nieuwSindsTekst(info.bijgewerkt)}` : ''}${isoTitel}`;
   FRONTEN_INFO_EL.classList.remove('verborgen');
+}
+
+function isobarenInfoTekst(iso) {
+  const d = new Date(iso.geldig);
+  const uur = Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `Isobaren: model${uur ? ` ${uur}` : ''}`;
+}
+
+// Isobaren + labels + H/L tekenen. Lijnen als polylines in frontenPane
+// (zelfde laag als de fronten-PNG, dus onder alle markers). Stijl bewust
+// rustig: dunne donkere lijnen, hoofdisobaren (elke 10 hPa) iets zwaarder
+// en alleen díe krijgen een klein getal; H/L als kleine letter met de
+// druk eronder. Labels hangen aan de zoom (zie zetIsobaarLabelsZichtbaar):
+// ver uitgezoomd zouden ze elkaar overlappen. Alleen opnieuw tekenen als
+// de set echt veranderd is (geldig/bijgewerkt) — elke 15 min hertekenen
+// zonder reden geeft een knipper.
+function tekenIsobaren(iso) {
+  const sleutel = `${iso.geldig}|${iso.bijgewerkt}`;
+  if (isobarenLaag && sleutel === isobarenLaatsteSleutel) return;
+  verwijderIsobaren();
+  isobarenLaatsteSleutel = sleutel;
+  const lagen = [];
+  const labels = [];
+  for (const lijn of iso.lijnen) {
+    lagen.push(L.polyline(lijn.punten, {
+      pane: 'frontenPane', interactive: false,
+      color: '#1b1e2a', weight: lijn.hoofd ? 1.7 : 1.1, opacity: lijn.hoofd ? 0.8 : 0.6,
+      smoothFactor: 1.2,
+    }));
+    if (!lijn.hoofd) continue;
+    // Eén label halverwege; bij een lange lijn ook op een kwart en driekwart.
+    const n = lijn.punten.length;
+    const posities = n > 60 ? [0.25, 0.5, 0.75] : [0.5];
+    for (const f of posities) {
+      const p = lijn.punten[Math.min(n - 1, Math.floor(n * f))];
+      labels.push(L.marker(p, {
+        pane: 'frontenPane', interactive: false, keyboard: false,
+        icon: L.divIcon({ className: 'isobaar-label', html: String(lijn.hpa), iconSize: [30, 12], iconAnchor: [15, 6] }),
+      }));
+    }
+  }
+  for (const e of iso.extrema ?? []) {
+    labels.push(L.marker([e.lat, e.lon], {
+      pane: 'frontenPane', interactive: false, keyboard: false,
+      icon: L.divIcon({ className: `drukcentrum drukcentrum-${e.type.toLowerCase()}`, html: `<span class="drukcentrum-letter">${e.type}</span><span class="drukcentrum-hpa">${e.hpa}</span>`, iconSize: [30, 26], iconAnchor: [15, 13] }),
+    }));
+  }
+  isobarenLaag = L.layerGroup(lagen).addTo(kaart);
+  isobarenLaag.labels = L.layerGroup(labels);
+  zetIsobaarLabelsZichtbaar();
+}
+
+function zetIsobaarLabelsZichtbaar() {
+  if (!isobarenLaag?.labels || !kaart) return;
+  const toon = kaart.getZoom() >= ISOBAAR_LABEL_MIN_ZOOM;
+  if (toon && !kaart.hasLayer(isobarenLaag.labels)) isobarenLaag.labels.addTo(kaart);
+  if (!toon && kaart.hasLayer(isobarenLaag.labels)) kaart.removeLayer(isobarenLaag.labels);
+}
+
+function verwijderIsobaren() {
+  if (!isobarenLaag) return;
+  if (isobarenLaag.labels && kaart.hasLayer(isobarenLaag.labels)) kaart.removeLayer(isobarenLaag.labels);
+  kaart.removeLayer(isobarenLaag);
+  isobarenLaag = null;
+  isobarenLaatsteSleutel = null;
 }
 
 // 2026-08-30, op verzoek van Lex: de complete DWD-bronkaart schermvullend
@@ -4734,7 +4834,9 @@ function toggleFronten() {
   } else {
     if (frontenTimer) { clearInterval(frontenTimer); frontenTimer = null; }
     if (frontenLaag) { kaart.removeLayer(frontenLaag); frontenLaag = null; }
+    verwijderIsobaren();
     frontenLaatsteBijgewerkt = null;
+    frontenPngVariant = null;
     FRONTEN_INFO_EL.classList.add('verborgen');
   }
 }

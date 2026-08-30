@@ -40,6 +40,7 @@ import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
 import { fetchDwdFronten, huidigeFronten } from './sources/dwdFronten.js';
+import { fetchIsobaren, huidigeIsobaren, huidigeIsobarenStatus, noteerIsobarenFout, VERVERS_INTERVAL_MS as ISOBAREN_INTERVAL_MS } from './sources/isobaren.js';
 import { fetchVliegradar } from './sources/vliegradar.js';
 import { fetchIssLive } from './sources/issLive.js';
 import { controleerIssAlarm } from './sources/celestrak.js';
@@ -706,6 +707,26 @@ export function createApp(env) {
     }
   }
 
+  // 2026-08-30, op verzoek van Lex ("kan dan ook de grote waarde 1000 en T
+  // kleiner"): isobaren en H/L-centra zelf getekend uit een Open-Meteo-
+  // drukveld, zie sources/isobaren.js (daar staat ook het call-budget).
+  // Zelfde 30-min-tik als de DWD-kaart, maar er wordt alleen écht opgehaald
+  // als de vorige geslaagde ronde ouder is dan ISOBAREN_INTERVAL_MS (4 uur)
+  // — een mislukte ronde wordt zo bij de volgende tik (30 min) opnieuw
+  // geprobeerd zonder dat het budget aan retries opgaat. Tussendoor kiest
+  // huidigeIsobaren() per uur het passende veld uit de meegevraagde uren.
+  let isobarenLaatstGeslaagd = 0;
+  async function ververIsobaren() {
+    if (Date.now() - isobarenLaatstGeslaagd < ISOBAREN_INTERVAL_MS) return;
+    try {
+      await fetchIsobaren();
+      isobarenLaatstGeslaagd = Date.now();
+    } catch (err) {
+      noteerIsobarenFout(err);
+      console.error('[weer] isobaren poll mislukt:', err.message ?? err);
+    }
+  }
+
   // 2026-08-29: hier heeft een front-/troglagen-feature gestaan (koufront/
   // warmtefront/occlusie, knop "Fronten" op de kaart, tekst geparset uit
   // NWS/WPC's coded surface bulletin ASUS02 KWBC) — gebouwd, getest, en
@@ -808,6 +829,8 @@ export function createApp(env) {
     timers.push(setInterval(ververMetOfficeForecast, 3 * 60 * 60 * 1000));
     ververDwdFronten();
     timers.push(setInterval(ververDwdFronten, 30 * 60 * 1000));
+    ververIsobaren();
+    timers.push(setInterval(ververIsobaren, 30 * 60 * 1000));
 
     // 2026-08-22, ISS-passagemelding (zie controleerIssAlarm() in
     // celestrak.js) — bewust een eigen, snelle 30s-timer los van celestrak's
@@ -1057,6 +1080,24 @@ export function createApp(env) {
     if (url === '/api/fronten-info') {
       const f = huidigeFronten();
       return sendJson(res, 200, f ? { beschikbaar: true, analyseTijd: f.analyseTijd, gepubliceerd: f.gepubliceerd, bijgewerkt: f.bijgewerkt, bbox: f.bbox, breedte: f.breedte, hoogte: f.hoogte } : { beschikbaar: false });
+    }
+    // 2026-08-30: eigen isobaren (zie ververIsobaren() hierboven). Lijnen als
+    // [lat, lon]-polylijnen + H/L-centra, voor het uur dat nu het dichtst bij
+    // ligt; de frontend tekent ze zelf (Leaflet-polylines, kleine labels).
+    // Bij beschikbaar:false toont de frontend de oude DWD-isobaren als
+    // terugval, zodat de laag nooit leeg is.
+    if (url === '/api/isobaren') {
+      const iso = huidigeIsobaren();
+      const status = huidigeIsobarenStatus();
+      return sendJson(res, 200, iso ? { beschikbaar: true, ...iso, fout: status.fout } : { beschikbaar: false, fout: status.fout });
+    }
+    if (url === '/api/fronten-alleen.png') {
+      const f = huidigeFronten();
+      if (!f?.pngAlleenFronten) { res.writeHead(404); return res.end(); }
+      const etag = `"fronten-alleen-${f.bijgewerkt}"`;
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': f.pngAlleenFronten.length, ETag: etag, 'Cache-Control': 'no-cache' });
+      return res.end(f.pngAlleenFronten);
     }
     if (url === '/api/fronten-bron.png') {
       const f = huidigeFronten();

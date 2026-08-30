@@ -58,6 +58,11 @@
 //      pixel passen; meer werk.
 //   Advies was: eerst 1, dan pas 2. Derde optie: isobaren dunner/lichter
 //   zodat de stompjes niet opvallen.
+//   2026-08-30 (later die dag): route 2 gebouwd, zie sources/isobaren.js.
+//   Dit bestand levert sindsdien óók een PNG met alleen de fronten
+//   (pngAlleenFronten, /api/fronten-alleen.png); de volledige PNG met de
+//   bitmap-isobaren en -labels blijft als terugval voor als het drukveld
+//   niet beschikbaar is.
 import { PNG } from 'pngjs';
 
 export const BRON_URL = 'https://opendata.dwd.de/weather/charts/analysis/Z__C_EDZW_LATEST_tka01,ana_bwkman_dwdc_O_000000_000000_LATEST_WV12.png';
@@ -185,7 +190,13 @@ function bouwMasker(png) {
   // kleiner dan 12 px samenhangend is nooit een front, letter of isobaar.
   const zonderSpikkels = filterComponenten(alpha, width, height, (bw, bh, aantal) => aantal >= 12);
   for (let i = 0; i < n; i++) if (!zonderSpikkels[i]) alpha[i] = 0;
-  return alpha;
+  // 2026-08-30 (isobaren zelf tekenen, zie sources/isobaren.js): tweede
+  // masker met ALLEEN de fronten — de frontend legt daar de eigen isobaren
+  // en kleine H/L-labels overheen. Het volledige masker blijft bestaan als
+  // terugval voor als het drukveld (Open-Meteo) een keer niet beschikbaar is.
+  const alleenFronten = new Uint8Array(n);
+  for (let i = 0; i < n; i++) if (alpha[i] === 255) alleenFronten[i] = 255;
+  return { alpha, alleenFronten };
 }
 
 const FRONT_DUN_PX = 2;
@@ -272,13 +283,14 @@ function houdLangeComponenten(masker, width, height, minPx) {
   return filterComponenten(masker, width, height, (bw, bh) => bw >= minPx || bh >= minPx);
 }
 
-function warp(png, alpha) {
+// 2026-08-30: twee alpha-maskers (volledig + alleen fronten) in één pass —
+// de projectie per doelpixel is het dure deel en hoeft zo maar één keer.
+function warp(png, alphas) {
   const { width: W, height: H, data } = png;
   const OW = DOEL_BREEDTE;
   const mN = merc(BBOX.latN), mS = merc(BBOX.latS);
   const OH = Math.round((OW * (mN - mS)) / (((BBOX.lonE - BBOX.lonW) * Math.PI) / 180));
-  const uit = new PNG({ width: OW, height: OH });
-  const o = uit.data;
+  const uit = alphas.map(() => new PNG({ width: OW, height: OH }));
   for (let oy = 0; oy < OH; oy++) {
     const m = mN - ((oy + 0.5) / OH) * (mN - mS);
     const lat = ((2 * Math.atan(Math.exp(m)) - Math.PI / 2) * 180) / Math.PI;
@@ -290,12 +302,16 @@ function warp(png, alpha) {
       const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
       const i00 = y0 * W + x0, i10 = i00 + 1, i01 = i00 + W, i11 = i01 + 1;
       const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
-      const a = alpha[i00] * w00 + alpha[i10] * w10 + alpha[i01] * w01 + alpha[i11] * w11;
-      if (a < 8) continue;
-      for (let c = 0; c < 3; c++) {
-        o[oi + c] = data[i00 * 4 + c] * w00 + data[i10 * 4 + c] * w10 + data[i01 * 4 + c] * w01 + data[i11 * 4 + c] * w11;
+      for (let k = 0; k < alphas.length; k++) {
+        const alpha = alphas[k];
+        const a = alpha[i00] * w00 + alpha[i10] * w10 + alpha[i01] * w01 + alpha[i11] * w11;
+        if (a < 8) continue;
+        const o = uit[k].data;
+        for (let c = 0; c < 3; c++) {
+          o[oi + c] = data[i00 * 4 + c] * w00 + data[i10 * 4 + c] * w10 + data[i01 * 4 + c] * w01 + data[i11 * 4 + c] * w11;
+        }
+        o[oi + 3] = a;
       }
-      o[oi + 3] = a;
     }
   }
   return uit;
@@ -331,9 +347,10 @@ export function verwerkKaart(buffer, lastModified) {
   if (kalibratie.goed < kalibratie.totaal - 1) {
     throw new Error(`kalibratie-zelfcontrole mislukt (${kalibratie.goed}/${kalibratie.totaal} controlepunten) — kaartopmaak gewijzigd?`);
   }
-  const alpha = bouwMasker(png);
-  const uit = warp(png, alpha);
+  const { alpha, alleenFronten } = bouwMasker(png);
+  const [uit, uitAlleenFronten] = warp(png, [alpha, alleenFronten]);
   const out = PNG.sync.write(uit);
+  const outAlleenFronten = PNG.sync.write(uitAlleenFronten);
   // Analysetijd: de LATEST-bestandsnaam bevat 'm niet; Last-Modified is het
   // publicatiemoment, doorgaans 1-3 uur na de 00/06/12/18 UTC-analyse. De
   // analysetijd zelf = laatste 6-uursgrens vóór publicatie.
@@ -347,5 +364,5 @@ export function verwerkKaart(buffer, lastModified) {
     }
   }
   console.log(`[weer] dwd-fronten: kaart verwerkt in ${Date.now() - t0} ms (${png.width}x${png.height} -> ${uit.width}x${uit.height}, ${Math.round(out.length / 1024)} kB, kalibratie ${kalibratie.goed}/${kalibratie.totaal})`);
-  return { png: out, bron: buffer, analyseTijd, gepubliceerd: lastModified ? new Date(lastModified).toISOString() : null, bijgewerkt: new Date().toISOString(), breedte: uit.width, hoogte: uit.height, bbox: BBOX, kalibratie };
+  return { png: out, pngAlleenFronten: outAlleenFronten, bron: buffer, analyseTijd, gepubliceerd: lastModified ? new Date(lastModified).toISOString() : null, bijgewerkt: new Date().toISOString(), breedte: uit.width, hoogte: uit.height, bbox: BBOX, kalibratie };
 }
