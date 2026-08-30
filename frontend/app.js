@@ -3550,7 +3550,7 @@ function synopsisHerkomstHtml(bron) {
 // druksymbolen (zie drukgebiedenUitNavtex()/verversDrukgebieden()).
 function navtexGaleHerkomstHtml(info) {
   if (!info) return '';
-  return `<div class="popup-sub">Galewarning uit eigen NAVTEX-ontvangst${info.code ? ` (${escapeHtml(info.code)})` : ''}</div>`
+  return `<div class="popup-sub">${info.allClear ? '"NO WARNING"' : 'Galewarning'} uit eigen NAVTEX-ontvangst${info.code ? ` (${escapeHtml(info.code)})` : ''}</div>`
     + `<div class="popup-sub">Station: ${escapeHtml(info.station ?? 'onbekend')}</div>`
     + `<div class="popup-sub">Bericht: ${info.berichtTijd ? escapeHtml(nieuwSindsTekst(info.berichtTijd) ?? '—') : '— (datum onzeker)'}`
     + `${info.ontvangenTijd ? ` · ontvangen ${escapeHtml(nieuwSindsTekst(info.ontvangenTijd) ?? '—')}` : ''}</div>`;
@@ -3954,10 +3954,15 @@ function navtexGaleInfoPerGebied() {
   }
   // 2026-08-28: kracht:null is de expliciete "NO WARNING"-aflossing uit
   // parseNavtexGaleWarning — die heeft z'n werk (nieuwere all-clear blokkeert
-  // een oudere warning via de eerste-schrijver-regel hierboven) nu gedaan en
+  // een oudere warning via de eerste-schrijver-regel hierboven) gedaan en
   // mag zelf nooit een vaan worden.
+  // 2026-08-30, op verzoek van Lex ("is er verschil in gewicht?"): de
+  // all-clear blijft nu WEL in de map staan (als allClear:true), zodat
+  // verversWindvanen() 'm ook kan gebruiken om een verouderde gale uit de
+  // synopsis te onderdrukken — een verse KNMI "NO WARNING" weegt zwaarder
+  // dan een zes uur oude verwachting van de Met Office.
   for (const [gebiedNaam, info] of uit) {
-    if (info.kracht == null) uit.delete(gebiedNaam);
+    if (info.kracht == null) uit.set(gebiedNaam, { ...info, allClear: true });
   }
   return uit;
 }
@@ -4049,16 +4054,34 @@ function verversWindvanen() {
   }
   if (!zeeModusActief) return;
   const vanen = [];
-  // 2026-08-28: de eigen NAVTEX-ontvangst telt nu ook mee als vanenbron —
-  // per gebied wint de hoogste kracht van beide bronnen.
+  // 2026-08-28: de eigen NAVTEX-ontvangst telt nu ook mee als vanenbron.
+  // 2026-08-30-herzien, op verzoek van Lex (Dover: eigen NAVTEX PB18
+  // "SOUTHWEST 7" van 17:31 werd weggedrukt door "perhaps gale 8 later" uit
+  // een Met Office-synopsis van 11:30 — "de vraag is of er verschil in
+  // gewicht is"): niet langer "hoogste getal wint", maar een rangorde.
+  // Een verse (< 6 uur), zelf ontvangen KNMI-galewarning is een waarschuwing
+  // die NU van kracht is en bepaalt het hoofdgetal; de synopsis is een
+  // verwachting en mag alleen AANVULLEN (hoger getal -> "7→8"). Zonder verse
+  // NAVTEX-warning valt de vaan terug op de synopsis zoals voorheen. En de
+  // omgekeerde kant: een verse NAVTEX "NO WARNING" onderdrukt een gale uit
+  // de synopsis (allClear, zie navtexGaleInfoPerGebied) — dan blijft alleen
+  // de amber verwachte-windvaan over.
   const navtexPerGebied = navtexGaleInfoPerGebied();
   ZEE_GEBIEDEN.features.forEach((feature) => {
     const naam = feature.properties.name;
     const synopsisInfo = galeInfoVoorGebied(naam);
-    const navtexInfo = navtexPerGebied.get(naam) ?? null;
-    const info = synopsisInfo && navtexInfo
-      ? (navtexInfo.kracht >= synopsisInfo.kracht ? navtexInfo : synopsisInfo)
-      : (synopsisInfo ?? navtexInfo);
+    const navtexRuw = navtexPerGebied.get(naam) ?? null;
+    const navtexInfo = navtexRuw && !navtexRuw.allClear ? navtexRuw : null;
+    let info;
+    if (navtexInfo) {
+      info = synopsisInfo && synopsisInfo.kracht > navtexInfo.kracht && navtexInfo.naKracht == null
+        ? { ...navtexInfo, naKracht: synopsisInfo.kracht, verwachtingUitSynopsis: true }
+        : navtexInfo;
+    } else if (navtexRuw?.allClear) {
+      info = null; // verse KNMI all-clear: geen gale-vaan, ook al zegt de synopsis nog gale
+    } else {
+      info = synopsisInfo;
+    }
     const ring = feature.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
     const midden = polygoonZwaartepunt(ring); // zwaartepunt, niet rechthoek-midden — zie de fix hierboven
     // 2026-08-28, op verzoek van Lex ("alles wat je goed kunt herleiden en
@@ -4084,7 +4107,13 @@ function verversWindvanen() {
           }),
         });
         marker.on('click', () => {
-          L.popup({ maxWidth: 280 }).setLatLng(midden).setContent(zeeSynopsisPopupHtml(naam)).openOn(kaart);
+          // 2026-08-30: als een verse NAVTEX "NO WARNING" hier een gale uit
+          // de synopsis heeft onderdrukt, dat ook in de popup laten zien —
+          // anders lijkt de vaan de synopsistekst tegen te spreken.
+          const allClearHtml = navtexRuw?.allClear && synopsisInfo
+            ? `<div class="popup-sub">Synopsis noemt gale ${synopsisInfo.kracht}, maar eigen NAVTEX-ontvangst meldt "NO WARNING" voor dit gebied — die is nieuwer en heeft voorrang.</div>${navtexGaleHerkomstHtml(navtexRuw)}`
+            : '';
+          L.popup({ maxWidth: 280 }).setLatLng(midden).setContent(zeeSynopsisPopupHtml(naam) + allClearHtml).openOn(kaart);
         });
         vanen.push(marker);
       }
@@ -4118,9 +4147,10 @@ function verversWindvanen() {
     // synopsis), en bij een NAVTEX-galewarning station/berichttijd/
     // ontvangstmoment -- zie navtexGaleHerkomstHtml().
     marker.on('click', () => {
-      const basis = info === navtexInfo
-        ? '<div class="popup-sub">Vaan op basis van: eigen NAVTEX-ontvangst</div>'
-        : `<div class="popup-sub">Vaan op basis van: synopsis (${synopsisBronVoorGebied(naam)?.bron === 'metoffice' ? 'UK Met Office' : 'KNMI'})</div>`;
+      const synopsisBronNaam = synopsisBronVoorGebied(naam)?.bron === 'metoffice' ? 'UK Met Office' : 'KNMI';
+      const basis = navtexInfo
+        ? `<div class="popup-sub">Vaan op basis van: eigen NAVTEX-ontvangst (galewarning heeft voorrang op de synopsis)${info.verwachtingUitSynopsis ? ` · verwachting ${info.naKracht} uit synopsis (${synopsisBronNaam})` : ''}</div>`
+        : `<div class="popup-sub">Vaan op basis van: synopsis (${synopsisBronNaam})</div>`;
       L.popup({ maxWidth: 280 }).setLatLng(midden).setContent(zeeSynopsisPopupHtml(naam) + basis + navtexGaleHerkomstHtml(navtexInfo)).openOn(kaart);
     });
     vanen.push(marker);
