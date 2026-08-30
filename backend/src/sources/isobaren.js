@@ -53,7 +53,11 @@ const FORECAST_UREN = 9;
 // batch één keer opnieuw proberen. Lukt het dan nog niet, dan is de hele
 // ronde mislukt en probeert server.js het bij de volgende 30-min-tik weer.
 const BATCH_GROOTTE = 40;
-const BATCH_PAUZE_MS = 2500;
+// 2026-08-30 (tweede run): de 429 kwam telkens rond batch 16-22, dus na
+// ~650-900 locaties binnen een minuut — Open-Meteo's 600 calls/minuut
+// telt dus elke locatie. Met 40 per 5 s blijven we op 480/min, met marge
+// voor het thuisweer-pollen; een ronde duurt dan ~2,5 min, zonder 429-dans.
+const BATCH_PAUZE_MS = 5000;
 const BACKOFF_MS = 65 * 1000;
 export const VERVERS_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const EXTREMUM_PROMINENTIE_HPA = 1.5; // t.o.v. de ring op EXTREMUM_RING rasterpunten afstand
