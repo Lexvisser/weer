@@ -5211,6 +5211,7 @@ function stopKaartVolgen(terugNaarHemel) {
 // overige berichten als compacte lijst onderaan diezelfde popup (zie
 // navtexGroepPopupHtml hieronder) -- er gaat niets verloren, alleen het
 // stapel-effect verdwijnt.
+const NAVTEX_GROEP_TONEN = 10;  // hoeveel daarvan de popup uitschrijft, rest als "...en N meer"
 function groepeerStationSignalen(lijst) {
   const groepen = new Map();
   lijst.forEach((s) => {
@@ -5253,13 +5254,17 @@ function groepeerStationSignalen(lijst) {
 // 130/26", beide bronnen) erbij, zodat elke regel een eigen kenmerk toont.
 function navtexGroepPopupHtml(s) {
   if (!Array.isArray(s._groepMeer) || !s._groepMeer.length) return '';
+  // 2026-08-30, op verzoek van Lex: niet meer de hele groep uitschrijven
+  // (26 regels bij Niton), maar de 10 nieuwste + een telregel voor de rest.
+  const meer = s._groepMeer.length - NAVTEX_GROEP_TONEN;
   const items = s._groepMeer
+    .slice(0, NAVTEX_GROEP_TONEN)
     .map((e) => {
       const kenmerk = e.detail?.code ?? e.detail?.referentie ?? null;
       const kenmerkTekst = kenmerk ? `${escapeHtml(kenmerk)} - ` : '';
       return `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} - ${kenmerkTekst}${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`;
     })
-    .join('');
+    .join('') + (meer > 0 ? `<div class="popup-groep-item popup-groep-meer">…en ${meer} meer</div>` : '');
   // 2026-08-28: de groepering dekt nu ook stapels op een berichtpositie
   // (zie groepeerStationSignalen) — dan klopt "van dit station" niet meer.
   const kop = s.detail?.positieIsStation
@@ -5404,7 +5409,11 @@ function renderMap(signalen) {
             iconSize: [30, 30],
             iconAnchor: [15, 15],
           });
-      const popupBreedte = POPUP_BREED_CATEGORIEEN.has(s.categorie) ? 300 : 240;
+      // 2026-08-30, op verzoek van Lex: NAVTEX-popup breder (360 i.p.v. 300)
+      // zodat een groepsregel als "29 aug 22:44 - EB60 - Overige
+      // navigatiewaarschuwing" (zie navtexGroepPopupHtml) op één regel past
+      // i.p.v. af te breken; de overige brede categorieën blijven op 300.
+      const popupBreedte = s.categorie === 'navtex' ? 360 : POPUP_BREED_CATEGORIEEN.has(s.categorie) ? 300 : 240;
       // 2026-08-26, perf-fix (op melding van Lex: kaart-opbouw trager +
       // zwarte tegels bij pinch-zoom): popupHtml(s) draaide voorheen
       // EAGER voor elke marker, elke 20-seconden-ververscyclus (zie
