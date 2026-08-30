@@ -3359,11 +3359,19 @@ let zeeModusActief = false;
 // kaart (Dogger/Humber/German Bight/Thames) — geen bug, KNMI publiceert
 // simpelweg niet meer dan dat, zie de toelichting in knmiZeeForecast.js.
 let zeeSynopsisPerGebied = {};
+// 2026-08-30, op verzoek van Lex ("datum en tijd van deze melding, altijd de
+// meest actuele, alsmede het station" -- ook voor de windvanen): per
+// synopsisbron de uitgiftetijd van de verwachting zelf (`uitgegeven`, uit
+// de KNMI-/Met Office-pagina gehaald, zie uitgifteTijdIn() in de backend)
+// en het moment waarop de backend 'm ophaalde (`bijgewerkt`). Getoond in de
+// gebieds-/vaanpopup, zie synopsisHerkomstHtml().
+const zeeSynopsisMeta = { knmi: null, metoffice: null };
 
 async function laadZeeSynopsis() {
   try {
     const data = await fetch('/api/zee-synopsis').then((r) => r.json());
     zeeSynopsisPerGebied = data.gebieden ?? {};
+    zeeSynopsisMeta.knmi = { uitgegeven: data.uitgegeven ?? null, bijgewerkt: data.bijgewerkt ?? null };
   } catch (err) {
     // Best-effort: bij een mislukte fetch blijft de vorige (mogelijk lege)
     // stand gewoon staan, geen harde fout voor de rest van Zee-modus.
@@ -3404,6 +3412,7 @@ async function laadMetOfficeSynopsis() {
   try {
     const data = await fetch('/api/zee-synopsis-metoffice').then((r) => r.json());
     metOfficeSynopsisPerGebied = data.gebieden ?? {};
+    zeeSynopsisMeta.metoffice = { uitgegeven: data.uitgegeven ?? null, bijgewerkt: data.bijgewerkt ?? null };
   } catch (err) {
     console.error('zee-synopsis-metoffice ophalen mislukt', err);
   }
@@ -3481,15 +3490,40 @@ function golfIcoonHtml() {
 // metoffice/waarschuwingen/leeg) geplakt, zodat 'ie overal verschijnt zodra
 // er een golfhoogte uit de synopsistekst te halen viel — en gewoon wegvalt
 // (lege string) als dat niet lukt, i.p.v. een kale/foutieve regel.
+// 2026-08-30, zie zeeSynopsisMeta: één herkomstregel voor de synopsis-
+// popup en de windvanen -- "uitgegeven" is de tijd van de verwachting zelf,
+// "opgehaald" wanneer de backend 'm binnenhaalde. Bij ontbrekende
+// uitgiftetijd (pagina-opmaak gewijzigd) alleen het ophaalmoment.
+function synopsisHerkomstHtml(bron) {
+  const meta = zeeSynopsisMeta[bron];
+  const naam = bron === 'knmi' ? 'KNMI' : 'UK Met Office';
+  const delen = [`Bron: ${naam}`];
+  if (meta?.uitgegeven) delen.push(`uitgegeven ${nieuwSindsTekst(meta.uitgegeven) ?? '—'}`);
+  if (meta?.bijgewerkt) delen.push(`opgehaald ${nieuwSindsTekst(meta.bijgewerkt) ?? '—'}`);
+  return `<div class="popup-sub">${escapeHtml(delen.join(' · '))}</div>`;
+}
+
+// 2026-08-30, voor de gale-vanen die (mede) op de eigen NAVTEX-ontvangst
+// steunen: station, berichttijd (DTG) en laatste ontvangstmoment van het
+// meest recente galewarning-bericht -- zelfde velden als bij de
+// druksymbolen (zie drukgebiedenUitNavtex()/verversDrukgebieden()).
+function navtexGaleHerkomstHtml(info) {
+  if (!info) return '';
+  return `<div class="popup-sub">Galewarning uit eigen NAVTEX-ontvangst${info.code ? ` (${escapeHtml(info.code)})` : ''}</div>`
+    + `<div class="popup-sub">Station: ${escapeHtml(info.station ?? 'onbekend')}</div>`
+    + `<div class="popup-sub">Bericht: ${info.berichtTijd ? escapeHtml(nieuwSindsTekst(info.berichtTijd) ?? '—') : '— (datum onzeker)'}`
+    + `${info.ontvangenTijd ? ` · ontvangen ${escapeHtml(nieuwSindsTekst(info.ontvangenTijd) ?? '—')}` : ''}</div>`;
+}
+
 function zeeSynopsisPopupHtml(naam) {
   const gekozen = synopsisBronVoorGebied(naam);
   const golfbereik = golfHoogteVoorGebied(naam);
   const titelHtml = `<div class="popup-titel">${escapeHtml(naam)}</div>${golfbereik ? `<div class="popup-golfhoogte">${golfIcoonHtml()} ${golfbereik}</div>` : ''}`;
   if (gekozen?.bron === 'knmi') {
-    return `${titelHtml}<div class="popup-advies">${escapeHtml(gekozen.synopsis.tekst)}</div>`;
+    return `${titelHtml}<div class="popup-advies">${escapeHtml(gekozen.synopsis.tekst)}</div>${synopsisHerkomstHtml('knmi')}`;
   }
   if (gekozen?.bron === 'metoffice') {
-    return `${titelHtml}<div class="popup-sub">Synopsis (bron: UK Met Office):</div><div class="popup-advies">${escapeHtml(gekozen.synopsis.tekst)}</div>`;
+    return `${titelHtml}<div class="popup-sub">Synopsis (bron: UK Met Office):</div><div class="popup-advies">${escapeHtml(gekozen.synopsis.tekst)}</div>${synopsisHerkomstHtml('metoffice')}`;
   }
   const waarschuwingen = zeeWaarschuwingenPerGebied[naam.toUpperCase()] ?? [];
   if (waarschuwingen.length > 0) {
@@ -3866,7 +3900,15 @@ function navtexGaleInfoPerGebied() {
     .sort((a, b) => new Date(b.tijd) - new Date(a.tijd));
   for (const s of kandidaten) {
     for (const info of parseNavtexGaleWarning(s.detail?.bericht)) {
-      if (!uit.has(info.gebied)) uit.set(info.gebied, info);
+      // 2026-08-30: herkomst van het (nieuwste) bericht meegeven voor de
+      // vaanpopup, zie navtexGaleHerkomstHtml().
+      if (!uit.has(info.gebied)) uit.set(info.gebied, {
+        ...info,
+        code: s.detail?.code ?? null,
+        station: s.detail?.station ?? null,
+        berichtTijd: s.detail?.datumOnbetrouwbaar ? null : (s.tijd ?? null),
+        ontvangenTijd: s.detail?.laatstOntvangen ?? null,
+      });
     }
   }
   // 2026-08-28: kracht:null is de expliciete "NO WARNING"-aflossing uit
@@ -4031,8 +4073,14 @@ function verversWindvanen() {
     });
     // Zelfde popup als het gebiedslabel — daar staat de volledige tekst
     // waar deze vaan uit is afgeleid.
+    // 2026-08-30: plus een regel waar de vaan zelf op steunt (NAVTEX of
+    // synopsis), en bij een NAVTEX-galewarning station/berichttijd/
+    // ontvangstmoment -- zie navtexGaleHerkomstHtml().
     marker.on('click', () => {
-      L.popup({ maxWidth: 280 }).setLatLng(midden).setContent(zeeSynopsisPopupHtml(naam)).openOn(kaart);
+      const basis = info === navtexInfo
+        ? '<div class="popup-sub">Vaan op basis van: eigen NAVTEX-ontvangst</div>'
+        : `<div class="popup-sub">Vaan op basis van: synopsis (${synopsisBronVoorGebied(naam)?.bron === 'metoffice' ? 'UK Met Office' : 'KNMI'})</div>`;
+      L.popup({ maxWidth: 280 }).setLatLng(midden).setContent(zeeSynopsisPopupHtml(naam) + basis + navtexGaleHerkomstHtml(navtexInfo)).openOn(kaart);
     });
     vanen.push(marker);
   });
@@ -4259,7 +4307,19 @@ function drukgebiedenUitNavtex() {
       const dubbel = stelsels.some((eerder) => eerder.soort === st.soort
         && Math.abs(eerder.positie[0] - st.positie[0]) < 2.5
         && Math.abs(eerder.positie[1] - st.positie[1]) < 4);
-      if (!dubbel) stelsels.push({ ...st, code: s.detail?.code ?? null });
+      // 2026-08-30, op verzoek van Lex ("datum en tijd van deze melding,
+      // altijd de meest actuele, alsmede het station"): kandidaten staan
+      // nieuwste-eerst, dus het eerst gevonden systeem komt altijd uit het
+      // meest recente bericht -- die herkomst gaat mee naar de popup.
+      // berichtTijd = de DTG uit het bericht zelf (null als onbetrouwbaar),
+      // ontvangenTijd = het echte laatste ontvangstmoment van dat bericht.
+      if (!dubbel) stelsels.push({
+        ...st,
+        code: s.detail?.code ?? null,
+        station: s.detail?.station ?? null,
+        berichtTijd: s.detail?.datumOnbetrouwbaar ? null : (s.tijd ?? null),
+        ontvangenTijd: s.detail?.laatstOntvangen ?? null,
+      });
     }
   }
   return stelsels.length ? { stelsels } : null;
@@ -4298,7 +4358,12 @@ function verversDrukgebieden() {
     marker.on('click', () => {
       const uitleg = `<div class="popup-titel">${letter === 'L' ? 'Lagedrukgebied' : 'Hogedrukgebied'} ${st.druk} hPa</div>`
         + `<div class="popup-advies">${escapeHtml(st.zin)}</div>`
-        + `<div class="popup-sub">Bron: eigen NAVTEX-ontvangst${st.code ? ` (${escapeHtml(st.code)})` : ''}${st.benaderd ? ' — positie indicatief' : ''}</div>`;
+        + `<div class="popup-sub">Bron: eigen NAVTEX-ontvangst${st.code ? ` (${escapeHtml(st.code)})` : ''}${st.benaderd ? ' — positie indicatief' : ''}</div>`
+        // 2026-08-30, zie drukgebiedenUitNavtex(): station + berichttijd (DTG)
+        // + laatste ontvangstmoment van het meest recente bericht.
+        + `<div class="popup-sub">Station: ${escapeHtml(st.station ?? 'onbekend')}</div>`
+        + `<div class="popup-sub">Bericht: ${st.berichtTijd ? escapeHtml(nieuwSindsTekst(st.berichtTijd) ?? '—') : '— (datum onzeker)'}`
+        + `${st.ontvangenTijd ? ` · ontvangen ${escapeHtml(nieuwSindsTekst(st.ontvangenTijd) ?? '—')}` : ''}</div>`;
       L.popup({ maxWidth: 280 }).setLatLng(st.positie).setContent(uitleg).openOn(kaart);
     });
     lagen.push(marker);

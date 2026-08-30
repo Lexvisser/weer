@@ -98,6 +98,22 @@ function knipGebiedTeksten(platteTekst) {
   return gebieden;
 }
 
+// 2026-08-30, op verzoek van Lex ("datum en tijd van deze melding ... op
+// de kaart"): de KNMI-pagina heeft bovenaan een vaste regel
+// "Issued: 29 August 2026 23:55 UTC" -- dat is de echte uitgiftetijd van
+// de verwachting (anders dan `bijgewerkt`, dat alleen zegt wanneer WIJ 'm
+// ophaalden). Als ISO-string (UTC) meegegeven; null als de regel ontbreekt
+// of de pagina-opmaak ooit verandert -- liever geen tijd dan een verzonnen.
+const MAANDEN_EN = { JANUARY: 0, FEBRUARY: 1, MARCH: 2, APRIL: 3, MAY: 4, JUNE: 5, JULY: 6, AUGUST: 7, SEPTEMBER: 8, OCTOBER: 9, NOVEMBER: 10, DECEMBER: 11 };
+function uitgifteTijdIn(platteTekst) {
+  const m = platteTekst.match(/Issued:\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s+(\d{1,2})[:.](\d{2})\s*UTC/);
+  if (!m) return null;
+  const maand = MAANDEN_EN[m[2].toUpperCase()];
+  if (maand == null) return null;
+  const d = new Date(Date.UTC(Number(m[3]), maand, Number(m[1]), Number(m[4]), Number(m[5])));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export async function fetchZeeForecast() {
   const html = await haalKnmiHtml();
   const $ = cheerio.load(html);
@@ -105,7 +121,8 @@ export async function fetchZeeForecast() {
   if (!platteTekst) throw new Error('geen forecasttekst gevonden op de KNMI-pagina');
 
   const gebieden = knipGebiedTeksten(platteTekst);
-  console.log(`[weer] knmi-zeeforecast: synopsis gevonden voor ${Object.keys(gebieden).length}/${GEBIEDSNAMEN.length} gebieden.`);
+  const uitgegeven = uitgifteTijdIn(platteTekst);
+  console.log(`[weer] knmi-zeeforecast: synopsis gevonden voor ${Object.keys(gebieden).length}/${GEBIEDSNAMEN.length} gebieden${uitgegeven ? `, uitgegeven ${uitgegeven}` : ''}.`);
 
-  return { bron: BRON_URL, bijgewerkt: new Date().toISOString(), gebieden };
+  return { bron: BRON_URL, bijgewerkt: new Date().toISOString(), uitgegeven, gebieden };
 }

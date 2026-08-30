@@ -200,6 +200,7 @@ function isPlausibeleForecastTekst(tekst) {
 export async function fetchMetOfficeZeeForecast() {
   const html = await haalHtml();
   const ruweGebieden = parseGebieden(html);
+  const uitgegeven = uitgifteTijdIn(html);
   const gebieden = {};
   for (const [naam, info] of Object.entries(ruweGebieden)) {
     if (isPlausibeleForecastTekst(info.tekst)) gebieden[naam] = info;
@@ -209,5 +210,21 @@ export async function fetchMetOfficeZeeForecast() {
   if (Object.keys(gebieden).length === 0) {
     throw new Error('geen enkel gebied gevonden op de Met Office-pagina — structuur mogelijk gewijzigd');
   }
-  return { bron: BRON_URL, bijgewerkt: new Date().toISOString(), gebieden };
+  return { bron: BRON_URL, bijgewerkt: new Date().toISOString(), uitgegeven, gebieden };
+}
+
+// 2026-08-30, zie knmiZeeForecast.js/uitgifteTijdIn(): de Met Office-
+// printpagina meldt "Issued by the Met Office, on behalf of the Maritime and
+// Coastguard Agency, at 10:30 (UTC+1) on Sat 29 Aug 2026". De UTC-offset
+// staat er letterlijk bij, dus die wordt gewoon afgetrokken -- geen aanname
+// over Britse zomertijd nodig. null bij een afwijkende opmaak.
+const MAANDEN_KORT = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+function uitgifteTijdIn(html) {
+  const platteTekst = cheerio.load(html)('body').text().replace(/\s+/g, ' ');
+  const m = platteTekst.match(/Issued by the Met Office[^.]*?at\s+(\d{1,2}):(\d{2})\s*\(UTC([+-]\d{1,2})\)\s+on\s+[A-Za-z]{3}\s+(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/);
+  if (!m) return null;
+  const maand = MAANDEN_KORT[m[5].toUpperCase()];
+  if (maand == null) return null;
+  const d = new Date(Date.UTC(Number(m[6]), maand, Number(m[4]), Number(m[1]) - Number(m[3]), Number(m[2])));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
