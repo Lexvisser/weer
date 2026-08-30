@@ -4466,7 +4466,8 @@ async function verversFronten() {
     if (frontenLaag) {
       frontenLaag.setUrl(url);
     } else {
-      frontenLaag = L.imageOverlay(url, grenzen, { pane: 'frontenPane', opacity: 0.9, interactive: false, attribution: 'Fronten: © Deutscher Wetterdienst' }).addTo(kaart);
+      frontenLaag = L.imageOverlay(url, grenzen, { pane: 'frontenPane', opacity: 0.65, interactive: false, // 2026-08-30 (2e ronde): 0.9 -> 0.65 op verzoek van Lex ("mag wat doorzichtiger")
+         attribution: 'Fronten: © Deutscher Wetterdienst' }).addTo(kaart);
     }
   }
   const tijd = info.analyseTijd ? nieuwSindsTekst(info.analyseTijd) : null;

@@ -155,10 +155,54 @@ function bouwMasker(png) {
     const bw = maxX - minX + 1, bh = maxY - minY + 1;
     if (bw <= 22 && bh <= 22 && leden.length / (bw * bh) > 0.55) for (const i of leden) dik[i] = 0;
   }
+  // 2026-08-30 (2e ronde), op melding van Lex ("mag wat doorzichtiger en is
+  // het niet wat groot?"): DWD tekent de fronten ~15 px dik op een blad van
+  // 4379 px -- na de warp is dat ~18 px in de uitvoer, wat op de uitgezoomde
+  // zeekaart als een dikke worst oogt. Daarom de frontlijnen hier met een
+  // erosie (straal FRONT_DUN_PX) versmald; de halve-cirkels en driehoekjes
+  // op de lijn zijn veel groter dan de lijndikte en overleven de erosie dus
+  // gewoon (iets kleiner, prima). Zelfde behandeling, lichter, voor de vette
+  // tekst (H/T/druklabels), zodat die minder domineert.
+  const gekleurdDun = erodeer(gekleurd, width, height, FRONT_DUN_PX);
+  const dikDun = erodeer(dik, width, height, TEKST_DUN_PX);
   // alpha-masker: 255 fronten, 230 vette tekst, 0 rest
   const alpha = new Uint8Array(n);
-  for (let i = 0; i < n; i++) alpha[i] = gekleurd[i] ? 255 : dik[i] ? 230 : 0;
+  for (let i = 0; i < n; i++) alpha[i] = gekleurdDun[i] ? 255 : dikDun[i] ? 230 : 0;
   return alpha;
+}
+
+const FRONT_DUN_PX = 5; // erosiestraal: lijn van ~15 px wordt ~5 px
+const TEKST_DUN_PX = 2;
+
+// Binaire erosie met een vierkant (2r+1)^2-element, gescheiden in een
+// horizontale en een verticale pass (O(n*r) i.p.v. O(n*r^2)).
+function erodeer(masker, width, height, r) {
+  if (r <= 0) return masker;
+  const n = width * height;
+  const tussen = new Uint8Array(n);
+  for (let y = 0; y < height; y++) {
+    const rij = y * width;
+    for (let x = 0; x < width; x++) {
+      let ok = 1;
+      for (let dx = -r; dx <= r; dx++) {
+        const xx = x + dx;
+        if (xx < 0 || xx >= width || !masker[rij + xx]) { ok = 0; break; }
+      }
+      tussen[rij + x] = ok;
+    }
+  }
+  const uit = new Uint8Array(n);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let ok = 1;
+      for (let dy = -r; dy <= r; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height || !tussen[yy * width + x]) { ok = 0; break; }
+      }
+      uit[y * width + x] = ok;
+    }
+  }
+  return uit;
 }
 
 function warp(png, alpha) {
