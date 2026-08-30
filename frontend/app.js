@@ -4630,7 +4630,8 @@ function tekenIsobaren(iso) {
   for (const lijn of iso.lijnen) {
     lagen.push(L.polyline(lijn.punten, {
       pane: 'frontenPane', interactive: false,
-      color: '#1b1e2a', weight: lijn.hoofd ? 1.7 : 1.1, opacity: lijn.hoofd ? 0.8 : 0.6,
+      // 2026-08-30 (4e ronde), op verzoek van Lex ("nog iets dikker"): 1.7/1.1 -> 2.4/1.5.
+      color: '#1b1e2a', weight: lijn.hoofd ? 2.4 : 1.5, opacity: lijn.hoofd ? 0.85 : 0.65,
       smoothFactor: 1.2,
     }));
     if (!lijn.hoofd) continue;
@@ -4641,7 +4642,7 @@ function tekenIsobaren(iso) {
       const p = lijn.punten[Math.min(n - 1, Math.floor(n * f))];
       labels.push(L.marker(p, {
         pane: 'frontenPane', interactive: false, keyboard: false,
-        icon: L.divIcon({ className: 'isobaar-label', html: String(lijn.hpa), iconSize: [38, 17], iconAnchor: [19, 8] }),
+        icon: L.divIcon({ className: 'isobaar-label', html: String(lijn.hpa), iconSize: [44, 20], iconAnchor: [22, 10] }),
       }));
     }
   }
