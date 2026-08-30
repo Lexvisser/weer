@@ -61,6 +61,9 @@
          zodra er daadwerkelijk tekst binnenrolt — bewust op ontvangst i.p.v.
          op het uitzendmoment (keuze Lex, i.v.m. noodberichten buiten het
          schema om); voorkeur blijft per toestel bewaard. -->
+    <!-- 2026-08-30: bijschrift van de fronten-laag (analysetijd + bron),
+         alleen zichtbaar als de laag aanstaat — zie toggleFronten() in app.js. -->
+    <div class="fronten-info verborgen" id="frontenInfo"></div>
     <div class="navtex-volgende verborgen" id="navtexVolgendeUitzending">
       <span id="navtexVolgendeTekst"></span>
       <button type="button" id="navtexAutoKnop" title="Automatisch de ruwe-ontvangst-viewer openen zodra er tekst binnenkomt">AUTO UIT</button>
@@ -142,6 +145,11 @@
            SVG zoals bij Lifeliner, zonder dat de rest van de logica
            verandert. Zie toggleVliegradar()/toggleVaarradar() in app.js. -->
       <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
+      <!-- 2026-08-30: fronten-laag, tweede poging (de WPC-versie van 29 aug
+           is teruggedraaid, zie server.js) — nu DWD's handgetekende
+           Bodenanalyse, georefereerd door de backend (sources/dwdFronten.js).
+           Zie toggleFronten() in app.js. -->
+      <button id="toggleFronten" class="satelliet-toggle" title="Fronten en drukcentra uit de DWD-Bodenanalyse (elke 6 uur)">🌀<span class="knop-tekst"> Fronten</span></button>
       <!-- 2026-08-21: Vaart-knop verborgen, geen functionaliteit verwijderd.
            aisstream.io (de databron in backend/src/sources/vaarradar.js)
            levert structureel geen data — bevestigd met twee onafhankelijke

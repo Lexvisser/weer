@@ -614,6 +614,16 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    kaartondergrond. Zie ververNavtexVolgende() in app.js. */
 .navtex-volgende { position:absolute; top:8px; right:10px; z-index:1000; display:flex; align-items:center; gap:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.45); background:rgba(3,10,5,0.72); border:1px solid rgba(59,255,124,0.35); border-radius:8px; padding:4px 9px; pointer-events:none; max-width:72%; }
 .navtex-volgende.verborgen { display:none; }
+/* 2026-08-30: bijschrift fronten-laag, linksonder op de kaart (rechtsboven
+   zit het NAVTEX-uitzendplaatje, rechtsonder de Leaflet-attributie). Zelfde
+   niet-klikbare, donker-halfdoorzichtige stijl als .navtex-volgende, maar
+   neutraal wit i.p.v. fosfor-groen -- dit is geen ontvangst-info. */
+.fronten-info { position:absolute; left:10px; bottom:26px; z-index:1000; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#e6e9f2; background:rgba(10,11,18,0.72); border:1px solid rgba(255,255,255,0.18); border-radius:8px; padding:4px 9px; pointer-events:none; max-width:70%; }
+.fronten-info.verborgen { display:none; }
+/* De gewarpte DWD-PNG staat in een eigen pane (zie toggleFronten() in
+   app.js) zodat de donkere-modus-filter op de tile-pane 'm niet raakt;
+   fronten zijn al fel genoeg op de donkere kaart. */
+#map .frontenPane img { image-rendering:auto; }
 /* De AUTO-knop is het enige klikbare deel — de rest van het plaatje laat
    kaart-tikken gewoon door (pointer-events:none op de container hierboven). */
 .navtex-volgende button { pointer-events:auto; font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:0.04em; color:#3bff7c; background:rgba(59,255,124,0.12); border:1px solid rgba(59,255,124,0.45); border-radius:6px; padding:2px 7px; cursor:pointer; white-space:nowrap; }

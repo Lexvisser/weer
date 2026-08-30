@@ -1,5 +1,6 @@
-node_modules/
-.env
 *.log
 .DS_Store
+.env
 Thumbs.db
+_fronten/
+node_modules/

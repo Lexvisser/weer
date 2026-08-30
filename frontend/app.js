@@ -41,6 +41,8 @@ const TOGGLE_SATELLIET_EL = document.getElementById('toggleSatelliet');
 const TOGGLE_REGENRADAR_EL = document.getElementById('toggleRegenradar');
 const TOGGLE_ZEE_EL = document.getElementById('toggleZee');
 const TOGGLE_VLIEGRADAR_EL = document.getElementById('toggleVliegradar');
+const TOGGLE_FRONTEN_EL = document.getElementById('toggleFronten'); // 2026-08-30, zie toggleFronten()
+const FRONTEN_INFO_EL = document.getElementById('frontenInfo');
 const TOGGLE_VAARRADAR_EL = document.getElementById('toggleVaarradar');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
 // zijn weg, zie index.html) — één gedeelde Stop-knop voor kaartVolgType,
@@ -608,6 +610,10 @@ function initMap() {
   // maakte. Zelfde aanpak als radarPane/satellietPane hierboven.
   kaart.createPane('zeePane');
   kaart.getPane('zeePane').style.zIndex = 340;
+  // 2026-08-30: fronten-laag boven de zeekaart-tegels, onder de markers
+  // (overlayPane = 400). Zie toggleFronten().
+  kaart.createPane('frontenPane');
+  kaart.getPane('frontenPane').style.zIndex = 360;
 
   // 2026-08-19: basiskaart-geschiedenis (kort) — CARTO's gratis dark_all gaf
   // in Europa een ingebakken "Zoom Level Not Supported"-plaatje (HTTP 200,
@@ -682,6 +688,7 @@ function initMap() {
   AARDE_SLUITEN_EL.addEventListener('click', verbergAarde);
   TOGGLE_ZEE_EL.addEventListener('click', toggleZeeModus);
   TOGGLE_VLIEGRADAR_EL.addEventListener('click', toggleVliegradar);
+  if (TOGGLE_FRONTEN_EL) TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
   TOGGLE_VAARRADAR_EL.addEventListener('click', toggleVaarradar);
   // Lex: "...waarna er een knop Stop zichtbaar is. Waarmee ISS/Starlink
   // wordt verborgen, alle hazards weer terugkomen en er wordt
@@ -4420,6 +4427,66 @@ function bouwZeeGebiedenLaag() {
       });
     },
   });
+}
+
+// ---- Fronten-laag uit de DWD-Bodenanalyse (2026-08-30) -----------------
+// Tweede poging na de teruggedraaide WPC-versie van 2026-08-29 (die bron
+// hield op bij de Britse eilanden). De backend (sources/dwdFronten.js) haalt
+// elke 6 uur DWD's handgetekende Bodenwetterkarte op, georefereert 'm
+// (gefitte polair-stereografische projectie), warpt naar Web Mercator en
+// houdt alleen de fronten (rood/blauw/paars) en de vette H/T- en
+// druklabels over als transparante PNG. Hier alleen nog: één
+// L.imageOverlay met de bbox uit /api/fronten-info, en het bijschrift met
+// de analysetijd. Elke 15 min opnieuw de info ophalen zolang de laag aan
+// staat; de PNG-URL krijgt de bijwerktijd als cache-buster zodat een
+// nieuwe analyse ook echt opnieuw geladen wordt.
+let frontenLaag = null;
+let frontenActief = false;
+let frontenTimer = null;
+let frontenLaatsteBijgewerkt = null;
+
+async function verversFronten() {
+  if (!kaart || !frontenActief) return;
+  let info;
+  try {
+    info = await fetch('/api/fronten-info').then((r) => r.json());
+  } catch (err) {
+    console.error('fronten-info ophalen mislukt', err);
+    return;
+  }
+  if (!info?.beschikbaar) {
+    FRONTEN_INFO_EL.textContent = 'Fronten: nog geen DWD-analyse beschikbaar';
+    FRONTEN_INFO_EL.classList.remove('verborgen');
+    return;
+  }
+  if (info.bijgewerkt !== frontenLaatsteBijgewerkt) {
+    frontenLaatsteBijgewerkt = info.bijgewerkt;
+    const grenzen = [[info.bbox.latS, info.bbox.lonW], [info.bbox.latN, info.bbox.lonE]];
+    const url = `/api/fronten.png?v=${encodeURIComponent(info.bijgewerkt)}`;
+    if (frontenLaag) {
+      frontenLaag.setUrl(url);
+    } else {
+      frontenLaag = L.imageOverlay(url, grenzen, { pane: 'frontenPane', opacity: 0.9, interactive: false, attribution: 'Fronten: © Deutscher Wetterdienst' }).addTo(kaart);
+    }
+  }
+  const tijd = info.analyseTijd ? nieuwSindsTekst(info.analyseTijd) : null;
+  FRONTEN_INFO_EL.textContent = `Fronten: DWD-analyse${tijd ? ` ${tijd}` : ''}`;
+  FRONTEN_INFO_EL.title = info.gepubliceerd ? `gepubliceerd ${nieuwSindsTekst(info.gepubliceerd)} · opgehaald ${nieuwSindsTekst(info.bijgewerkt)}` : '';
+  FRONTEN_INFO_EL.classList.remove('verborgen');
+}
+
+function toggleFronten() {
+  frontenActief = !frontenActief;
+  TOGGLE_FRONTEN_EL.classList.toggle('actief', frontenActief);
+  if (frontenActief) {
+    verversFronten();
+    frontenTimer = setInterval(verversFronten, 15 * 60 * 1000);
+  } else {
+    if (frontenTimer) { clearInterval(frontenTimer); frontenTimer = null; }
+    if (frontenLaag) { kaart.removeLayer(frontenLaag); frontenLaag = null; }
+    frontenLaatsteBijgewerkt = null;
+    FRONTEN_INFO_EL.classList.add('verborgen');
+  }
 }
 
 function toggleZeeModus() {

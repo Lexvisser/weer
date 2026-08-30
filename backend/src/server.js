@@ -39,6 +39,7 @@ import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruwe
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
+import { fetchDwdFronten, huidigeFronten } from './sources/dwdFronten.js';
 import { fetchVliegradar } from './sources/vliegradar.js';
 import { fetchIssLive } from './sources/issLive.js';
 import { controleerIssAlarm } from './sources/celestrak.js';
@@ -690,6 +691,21 @@ export function createApp(env) {
     }
   }
 
+  // 2026-08-30, op verzoek van Lex ("doe maar proberen"): fronten-laag,
+  // tweede poging — nu uit DWD's handgetekende Bodenanalyse (dwdc-blad,
+  // dekt de hele Noordzee), georefereerd en naar Web Mercator gewarpt in
+  // sources/dwdFronten.js. Zelfde eigen-kleine-cache-aanpak; elke 30 min
+  // pollen is ruim (de kaart komt elke 6 uur), en dankzij If-Modified-Since
+  // kost een ongewijzigde kaart geen download. Zie /api/fronten.png en
+  // /api/fronten-info hieronder.
+  async function ververDwdFronten() {
+    try {
+      await fetchDwdFronten();
+    } catch (err) {
+      console.error('[weer] dwd-fronten poll mislukt:', err.message ?? err);
+    }
+  }
+
   // 2026-08-29: hier heeft een front-/troglagen-feature gestaan (koufront/
   // warmtefront/occlusie, knop "Fronten" op de kaart, tekst geparset uit
   // NWS/WPC's coded surface bulletin ASUS02 KWBC) — gebouwd, getest, en
@@ -790,6 +806,8 @@ export function createApp(env) {
     timers.push(setInterval(ververZeeWaarschuwingen, 60 * 60 * 1000));
     ververMetOfficeForecast();
     timers.push(setInterval(ververMetOfficeForecast, 3 * 60 * 60 * 1000));
+    ververDwdFronten();
+    timers.push(setInterval(ververDwdFronten, 30 * 60 * 1000));
 
     // 2026-08-22, ISS-passagemelding (zie controleerIssAlarm() in
     // celestrak.js) — bewust een eigen, snelle 30s-timer los van celestrak's
@@ -1031,6 +1049,22 @@ export function createApp(env) {
     }
     if (url === '/api/zee-synopsis-metoffice') {
       return sendJson(res, 200, metOfficeForecast);
+    }
+    // 2026-08-30: DWD-frontenlaag, zie ververDwdFronten() hierboven. De PNG
+    // krijgt de analysetijd als ETag zodat de browser 'm tussen twee
+    // analyses uit z'n cache mag halen; -info levert bbox + tijden voor de
+    // imageOverlay en het bijschrift in app.js.
+    if (url === '/api/fronten-info') {
+      const f = huidigeFronten();
+      return sendJson(res, 200, f ? { beschikbaar: true, analyseTijd: f.analyseTijd, gepubliceerd: f.gepubliceerd, bijgewerkt: f.bijgewerkt, bbox: f.bbox, breedte: f.breedte, hoogte: f.hoogte } : { beschikbaar: false });
+    }
+    if (url === '/api/fronten.png') {
+      const f = huidigeFronten();
+      if (!f) { res.writeHead(404); return res.end(); }
+      const etag = `"fronten-${f.bijgewerkt}"`;
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': f.png.length, ETag: etag, 'Cache-Control': 'no-cache' });
+      return res.end(f.png);
     }
     // 2026-08-21: vliegradar/vaarradar — beide met dezelfde ?lat=&lon=&straal=
     // query-vorm (straal in km, rond de meegegeven positie — de frontend
