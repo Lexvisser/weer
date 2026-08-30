@@ -4521,6 +4521,7 @@ let frontenLaatsteBijgewerkt = null;
 let isobarenLaag = null; // L.layerGroup: lijnen + labels + H/L
 let isobarenLaatsteSleutel = null; // geldig+bijgewerkt van de getekende set
 let frontenPngVariant = null; // 'alleen' | 'vol' — welke DWD-PNG nu in frontenLaag zit
+let frontenTerugvalTimer = null; // snelle hercontrole zolang de laag op de DWD-terugval staat
 const ISOBAAR_LABEL_MIN_ZOOM = 4;
 
 // Bijschrift net boven de knoppenbalk houden, ook als die balk over meer
@@ -4587,6 +4588,14 @@ async function verversFronten() {
   }
   if (eigenIsobaren) tekenIsobaren(iso);
   else verwijderIsobaren();
+  // 2026-08-30: in terugvalstand (drukveld ontbreekt, bv. net na een
+  // backend-herstart) niet 15 minuten wachten maar elke minuut opnieuw
+  // kijken — Lex zag anders "de oude weer terug" terwijl het veld allang
+  // weer binnen was.
+  if (!eigenIsobaren && frontenActief) {
+    clearTimeout(frontenTerugvalTimer);
+    frontenTerugvalTimer = setTimeout(verversFronten, 60 * 1000);
+  }
   const tijd = info.analyseTijd ? nieuwSindsTekst(info.analyseTijd) : null;
   const isoTekst = eigenIsobaren ? isobarenInfoTekst(iso) : 'Isobaren: DWD-kaart (drukveld niet beschikbaar)';
   FRONTEN_INFO_EL.textContent = `Fronten: DWD-analyse${tijd ? ` ${tijd}` : ''} · ${isoTekst}`;
@@ -4833,6 +4842,7 @@ function toggleFronten() {
     frontenTimer = setInterval(verversFronten, 15 * 60 * 1000);
   } else {
     if (frontenTimer) { clearInterval(frontenTimer); frontenTimer = null; }
+    clearTimeout(frontenTerugvalTimer); frontenTerugvalTimer = null;
     if (frontenLaag) { kaart.removeLayer(frontenLaag); frontenLaag = null; }
     verwijderIsobaren();
     frontenLaatsteBijgewerkt = null;

@@ -38,7 +38,19 @@
 // Het resultaat per uur wordt gecachet; de frontend haalt /api/isobaren op
 // en tekent de lijnen als Leaflet-polylines met eigen (kleine) labels.
 
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BBOX } from './dwdFronten.js';
+
+// 2026-08-30 (na de eerste syncs): het laatste drukveld ook op schijf, in
+// backend/data/ (zelfde plek als historie.json, blijft buiten de sync).
+// Elke sync herstart de backend en zonder dit stond de kaart dan ~2,5 min
+// (één ophaalronde) op de DWD-terugval — en kostte elke herstart een
+// nieuwe ronde van het Open-Meteo-budget. Bij het opstarten wordt het
+// bestand ingelezen; is het jonger dan VERVERS_INTERVAL_MS dan telt het
+// als geslaagde ronde (zie server.js) en wordt er niets opgehaald.
+const ISOBAREN_BESTAND = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'isobaren.json');
 
 export const RASTER_STAP = 1.5;
 const FIJN_STAP = 0.25;
@@ -137,7 +149,35 @@ export async function fetchIsobaren() {
   laatsteFout = null;
   contourCache.clear();
   console.log(`[weer] isobaren: drukveld opgehaald in ${Date.now() - t0} ms (${lats.length}x${lons.length} punten, ${tijden.length} uren vanaf ${tijden[0]})`);
+  bewaarVeld(laatsteVeld).catch((err) => console.warn('[weer] isobaren: drukveld niet op schijf kunnen bewaren:', err.message ?? err));
   return laatsteVeld;
+}
+
+async function bewaarVeld(veld) {
+  await mkdir(dirname(ISOBAREN_BESTAND), { recursive: true });
+  const uit = { ...veld, velden: veld.velden.map((v) => Array.from(v, (x) => Math.round(x * 10) / 10)) };
+  await writeFile(ISOBAREN_BESTAND, JSON.stringify(uit));
+}
+
+// Bij opstarten: laatste veld van schijf. Geeft de bijwerktijd (ms) terug
+// als er iets bruikbaars stond, anders 0 — server.js gebruikt dat als
+// "laatst geslaagd" zodat een verse cache geen nieuwe ronde uitlokt.
+export async function laadVeldVanSchijf() {
+  try {
+    const raw = JSON.parse(await readFile(ISOBAREN_BESTAND, 'utf8'));
+    if (!Array.isArray(raw?.tijden) || !Array.isArray(raw?.velden) || !raw?.lats?.length || !raw?.lons?.length) return 0;
+    const n = raw.lats.length * raw.lons.length;
+    if (raw.velden.some((v) => !Array.isArray(v) || v.length !== n)) return 0;
+    const tijdMs = new Date(raw.bijgewerkt).getTime();
+    if (!Number.isFinite(tijdMs)) return 0;
+    laatsteVeld = { ...raw, velden: raw.velden.map((v) => Float32Array.from(v)) };
+    contourCache.clear();
+    console.log(`[weer] isobaren: drukveld van schijf geladen (opgehaald ${raw.bijgewerkt}, ${raw.tijden.length} uren vanaf ${raw.tijden[0]})`);
+    return tijdMs;
+  } catch (err) {
+    if (err?.code !== 'ENOENT') console.warn('[weer] isobaren: cache op schijf niet bruikbaar:', err.message ?? err);
+    return 0;
+  }
 }
 
 function haalBatch(params) {

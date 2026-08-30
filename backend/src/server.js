@@ -40,7 +40,7 @@ import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
 import { fetchDwdFronten, huidigeFronten } from './sources/dwdFronten.js';
-import { fetchIsobaren, huidigeIsobaren, huidigeIsobarenStatus, noteerIsobarenFout, VERVERS_INTERVAL_MS as ISOBAREN_INTERVAL_MS } from './sources/isobaren.js';
+import { fetchIsobaren, huidigeIsobaren, huidigeIsobarenStatus, noteerIsobarenFout, laadVeldVanSchijf as laadIsobarenVanSchijf, VERVERS_INTERVAL_MS as ISOBAREN_INTERVAL_MS } from './sources/isobaren.js';
 import { fetchVliegradar } from './sources/vliegradar.js';
 import { fetchIssLive } from './sources/issLive.js';
 import { controleerIssAlarm } from './sources/celestrak.js';
@@ -829,7 +829,9 @@ export function createApp(env) {
     timers.push(setInterval(ververMetOfficeForecast, 3 * 60 * 60 * 1000));
     ververDwdFronten();
     timers.push(setInterval(ververDwdFronten, 30 * 60 * 1000));
-    ververIsobaren();
+    // Eerst de schijfcache (zie laadVeldVanSchijf in isobaren.js): een vers
+    // veld telt als geslaagde ronde, dan haalt ververIsobaren() niets op.
+    laadIsobarenVanSchijf().then((tijdMs) => { isobarenLaatstGeslaagd = tijdMs; return ververIsobaren(); });
     timers.push(setInterval(ververIsobaren, 30 * 60 * 1000));
 
     // 2026-08-22, ISS-passagemelding (zie controleerIssAlarm() in
