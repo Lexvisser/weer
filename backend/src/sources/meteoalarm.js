@@ -389,11 +389,16 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
       // bewust geen polygon meesturen. "polygon" = grotere regio: eerst de
       // precieze omtrek proberen (haalPreciezeOmtrek, 2026-08-23), en alleen
       // bij het uitblijven daarvan terugvallen op de meegeleverde bbox.
-      const isPolygonType = feature.properties?.featureType === 'polygon';
+      // 2026-08-30, op verzoek van Lex ("als het wordt meegestuurd wordt het
+      // getoond"): ook geocode-features krijgen nu een omtrek als de API er
+      // een meelevert — eerst de precieze geometrielink proberen (als die er
+      // is), anders de meegeleverde geometry/bbox. Alleen zonder enige
+      // geometrie blijft het een kale pin. featureType wordt nog wel
+      // meegegeven in detail (voor het onderscheid in de app).
       const bboxRingen = ringenAlsLatLon(feature.geometry);
-      const preciezeRingen = isPolygonType ? await haalPreciezeOmtrek(feature) : null;
-      const gebiedPolygon = isPolygonType ? (preciezeRingen ?? bboxRingen) : [];
-      const omtrekBron = !isPolygonType ? null : preciezeRingen ? 'precies' : 'bbox';
+      const preciezeRingen = await haalPreciezeOmtrek(feature);
+      const gebiedPolygon = preciezeRingen ?? bboxRingen;
+      const omtrekBron = preciezeRingen ? 'precies' : bboxRingen.length ? 'bbox' : null;
       const [bboxLat, bboxLon] = centroid(bboxRingen);
 
       const signaalId = `meteoalarm-${feature.id ?? feature.properties?.OBJECTID ?? alertId}`;
