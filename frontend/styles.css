@@ -1448,3 +1448,10 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .alarm-popup-knoppen button { border:none; border-radius:10px; padding:12px; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
 #alarmPopupBekijk { background:#ff2e6d; color:#0e111c; }
 #alarmPopupSluit { background:rgba(255,255,255,0.08); color:#e8eaed; }
+
+/* 2026-08-30, op verzoek van Lex: labels van het gradengrid (zie
+   tekenGradenGrid() in app.js). Zelfde blauw als de lijnen, kleine
+   donkere plaquette zodat ze op elke ondergrond leesbaar blijven. De
+   breedte-labels staan aan de linkerrand, de lengte-labels aan de bovenrand
+   (iconAnchor 0,0 — het label hangt dus rechtsonder het ankerpunt). */
+.graden-label { font-family:'JetBrains Mono',monospace; font-size:9.5px; line-height:1; color:#3ec6ff; background:rgba(5,6,10,0.65); border-radius:4px; padding:2px 4px; white-space:nowrap; width:auto !important; height:auto !important; margin:2px 0 0 2px; pointer-events:none; }

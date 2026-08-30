@@ -42,6 +42,7 @@ const TOGGLE_REGENRADAR_EL = document.getElementById('toggleRegenradar');
 const TOGGLE_ZEE_EL = document.getElementById('toggleZee');
 const TOGGLE_VLIEGRADAR_EL = document.getElementById('toggleVliegradar');
 const TOGGLE_FRONTEN_EL = document.getElementById('toggleFronten'); // 2026-08-30, zie toggleFronten()
+const TOGGLE_GRADEN_EL = document.getElementById('toggleGraden'); // 2026-08-30, zie toggleGradenGrid()
 const FRONTEN_INFO_EL = document.getElementById('frontenInfo');
 const TOGGLE_DWD_KAART_EL = document.getElementById('toggleDwdKaart'); // 2026-08-30, zie openDwdKaart()
 const DWD_KAART_OVERLAY_EL = document.getElementById('dwdKaartOverlay');
@@ -618,6 +619,13 @@ function initMap() {
   // (overlayPane = 400). Zie toggleFronten().
   kaart.createPane('frontenPane');
   kaart.getPane('frontenPane').style.zIndex = 360;
+  // 2026-08-30: gradengrid boven de fronten, onder de markers. Zie
+  // toggleGradenGrid(). Herstel de bewaarde voorkeur zodra de kaart er is.
+  kaart.createPane('gradenPane');
+  kaart.getPane('gradenPane').style.zIndex = 370;
+  kaart.getPane('gradenPane').style.pointerEvents = 'none';
+  kaart.on('moveend zoomend', () => { if (gradenActief) tekenGradenGrid(); });
+  try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
 
   // 2026-08-19: basiskaart-geschiedenis (kort) — CARTO's gratis dark_all gaf
   // in Europa een ingebakken "Zoom Level Not Supported"-plaatje (HTTP 200,
@@ -693,6 +701,7 @@ function initMap() {
   TOGGLE_ZEE_EL.addEventListener('click', toggleZeeModus);
   TOGGLE_VLIEGRADAR_EL.addEventListener('click', toggleVliegradar);
   if (TOGGLE_FRONTEN_EL) TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
+  if (TOGGLE_GRADEN_EL) TOGGLE_GRADEN_EL.addEventListener('click', toggleGradenGrid);
   if (TOGGLE_DWD_KAART_EL) TOGGLE_DWD_KAART_EL.addEventListener('click', openDwdKaart);
   document.getElementById('dwdKaartSluiten')?.addEventListener('click', sluitDwdKaart);
   // Tik op de kaart: wisselen tussen passend en 100% (dan scrollen/pinchen).
@@ -4525,6 +4534,76 @@ async function openDwdKaart() {
 
 function sluitDwdKaart() {
   DWD_KAART_OVERLAY_EL.classList.add('verborgen');
+}
+
+// 2026-08-30, op verzoek van Lex: gradengrid (breedte-/lengtegraden) op de
+// kaart, aan/uit met de knop uiterst links in de onderste balk, "hangend aan
+// de zoomfactor": hoe verder ingezoomd, hoe fijner de maaswijdte. De lijnen
+// worden alleen getekend voor het zichtbare gebied (plus een rand), en
+// opnieuw bij elke move/zoom (zie kaart.on('moveend zoomend') in initMap).
+// Labels (bv. "52°N", "4.5°E") zitten aan de linker- en bovenrand van het
+// scherm zodat ze altijd zichtbaar blijven. Voorkeur per toestel bewaard.
+const GRADEN_KEY = 'gradenGrid';
+// [vanaf zoom, stap in graden] — eerste passende regel (van fijn naar grof).
+const GRADEN_STAPPEN = [[13, 0.1], [11, 0.25], [9, 0.5], [7, 1], [5, 2], [4, 5], [2, 10], [0, 30]];
+let gradenActief = false;
+let gradenLaag = null;
+
+function gradenStapVoorZoom(zoom) {
+  return (GRADEN_STAPPEN.find(([vanaf]) => zoom >= vanaf) ?? GRADEN_STAPPEN[GRADEN_STAPPEN.length - 1])[1];
+}
+
+// Nette labeltekst: geen "52.00", wel "4.5"; N/S en E/W i.p.v. minteken.
+function gradenLabel(waarde, isBreedte) {
+  const abs = Math.abs(waarde);
+  const tekst = Number.isInteger(abs) ? String(abs) : String(parseFloat(abs.toFixed(3)));
+  const kant = isBreedte ? (waarde < 0 ? 'S' : 'N') : (waarde < 0 ? 'W' : 'E');
+  return `${tekst}°${kant}`;
+}
+
+function tekenGradenGrid() {
+  if (!kaart) return;
+  if (!gradenLaag) gradenLaag = L.layerGroup().addTo(kaart);
+  gradenLaag.clearLayers();
+  const stap = gradenStapVoorZoom(kaart.getZoom());
+  const grenzen = kaart.getBounds().pad(0.1);
+  const lijnStijl = { pane: 'gradenPane', color: '#1a2233', weight: 0.8, opacity: 0.6, interactive: false }; // 2026-08-30, Lex: donkere lijnen i.p.v. lichtblauw
+  const labelStijl = (tekst) => L.divIcon({ className: 'graden-label', html: tekst, iconSize: null, iconAnchor: [0, 0] });
+  const zichtbaar = kaart.getBounds();
+  const zuid = Math.max(-85, zichtbaar.getSouth()); // buiten ±85 tekent Leaflet/Mercator toch niets zinnigs
+  const noord = Math.min(85, zichtbaar.getNorth());
+  // Breedtegraden (horizontale lijnen), label aan de linkerrand.
+  for (let lat = Math.ceil(Math.max(-85, grenzen.getSouth()) / stap) * stap; lat <= Math.min(85, grenzen.getNorth()); lat += stap) {
+    lat = parseFloat(lat.toFixed(6)); // drijvende-komma-ruis (0.30000000000000004) weg
+    L.polyline([[lat, grenzen.getWest()], [lat, grenzen.getEast()]], lijnStijl).addTo(gradenLaag);
+    if (lat >= zuid && lat <= noord) {
+      L.marker([lat, zichtbaar.getWest()], { icon: labelStijl(gradenLabel(lat, true)), pane: 'gradenPane', interactive: false, keyboard: false })
+        .addTo(gradenLaag);
+    }
+  }
+  // Lengtegraden (verticale lijnen), label aan de bovenrand.
+  for (let lon = Math.ceil(grenzen.getWest() / stap) * stap; lon <= grenzen.getEast(); lon += stap) {
+    lon = parseFloat(lon.toFixed(6));
+    L.polyline([[Math.max(-85, grenzen.getSouth()), lon], [Math.min(85, grenzen.getNorth()), lon]], lijnStijl).addTo(gradenLaag);
+    if (lon >= zichtbaar.getWest() && lon <= zichtbaar.getEast()) {
+      // Label-lengte terugbrengen naar -180..180 als de kaart 'doorloopt'.
+      const lonLabel = ((lon + 180) % 360 + 360) % 360 - 180;
+      L.marker([noord, lon], { icon: labelStijl(gradenLabel(lonLabel, false)), pane: 'gradenPane', interactive: false, keyboard: false })
+        .addTo(gradenLaag);
+    }
+  }
+}
+
+function toggleGradenGrid() {
+  gradenActief = !gradenActief;
+  TOGGLE_GRADEN_EL?.classList.toggle('actief', gradenActief);
+  if (gradenActief) {
+    tekenGradenGrid();
+  } else if (gradenLaag) {
+    kaart.removeLayer(gradenLaag);
+    gradenLaag = null;
+  }
+  try { localStorage.setItem(GRADEN_KEY, gradenActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
 }
 
 function toggleFronten() {

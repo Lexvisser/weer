@@ -115,6 +115,11 @@
            met de nav-chips in de opening ertussen — alles op één rij
            onderaan. Zie .radar-groep in styles.css. -->
       <div class="radar-groep radar-groep-links">
+      <!-- 2026-08-30, op verzoek van Lex: gradengrid (breedte-/lengtegraden)
+           aan/uit, uiterst links. De maaswijdte hangt aan de zoomfactor —
+           zie GRADEN_STAPPEN/tekenGradenGrid() in app.js. Voorkeur per
+           toestel bewaard. -->
+      <button id="toggleGraden" class="satelliet-toggle" title="Gradengrid (breedte-/lengtegraden) aan/uit; maaswijdte volgt de zoom">🧭<span class="knop-tekst"> Grid</span></button>
       <button id="toggleRegenradar" class="radar-label satelliet-toggle">🌧️<span class="knop-tekst"> Regenradar</span></button>
       <!-- 2026-08-30: fronten-laag, tweede poging (de WPC-versie van 29 aug
            is teruggedraaid, zie server.js) — nu DWD's handgetekende
