@@ -118,9 +118,22 @@ function bouwMasker(png) {
     if (x < 12 || y < 12 || x >= width - 12 || y >= height - 12) donker[y * width + x] = 0;
   }
 
-  // (a) Vette tekst (H/T en de isobaar-getallen): overleeft een 5x5-opening;
-  //     daarna kleine compacte blobs (gevulde stationsbolletjes) eruit.
+  // (a) Vette tekst (H/T en de isobaar-getallen).
+  //     2026-08-30 (5e ronde), op verzoek van Lex ("de waarden van de
+  //     isobaren opschonen, het is wat rafelig"): tot nu toe was dit de
+  //     5x5-OPENING van de zwarte pixels — morfologie op antialiased
+  //     letterranden geeft hobbelige contouren. (Een tussenversie die per
+  //     samenhangende component besliste bleek niet te werken: de
+  //     druklabels staan vaak OVER stationsplot-tekst en graadnetlijnen
+  //     heen en versmelten daarmee tot één component.) Nu: de opening blijft
+  //     de robuuste DETECTIE van waar vette tekst staat, maar getekend
+  //     worden de ORIGINELE zwarte pixels binnen 3 px van die detectie --
+  //     dus de gladde, oorspronkelijke letterrand -- met de antialiasing
+  //     van de kaart als alpha (zie tekstRand hieronder).
   const dik = verwijderBlobs(opening(donker, width, height, 2), width, height);
+  const dikOmgeving = dilateer(dik, width, height, 3);
+  const tekst = new Uint8Array(n);
+  for (let i = 0; i < n; i++) tekst[i] = donker[i] && dikOmgeving[i] ? 1 : 0;
 
   // (b) 2026-08-30 (3e ronde), op verzoek van Lex ("ik mis ook nog de zwarte
   //     lijnen"): isobaren. Gemeten op een echte kaart: isobaren zijn ~4 px
@@ -134,10 +147,21 @@ function bouwMasker(png) {
   // Frontlijnen: gemeten ~8 px dik (halve breedte 4); schijf-erosie straal 2
   // -> ~4 px, de halve cirkels/driehoekjes (veel groter) blijven staan.
   const gekleurdDun = erodeer(gekleurd, width, height, FRONT_DUN_PX);
-  const dikDun = erodeer(dik, width, height, TEKST_DUN_PX);
-  // alpha-masker: 255 fronten, 230 vette tekst, 190 isobaren, 0 rest
+  // Tekst: 1 px uitgedijd zodat de antialiased rand meedoet, met de
+  // donkerte van de pixel zelf als alpha (zwarte kern 230, grijze rand
+  // evenredig minder).
+  const tekstRand = dilateer(tekst, width, height, 1);
+  // alpha-masker: 255 fronten, <=230 vette tekst, 190 isobaren, 0 rest
   const alpha = new Uint8Array(n);
-  for (let i = 0; i < n; i++) alpha[i] = gekleurdDun[i] ? 255 : dikDun[i] ? 230 : isobaren[i] ? 190 : 0;
+  for (let i = 0; i < n; i++) {
+    if (gekleurdDun[i]) { alpha[i] = 255; continue; }
+    if (tekstRand[i]) {
+      const mx = Math.max(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+      const a = Math.round(((175 - mx) / 125) * 230);
+      if (a > 0) { alpha[i] = Math.min(230, a); continue; }
+    }
+    alpha[i] = isobaren[i] ? 190 : 0;
+  }
   // Spikkels (erosie-restjes van antialiasing/glyph-fragmenten) weg: alles
   // kleiner dan 12 px samenhangend is nooit een front, letter of isobaar.
   const zonderSpikkels = filterComponenten(alpha, width, height, (bw, bh, aantal) => aantal >= 12);
@@ -146,7 +170,6 @@ function bouwMasker(png) {
 }
 
 const FRONT_DUN_PX = 2;
-const TEKST_DUN_PX = 1;
 const ISOBAAR_MIN_PX = 120;
 
 // Binaire erosie/dilatie met een schijfvormig element (straal r). Bij de
@@ -218,10 +241,13 @@ function filterComponenten(masker, width, height, beslis) {
   }
   return uit;
 }
-// Kleine compacte blobs weg (stationsbolletjes: bbox <= 22 px en vulgraad
-// > 0.55 -- een rond bolletje vult z'n box voor ~78%, een letter veel minder).
+// Kleine compacte blobs weg (gevulde stationsbolletjes, ~12 px: bbox <= 15
+// px en vulgraad > 0.55 -- een vette '0' is 18x18 en blijft zo buiten schot).
+// Ook weg: restjes kleiner dan 40 px -- kruisingen in stationsplot-glyphs
+// die de opening toevallig overleven; een vet cijfer houdt na de opening
+// ruim 100 px over.
 function verwijderBlobs(masker, width, height) {
-  return filterComponenten(masker, width, height, (bw, bh, aantal) => !(bw <= 22 && bh <= 22 && aantal / (bw * bh) > 0.55));
+  return filterComponenten(masker, width, height, (bw, bh, aantal) => aantal >= 40 && !(bw <= 15 && bh <= 15 && aantal / (bw * bh) > 0.55));
 }
 function houdLangeComponenten(masker, width, height, minPx) {
   return filterComponenten(masker, width, height, (bw, bh) => bw >= minPx || bh >= minPx);
