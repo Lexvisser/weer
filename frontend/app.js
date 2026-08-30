@@ -4545,7 +4545,10 @@ async function openDwdKaart() {
     DWD_KAART_IMG_EL.removeAttribute('src');
     return;
   }
-  DWD_KAART_STATUS_EL.textContent = `DWD-Bodenanalyse ${info.analyseTijd ? nieuwSindsTekst(info.analyseTijd) : ''} · tik = zoom`;
+  // 2026-08-30, op vraag van Lex ("discrepantie?" — kop zei 02:00, kaart zelf
+  // "00 UTC"): zelfde moment, alleen NL-tijd vs UTC. UTC er nu expliciet bij.
+  const utcTekst = info.analyseTijd ? ` (${String(new Date(info.analyseTijd).getUTCHours()).padStart(2, '0')} UTC)` : '';
+  DWD_KAART_STATUS_EL.textContent = `DWD-Bodenanalyse ${info.analyseTijd ? nieuwSindsTekst(info.analyseTijd) : ''}${utcTekst} · tik = zoom`;
   DWD_KAART_IMG_EL.src = `/api/fronten-bron.png?v=${encodeURIComponent(info.bijgewerkt)}`;
 }
 
