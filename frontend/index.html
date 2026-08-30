@@ -116,6 +116,12 @@
            onderaan. Zie .radar-groep in styles.css. -->
       <div class="radar-groep radar-groep-links">
       <button id="toggleRegenradar" class="radar-label satelliet-toggle">🌧️<span class="knop-tekst"> Regenradar</span></button>
+      <!-- 2026-08-30: fronten-laag, tweede poging (de WPC-versie van 29 aug
+           is teruggedraaid, zie server.js) — nu DWD's handgetekende
+           Bodenanalyse, georefereerd door de backend (sources/dwdFronten.js).
+           Zie toggleFronten() in app.js. Op verzoek van Lex
+           naast de Regenradar-knop. -->
+      <button id="toggleFronten" class="satelliet-toggle" title="Fronten en drukcentra uit de DWD-Bodenanalyse (elke 6 uur)">🌀<span class="knop-tekst"> Fronten</span></button>
       <button id="radarSpeel">▶</button>
       <span id="radarTijd">—</span>
       <button id="toggleSatelliet" class="satelliet-toggle">🛰️<span class="knop-tekst"> Satelliet</span></button>
@@ -145,11 +151,6 @@
            SVG zoals bij Lifeliner, zonder dat de rest van de logica
            verandert. Zie toggleVliegradar()/toggleVaarradar() in app.js. -->
       <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
-      <!-- 2026-08-30: fronten-laag, tweede poging (de WPC-versie van 29 aug
-           is teruggedraaid, zie server.js) — nu DWD's handgetekende
-           Bodenanalyse, georefereerd door de backend (sources/dwdFronten.js).
-           Zie toggleFronten() in app.js. -->
-      <button id="toggleFronten" class="satelliet-toggle" title="Fronten en drukcentra uit de DWD-Bodenanalyse (elke 6 uur)">🌀<span class="knop-tekst"> Fronten</span></button>
       <!-- 2026-08-21: Vaart-knop verborgen, geen functionaliteit verwijderd.
            aisstream.io (de databron in backend/src/sources/vaarradar.js)
            levert structureel geen data — bevestigd met twee onafhankelijke
