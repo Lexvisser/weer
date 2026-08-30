@@ -2458,8 +2458,19 @@ function popupHtml(s) {
   // extra subregel-onderdeel, zelfde plek/stijl als detailregel/tijdregel —
   // puur informatieve tekst, geen pil, dus hier en niet bij pilHtml verderop.
   const ontvangstregel = navtexOntvangstBadge(s);
-  const subDelen = [detailregel, tijdregel ? `<span class="tijd-icoon-mat">🕓</span> ${tijdregel}` : null, ontvangstregel].filter(Boolean);
-  const subHtml = subDelen.length ? `<div class="popup-sub">${subDelen.join(' · ')}</div>` : '';
+  // 2026-08-30, op verzoek van Lex: bij een weeralarm de geldigheidsperiode
+  // op een eigen regel, en het klokje expliciet als "uitgegeven" — dat is
+  // namelijk body.sent van Meteoalarm/KNMI (moment van uitgifte/laatste
+  // update), niet onze ontvangsttijd; zonder label oogde het als een derde,
+  // onverklaarde tijd achter de geldig-van-tot-periode.
+  const isWeeralarm = s.categorie === 'weerwaarschuwing';
+  const tijdDeel = tijdregel ? `<span class="tijd-icoon-mat">🕓</span> ${isWeeralarm ? 'uitgegeven ' : ''}${tijdregel}` : null;
+  const subDelen = [detailregel, tijdDeel, ontvangstregel].filter(Boolean);
+  const subHtml = !subDelen.length
+    ? ''
+    : isWeeralarm
+      ? subDelen.map((deel) => `<div class="popup-sub">${deel}</div>`).join('')
+      : `<div class="popup-sub">${subDelen.join(' · ')}</div>`;
   // 2026-08-20: detail.verlopen (zie historie.js) — dit is geen actuele
   // melding meer, alleen een tot 48u terug bewaarde trail op de kaart. Dat
   // moet meteen duidelijk zijn in de popup, anders lijkt een verlopen
