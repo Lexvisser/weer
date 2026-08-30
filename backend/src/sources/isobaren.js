@@ -9,20 +9,19 @@
 // openmeteo.js voor het thuisweer), variabele pressure_msl (luchtdruk
 // herleid tot zeeniveau) per uur, model "best_match" (in dit gebied
 // ICON/ECMWF). Open-Meteo levert geen raster, dus we vragen een RASTER VAN
-// PUNTEN op: het kaartgebied van de fronten-laag (dwdFronten.BBOX,
-// -30..35E / 40..75N) om de RASTER_STAP graden, in batches van
+// PUNTEN op: een ruim gebied rond Europa (ISO_BBOX hieronder) om de
+// RASTER_STAP graden, in batches van
 // BATCH_GROOTTE locaties per HTTP-request (meerdere komma-gescheiden
 // coördinaten per call).
 //
-// BUDGET (fair use Open-Meteo: 10.000 calls/dag; ga er voorzichtigheids-
-// halve van uit dat elke LOCATIE in een multi-locatie-request als één call
-// telt): bij 1,5 graad is het raster 44 x 24 = 1056 punten; elke
-// VERVERS_INTERVAL_MS (4 uur) opnieuw = ~6300 calls/dag, ruim onder de
-// limiet en met marge voor het thuisweer en een herhaalde poging na een
-// fout. Omdat we per punt de komende FORECAST_UREN uren meevragen, kan de
-// kaart tussen twee ophaalrondes toch elk uur het bij dat uur horende
-// drukveld tonen (zie huidigeIsobaren): een ophaalronde van 14:00 heeft de
-// velden voor 14:00 t/m 22:00 al in huis.
+// BUDGET (fair use Open-Meteo: 10.000 calls/dag, en gebleken: 600
+// locaties/minuut — elke locatie telt als één call): bij 1,5 graad is het
+// raster 61 x 31 = 1891 punten; elke VERVERS_INTERVAL_MS (6 uur) opnieuw =
+// ~7600 calls/dag, onder de limiet en met marge voor het thuisweer en een
+// herhaalde poging na een fout. Omdat we per punt de komende FORECAST_UREN
+// uren meevragen, kan de kaart tussen twee ophaalrondes toch elk uur het
+// bij dat uur horende drukveld tonen (zie huidigeIsobaren): een
+// ophaalronde van 14:00 heeft de velden voor 14:00 t/m 01:00 al in huis.
 //
 // VERWERKING (puur JS, geen dependencies):
 // 1. drukveld (hPa) op het grove raster; kwaliteitscontrole: geen gaten,
@@ -41,7 +40,12 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BBOX } from './dwdFronten.js';
+// 2026-08-31 (op verzoek van Lex "is de isobarenlaag nog wat groter te
+// maken?"): eigen, ruimer gebied dan de fronten-BBOX uit dwdFronten.js —
+// de drukkaart loopt nu door tot ver op de Atlantiek, de Barentszzee en
+// de Middellandse Zee, zodat de lijnen niet middenin het kaartbeeld
+// ophouden. De fronten-PNG blijft z'n eigen (kleinere) bbox houden.
+const ISO_BBOX = { lonW: -45, lonE: 45, latS: 34, latN: 80 };
 
 // 2026-08-30 (na de eerste syncs): het laatste drukveld ook op schijf, in
 // backend/data/ (zelfde plek als historie.json, blijft buiten de sync).
@@ -56,7 +60,7 @@ export const RASTER_STAP = 1.5;
 const FIJN_STAP = 0.25;
 export const ISOBAAR_STAP = 5;
 const HOOFD_ISOBAAR_STAP = 10; // krijgt een label en een iets dikkere lijn
-const FORECAST_UREN = 9;
+const FORECAST_UREN = 12; // 2026-08-31: 9 -> 12, past bij het 6-uursinterval met marge
 // 2026-08-30 (eerste run op lexdev-nw): 150 locaties per request gaf
 // meteen "HTTP 429" op batch 1 — Open-Meteo weegt/burst-limiteert een
 // multi-locatie-request kennelijk strenger dan de documentatie doet
@@ -71,7 +75,7 @@ const BATCH_GROOTTE = 40;
 // voor het thuisweer-pollen; een ronde duurt dan ~2,5 min, zonder 429-dans.
 const BATCH_PAUZE_MS = 5000;
 const BACKOFF_MS = 65 * 1000;
-export const VERVERS_INTERVAL_MS = 4 * 60 * 60 * 1000;
+export const VERVERS_INTERVAL_MS = 6 * 60 * 60 * 1000; // 2026-08-31: 4 -> 6 uur, compenseert het grotere raster in het call-budget
 const EXTREMUM_PROMINENTIE_HPA = 1.0; // t.o.v. de ring op EXTREMUM_RING rasterpunten afstand; 2026-08-30 1.5 -> 1.0: een vlak hoog (gesloten 1020 boven de Alpen) kreeg anders geen H
 const EXTREMUM_RING = 3; // 4,5 graad: een hogedrukgebied is breed en vlak, bij 2 werd 'ie gemist
 
@@ -80,8 +84,8 @@ export const BRON_URL = 'https://api.open-meteo.com/v1/forecast';
 // Rasterpunten: rij voor rij van noord naar zuid, per rij van west naar oost.
 function rasterCoordinaten() {
   const lats = [], lons = [];
-  for (let lat = BBOX.latN; lat >= BBOX.latS - 1e-9; lat -= RASTER_STAP) lats.push(Number(lat.toFixed(4)));
-  for (let lon = BBOX.lonW; lon <= BBOX.lonE + 1e-9; lon += RASTER_STAP) lons.push(Number(lon.toFixed(4)));
+  for (let lat = ISO_BBOX.latN; lat >= ISO_BBOX.latS - 1e-9; lat -= RASTER_STAP) lats.push(Number(lat.toFixed(4)));
+  for (let lon = ISO_BBOX.lonW; lon <= ISO_BBOX.lonE + 1e-9; lon += RASTER_STAP) lons.push(Number(lon.toFixed(4)));
   return { lats, lons };
 }
 
@@ -168,6 +172,13 @@ export async function laadVeldVanSchijf() {
     if (!Array.isArray(raw?.tijden) || !Array.isArray(raw?.velden) || !raw?.lats?.length || !raw?.lons?.length) return 0;
     const n = raw.lats.length * raw.lons.length;
     if (raw.velden.some((v) => !Array.isArray(v) || v.length !== n)) return 0;
+    // Raster veranderd (ander gebied of andere stap, zoals bij de
+    // verruiming van 2026-08-31)? Dan is de cache van de oude vorm en
+    // meteen een verse ronde waard — anders bleef het oude, kleinere
+    // gebied tot 6 uur na de vorige ronde staan.
+    const huidig = rasterCoordinaten();
+    if (raw.lats.length !== huidig.lats.length || raw.lons.length !== huidig.lons.length
+      || raw.lats[0] !== huidig.lats[0] || raw.lons[0] !== huidig.lons[0]) return 0;
     const tijdMs = new Date(raw.bijgewerkt).getTime();
     if (!Number.isFinite(tijdMs)) return 0;
     laatsteVeld = { ...raw, velden: raw.velden.map((v) => Float32Array.from(v)) };
@@ -228,7 +239,7 @@ export function berekenIsobaren(veld, tijdIndex) {
     }
   }
   const extrema = zoekExtrema(grof, nLon, nLat, lats, lons).map((e) => verfijnExtremum(e, fijn, fLat, fLon));
-  const resultaat = { geldig: tijden[tijdIndex], bijgewerkt: veld.bijgewerkt, model: veld.model, bbox: BBOX, stapHpa: ISOBAAR_STAP, lijnen, extrema };
+  const resultaat = { geldig: tijden[tijdIndex], bijgewerkt: veld.bijgewerkt, model: veld.model, bbox: ISO_BBOX, stapHpa: ISOBAAR_STAP, lijnen, extrema };
   console.log(`[weer] isobaren: ${lijnen.length} lijnen en ${extrema.length} drukcentra berekend voor ${tijden[tijdIndex]} in ${Date.now() - t0} ms`);
   return resultaat;
 }
