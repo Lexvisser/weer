@@ -495,7 +495,21 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
   // vaak juist pas ná afloop van de officiële waarschuwing. NA de alarm-lus
   // hierboven, om dezelfde reden als bij nws.js: Pushover/mail/webpush
   // mogen nooit op een teruggehaald "verlopen"-signaal reageren.
-  const totaal = metHistorie('meteoalarm', signalen);
+  const metVerlopen = metHistorie('meteoalarm', signalen);
+
+  // 2026-08-30, op melding van Lex ("we hebben soms updated meldingen, de
+  // oudere staat er nog bij"): een bijgewerkt weeralarm komt van KNMI/
+  // Meteoalarm als NIEUW CAP-bericht (nieuw alertId, msgType "Update"), en
+  // het oude verdwijnt uit de API — waarna de historie dat oude netjes 48
+  // uur als "verlopen" (grijs) liet staan, pal onder de nieuwe. Dat was geen
+  // bewuste keuze, puur een bijwerking van de historie-laag. Nu: een
+  // verlopen signaal vervalt zodra er een ACTIEF signaal is voor hetzelfde
+  // fenomeen in hetzelfde gebied (de update vervangt de oude versie); een
+  // echt afgelopen alarm (geen opvolger) blijft gewoon in de historie.
+  const actieveSleutels = new Set(
+    metVerlopen.filter((s) => !s.detail?.verlopen).map((s) => `${s.detail?.fenomeenTekst}|${s.detail?.gebied}`),
+  );
+  const totaal = metVerlopen.filter((s) => !s.detail?.verlopen || !actieveSleutels.has(`${s.detail?.fenomeenTekst}|${s.detail?.gebied}`));
 
   // 2026-08-22: verlopen signalen hierboven kregen geen nieuwe
   // communityMediaVoor()-aanroep (die liep alleen over de live `features`) —
