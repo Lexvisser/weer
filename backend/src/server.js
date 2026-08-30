@@ -716,14 +716,23 @@ export function createApp(env) {
   // geprobeerd zonder dat het budget aan retries opgaat. Tussendoor kiest
   // huidigeIsobaren() per uur het passende veld uit de meegevraagde uren.
   let isobarenLaatstGeslaagd = 0;
+  let isobarenHerkansing = null; // 2026-08-30: snelle retry na een mislukte ronde
   async function ververIsobaren() {
     if (Date.now() - isobarenLaatstGeslaagd < ISOBAREN_INTERVAL_MS) return;
+    clearTimeout(isobarenHerkansing);
+    isobarenHerkansing = null;
     try {
       await fetchIsobaren();
       isobarenLaatstGeslaagd = Date.now();
     } catch (err) {
       noteerIsobarenFout(err);
       console.error('[weer] isobaren poll mislukt:', err.message ?? err);
+      // Niet een half uur op de volgende tik wachten: net na een (her)start
+      // kan het netwerk even haperen ("fetch failed" om 21:27 op lexdev-nw).
+      // Eén herkansing over 2 min; mislukt die ook, dan plant de catch daar
+      // weer een nieuwe — effectief elke 2 min tot het lukt, en de gewone
+      // 30-min-tik blijft er onafhankelijk naast lopen.
+      isobarenHerkansing = setTimeout(ververIsobaren, 2 * 60 * 1000);
     }
   }
 

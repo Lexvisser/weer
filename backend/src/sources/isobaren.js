@@ -172,19 +172,21 @@ export async function laadVeldVanSchijf() {
     if (!Array.isArray(raw?.tijden) || !Array.isArray(raw?.velden) || !raw?.lats?.length || !raw?.lons?.length) return 0;
     const n = raw.lats.length * raw.lons.length;
     if (raw.velden.some((v) => !Array.isArray(v) || v.length !== n)) return 0;
-    // Raster veranderd (ander gebied of andere stap, zoals bij de
-    // verruiming van 2026-08-31)? Dan is de cache van de oude vorm en
-    // meteen een verse ronde waard — anders bleef het oude, kleinere
-    // gebied tot 6 uur na de vorige ronde staan.
-    const huidig = rasterCoordinaten();
-    if (raw.lats.length !== huidig.lats.length || raw.lons.length !== huidig.lons.length
-      || raw.lats[0] !== huidig.lats[0] || raw.lons[0] !== huidig.lons[0]) return 0;
     const tijdMs = new Date(raw.bijgewerkt).getTime();
     if (!Number.isFinite(tijdMs)) return 0;
     laatsteVeld = { ...raw, velden: raw.velden.map((v) => Float32Array.from(v)) };
     contourCache.clear();
-    console.log(`[weer] isobaren: drukveld van schijf geladen (opgehaald ${raw.bijgewerkt}, ${raw.tijden.length} uren vanaf ${raw.tijden[0]})`);
-    return tijdMs;
+    // Raster veranderd (ander gebied of andere stap, zoals bij de
+    // verruiming van 2026-08-31)? De cache wordt dan WEL alvast getoond
+    // (beter het oude, kleinere gebied dan de DWD-terugval), maar telt
+    // niet als geslaagde ronde (return 0) zodat er direct een verse ronde
+    // met de nieuwe vorm start — na de "fetch failed" van 21:27 bleek dat
+    // de kaart anders tot een half uur zonder eigen isobaren zat.
+    const huidig = rasterCoordinaten();
+    const zelfdeVorm = raw.lats.length === huidig.lats.length && raw.lons.length === huidig.lons.length
+      && raw.lats[0] === huidig.lats[0] && raw.lons[0] === huidig.lons[0];
+    console.log(`[weer] isobaren: drukveld van schijf geladen (opgehaald ${raw.bijgewerkt}, ${raw.tijden.length} uren vanaf ${raw.tijden[0]})${zelfdeVorm ? '' : ' — ander raster, verse ronde volgt'}`);
+    return zelfdeVorm ? tijdMs : 0;
   } catch (err) {
     if (err?.code !== 'ENOENT') console.warn('[weer] isobaren: cache op schijf niet bruikbaar:', err.message ?? err);
     return 0;
