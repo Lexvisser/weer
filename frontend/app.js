@@ -4639,7 +4639,7 @@ function tekenIsobaren(iso) {
   for (const e of iso.extrema ?? []) {
     labels.push(L.marker([e.lat, e.lon], {
       pane: 'frontenPane', interactive: false, keyboard: false,
-      icon: L.divIcon({ className: `drukcentrum drukcentrum-${e.type.toLowerCase()}`, html: `<span class="drukcentrum-letter">${e.type}</span><span class="drukcentrum-hpa">${e.hpa}</span>`, iconSize: [34, 32], iconAnchor: [17, 16] }),
+      icon: L.divIcon({ className: `drukcentrum drukcentrum-${e.type.toLowerCase()}`, html: `<span class="drukcentrum-letter">${e.type}</span><span class="drukcentrum-hpa">${e.hpa}</span>`, iconSize: [40, 40], iconAnchor: [20, 20] }),
     }));
   }
   isobarenLaag = L.layerGroup(lagen).addTo(kaart);
