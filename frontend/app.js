@@ -4458,9 +4458,18 @@ let frontenLaatsteBijgewerkt = null;
 function positioneerFrontenInfo() {
   const balk = document.querySelector('.radar-controls');
   if (!balk || !FRONTEN_INFO_EL) return;
-  const h = balk.offsetParent ? balk.getBoundingClientRect().height : 0;
-  FRONTEN_INFO_EL.style.bottom = `${Math.round(h + 14)}px`;
+  // 2026-08-30 (3e ronde), op melding van Lex ("op de iPad staat het er nog
+  // niet boven"): niet de balkHOOGTE optellen (dat neemt aan dat de balk op
+  // 6 px van de onderrand hangt -- op tablet staat 'ie hoger, met safe-area
+  // en een andere opbouw), maar de echte bovenrand van de balk t.o.v. de
+  // onderrand van het element waar het bijschrift zelf in gepositioneerd is.
+  const ouder = FRONTEN_INFO_EL.offsetParent;
+  if (!ouder || !balk.offsetParent) return;
+  const balkTop = balk.getBoundingClientRect().top;
+  const ouderBottom = ouder.getBoundingClientRect().bottom;
+  FRONTEN_INFO_EL.style.bottom = `${Math.max(26, Math.round(ouderBottom - balkTop + 10))}px`;
 }
+window.addEventListener('resize', positioneerFrontenInfo);
 if (window.ResizeObserver && document.querySelector('.radar-controls')) {
   new ResizeObserver(positioneerFrontenInfo).observe(document.querySelector('.radar-controls'));
 }
