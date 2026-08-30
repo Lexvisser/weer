@@ -590,7 +590,16 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    een zachte text-shadow als nagloei-effect, en de inhoud-container zelf
    dieper zwart met een groenzweem zodat het echt als één beeldbuis oogt
    i.p.v. groene letters op de standaard app-achtergrond. */
-.navtex-ruw-inhoud { background:#030a05; }
+/* 2026-08-30, op verzoek van Lex ("de ontvangstpagina (auto aan/uit ook)
+   transparant laten zien"): de viewer dekt de zeekaart niet meer volledig
+   af -- overlay, balk en inhoud halfdoorzichtig, zodat de kaart (vanen,
+   druksymbolen, berichten) eronder zichtbaar blijft terwijl de tekst
+   binnenloopt. Geldt voor de handmatig geopende viewer EN voor het
+   automatisch openen via de AUTO-knop (zelfde overlay-element). Groenzweem
+   en tekst-nagloei blijven; alleen de dekking is omlaag. */
+#navtexRuwOverlay { background:rgba(3,10,5,0.55); }
+#navtexRuwOverlay .label-popup-balk { background:rgba(3,10,5,0.6); border-bottom-color:rgba(59,255,124,0.25); }
+.navtex-ruw-inhoud { background:rgba(3,10,5,0.45); }
 /* 2026-08-28, op verzoek van Lex: kopregel per bericht in de viewer — de
    begintijd ervoor en een streep eronder, groter en feller dan de
    berichttekst (wat in het .txt-bestand zelf nooit had gekund). */
