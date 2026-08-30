@@ -426,6 +426,13 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
           geldigVan: onset,
           geldigTot: expires,
           featureType: feature.properties?.featureType ?? null,
+          // 2026-08-30: CAP-identiteit + wat dit bericht vervangt (zie de
+          // ontdubbeling ná de loop) — alertId is de API-sleutel, identifier
+          // de CAP-eigen; references verwijst naar één van beide.
+          alertId: alertId ?? null,
+          capIdentifier: body.identifier ?? null,
+          capMsgType: body.msgType ?? null,
+          capReferences: body.references ?? null,
           gebiedPolygon: gebiedPolygon.length ? gebiedPolygon : null,
           // 2026-08-23: 'precies' (signed geometrielink gelukt), 'bbox'
           // (teruggevallen op de grove rechthoek) of null (geocode-type,
@@ -495,7 +502,39 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
   // vaak juist pas ná afloop van de officiële waarschuwing. NA de alarm-lus
   // hierboven, om dezelfde reden als bij nws.js: Pushover/mail/webpush
   // mogen nooit op een teruggehaald "verlopen"-signaal reageren.
-  const metVerlopen = metHistorie('meteoalarm', signalen);
+  // 2026-08-30, tweede ronde (Lex: "ik heb nog steeds 2 meldingen
+  // Zierikzee en Rottum"): de eerste aanname (oude versie zit in de
+  // historie als 'verlopen') klopte niet — de API filtert op `sent` binnen
+  // ~48u en geeft het OUDE bericht gewoon nog als feature terug zolang zijn
+  // eigen `expires` niet verstreken is. Oud én update zijn dus allebei
+  // ACTIEF, met een verschillend alertId, en glippen zo langs de
+  // alertId-dedupe. Twee vangnetten: (1) CAP-`references` — een Update/
+  // Cancel-bericht noemt de identifier(s) die het vervangt ("zender,
+  // identifier,sent" gescheiden door spaties): die voorgangers vervallen;
+  // (2) blijft er daarna nog meer dan één actief signaal over voor hetzelfde
+  // fenomeen in hetzelfde gebied, dan wint de laatst verstuurde.
+  const vervangen = new Set();
+  signalen.forEach((s) => {
+    const refs = s.detail?.capReferences;
+    if (typeof refs !== 'string') return;
+    refs.split(/\s+/).forEach((ref) => {
+      const delen = ref.split(',');
+      if (delen.length >= 2 && delen[1]) vervangen.add(delen[1]);
+    });
+  });
+  const zonderVoorgangers = signalen.filter((s) => !vervangen.has(s.detail?.capIdentifier) && !vervangen.has(s.detail?.alertId));
+  const nieuwstePerSleutel = new Map();
+  zonderVoorgangers.forEach((s) => {
+    const sleutel = `${s.detail?.fenomeenTekst}|${s.detail?.gebied}`;
+    const bestaand = nieuwstePerSleutel.get(sleutel);
+    if (!bestaand || new Date(s.tijd ?? 0) > new Date(bestaand.tijd ?? 0)) nieuwstePerSleutel.set(sleutel, s);
+  });
+  const ontdubbeld = zonderVoorgangers.filter((s) => nieuwstePerSleutel.get(`${s.detail?.fenomeenTekst}|${s.detail?.gebied}`) === s);
+  if (ontdubbeld.length !== signalen.length) {
+    console.log(`[weer] meteoalarm: ${signalen.length - ontdubbeld.length} vervangen/oudere versie(s) van een bijgewerkt alarm weggelaten`);
+  }
+
+  const metVerlopen = metHistorie('meteoalarm', ontdubbeld);
 
   // 2026-08-30, op melding van Lex ("we hebben soms updated meldingen, de
   // oudere staat er nog bij"): een bijgewerkt weeralarm komt van KNMI/
