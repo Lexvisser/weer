@@ -5064,26 +5064,23 @@ function bouwVliegIcon(koersGraden) {
 }
 
 // 2026-08-31, op verzoek van Lex ("een ander icoon, zonder rondje, desnoods
-// zoals de echte vaarradar dat doet") — zelfde behandeling als
-// bouwVliegIcon() hierboven: losgetrokken van bouwVerkeerIcon()'s
-// rondje-badge, en roteert mee met koersGraden (heading/cog uit
-// vaarradar.js/vaarradarLokaal.js).
-//
-// +90deg-correctie (i.p.v. de -45 bij het vliegtuig): de ⛴️-glyph wijst in
-// de meeste lettertypen (Apple/Twemoji/Noto) van nature naar LINKS (west,
-// kompaskoers 270°) i.p.v. rechtsboven zoals ✈️. Om koers 0° (noord) recht
-// omhoog te laten wijzen moet de neus dus 90° met de klok mee gedraaid
-// worden vanaf "wijst naar links". Zelfde vuistregel-voorbehoud als bij
-// bouwVliegIcon(): geen exacte per-glyph meting, bij twijfel zelf even
-// vergelijken met een schip waarvan de vaarrichting duidelijk is (bijv. een
-// rechte rivierstrook) en het getal hieronder bijstellen.
+// zoals de echte vaarradar dat doet") — eerste versie gebruikte de ⛴️-emoji
+// (zijaanzicht) met een geraden +90deg-rotatiecorrectie, maar Lex wees erop
+// dat een zijaanzicht niet werkt voor een van-bovenaf-geroteerd icoon
+// ("dat plaatje met een zijaanzicht werkt niet, beter een soort papieren
+// bootje van bovenaf"). Vervangen door een zelf getekende SVG: een simpel
+// van-bovenaf bootje/kite-vorm (punt = boeg), precies zoals echte
+// vaarradar-apps (MarineTraffic e.d.) schepen tekenen. Voordeel t.o.v. een
+// emoji: de boeg wordt hier zelf naar boven (noord, 0°) getekend, dus geen
+// giswerk meer nodig over hoe een glyph "van nature" wijst — koersGraden kan
+// direct als rotatie gebruikt worden, geen correctie-offset.
 function bouwVaarIcon(koersGraden) {
-  const rotatie = typeof koersGraden === 'number' ? koersGraden + 90 : 0;
+  const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
   return L.divIcon({
     className: '',
-    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)">⛴️</div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)"><svg viewBox="0 0 20 28" width="20" height="28"><path d="M10,0 L18,20 Q10,28 2,20 Z" fill="#f4f6fb" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
+    iconSize: [20, 28],
+    iconAnchor: [10, 14],
   });
 }
 
