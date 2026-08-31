@@ -45,6 +45,7 @@ import { fetchVliegradar } from './sources/vliegradar.js';
 import { fetchIssLive } from './sources/issLive.js';
 import { controleerIssAlarm } from './sources/celestrak.js';
 import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.js';
+import { startVaarradarLokaalFeed } from './sources/vaarradarLokaal.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
 import { fetchStormvloedkering } from './sources/stormvloedkering.js';
 import { fetchPtwc } from './sources/ptwc.js';
@@ -773,6 +774,7 @@ export function createApp(env) {
   // signaal maar een losse live-verkeerslaag, met eigen /api/vaarradar-route
   // hieronder i.p.v. via /api/signals te lopen.
   let vaarradarFeed = { posities: new Map(), stop: () => {} };
+  let vaarradarLokaalFeed = { posities: new Map(), stop: () => {} };
 
   // 2026-08-24, op verzoek van Lex ("Kan het zijn dat na elke sync ukho even
   // niet getoond wordt tot de volgende ronde?"): elke bron begint na een
@@ -875,12 +877,14 @@ export function createApp(env) {
     }
 
     vaarradarFeed = startVaarradarFeed(env);
+    vaarradarLokaalFeed = startVaarradarLokaalFeed(env);
   }
 
   function stopPolling() {
     timers.forEach(clearInterval);
     if (stopBlitzortung) stopBlitzortung();
     vaarradarFeed.stop();
+    vaarradarLokaalFeed.stop();
   }
 
   function signalenMet(filterCategorie) {
@@ -1184,8 +1188,20 @@ export function createApp(env) {
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
         return sendJson(res, 400, { fout: 'lat en lon zijn verplicht', schepen: [] });
       }
-      const schepen = vaarradarBinnenStraal(vaarradarFeed.posities, lat, lon, straal);
-      return sendJson(res, 200, { bijgewerkt: new Date().toISOString(), schepen, bron: 'aisstream.io' });
+      // 2026-08-31, op verzoek van Lex — eigen ontvangst (RTL-SDR + AIS-catcher,
+      // zie sources/vaarradarLokaal.js) krijgt voorrang zodra die posities heeft;
+      // aisstream.io (vaarradar.js) blijft als fallback draaien voor het geval
+      // lexdev-nw's eigen ontvangst een keer leeg/onbereikbaar is. Zie de
+      // EERLIJKE WAARSCHUWING in vaarradar.js voor waarom die zelf structureel
+      // leeg kan blijven.
+      const lokaalHeeftData = vaarradarLokaalFeed.posities.size > 0;
+      const bronPosities = lokaalHeeftData ? vaarradarLokaalFeed.posities : vaarradarFeed.posities;
+      const schepen = vaarradarBinnenStraal(bronPosities, lat, lon, straal);
+      return sendJson(res, 200, {
+        bijgewerkt: new Date().toISOString(),
+        schepen,
+        bron: lokaalHeeftData ? 'lokaal (RTL-SDR + AIS-catcher)' : 'aisstream.io',
+      });
     }
     if (url === '/api/status') {
       return sendJson(res, 200, { bronnen: SOURCES.map((s) => states.get(s.id).toStatus()) });

@@ -40,6 +40,13 @@ const env = {
   // dat dat ergens zichtbaar is — aisstream.io antwoordt daar niet met een
   // duidelijke foutmelding op, de verbinding blijft gewoon "stil" open.
   aisstreamApiKey: (process.env.AISSTREAM_API_KEY ?? '').trim(),
+  // 2026-08-31, op verzoek van Lex — lokale AIS-ontvangst (RTL-SDR Blog V4
+  // + AIS-catcher op lexdev-nw zelf, zie sources/vaarradarLokaal.js) als
+  // vervanger van de kapotte aisstream.io-bron hierboven. Standaard
+  // AIS-catcher's eigen webviewer-poort (8100) op localhost, aan te passen
+  // via VAARRADAR_LOKAAL_URL in .env als de service op een andere poort
+  // draait. Leeglaten (VAARRADAR_LOKAAL_URL=) zet deze bron uit.
+  vaarradarLokaalUrl: process.env.VAARRADAR_LOKAAL_URL === '' ? '' : (process.env.VAARRADAR_LOKAAL_URL ?? 'http://127.0.0.1:8100/ships.json'),
   // 2026-08-22, op verzoek van Lex — Web Push (zie sources/webpush.js) als
   // eigen, niet-storend PWA-alarmkanaal naast Pushover. De publieke sleutel
   // is (per ontwerp van VAPID) niet geheim — mag gewoon naar de frontend via
