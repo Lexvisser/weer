@@ -1,59 +1,74 @@
 // vaarradarLokaal.js — live scheepsposities (AIS) uit Lex' EIGEN ontvangst:
-// een RTL-SDR Blog V4 + AIS-catcher, draaiend als systemd-service op
-// lexdev-nw. Vervangt (voor zover bereikbaar) de externe vaarradar.js
-// hiernaast, die structureel geen data krijgt van aisstream.io (zie de
-// EERLIJKE WAARSCHUWING in dat bestand — bekend, open, onopgelost probleem
-// bij aisstream.io zelf). Zelfde soort niet-hazard kaartlaag-databron als
-// vaarradar.js/vliegradar.js — geen SOURCES/SourceState/makeSignal.
+// een RTL-SDR Blog V4 + AIS-catcher, draaiend en al bevestigd WERKEND als
+// service op lexdev-nw (2026-08-31, live curl-test door Lex tegen
+// http://127.0.0.1:8100/geojson). Vervangt (voor zover bereikbaar) de
+// externe vaarradar.js hiernaast, die structureel geen data krijgt van
+// aisstream.io (zie de EERLIJKE WAARSCHUWING in dat bestand — bekend, open,
+// onopgelost probleem bij aisstream.io zelf). Zelfde soort niet-hazard
+// kaartlaag-databron als vaarradar.js/vliegradar.js — geen
+// SOURCES/SourceState/makeSignal.
 //
-// Architectuur (zie weer-navtex-en-eigen-radio-ontvangst.md): AIS-catcher
-// draait lokaal op lexdev-nw met de ingebouwde webviewer/webserver aan
-// (opstartoptie "-N <poort>"), die zelf JSON serveert op /ships.json — dus
+// Bron: AIS-catcher's ingebouwde webviewer (opstartoptie "-N 8100" op
+// lexdev-nw) serveert zelf een GeoJSON FeatureCollection op /geojson — dus
 // GEEN bestand-tussenpatroon nodig zoals bij NAVTEX (dat was wél nodig omdat
-// de daar gebruikte decoder geen eigen HTTP-server heeft). Deze bron pollt
-// dat lokale endpoint gewoon periodiek, net als vliegradar.js voor adsb.lol
-// doet, alleen zonder de multi-bron-fallback/cache van dat bestand — dit is
-// tenslotte één lokale, eigen ontvanger, geen gedeelde community-dienst om
-// te ontzien.
+// de daar gebruikte decoder geen eigen HTTP-server heeft). Simpele
+// periodieke poll, geen multi-bron-fallback/cache zoals vliegradar.js nodig
+// heeft — dit is een lokale, eigen ontvanger, geen gedeelde community-dienst
+// om te ontzien.
 //
-// EERLIJKE WAARSCHUWING (zelfde patroon als bij vaarradar.js/vliegradar.js):
-// deze ontwikkelomgeving heeft geen netwerktoegang tot lexdev-nw, dus dit
-// bestand is nooit live tegen een echte AIS-catcher-instantie getest. Het
-// veldformaat in vertaalRecord() hieronder komt uit AIS-catcher's officiële
-// documentatie (docs.aiscatcher.org — /ships.json van de ingebouwde
-// webviewer). Bij het eerste binnenkomende record loggen we 'm ruw naar de
-// console ("[weer] vaarradarLokaal: voorbeeldrecord") zodat je op lexdev-nw
-// zelf kunt checken of het klopt. Andere veldnamen dan verwacht? Dan moet
-// vertaalRecord() hieronder bijgesteld worden — zelfde aanpak als destijds
-// bij vliegradar.js/vaarradar.js.
+// GeoJSON-vorm (bevestigd met een echte curl door Lex, 2026-08-31):
+//   { "type": "FeatureCollection", "time_span": 1800, "features": [
+//     { "type": "Feature",
+//       "properties": { "mmsi": 244210570, "heading": null, "cog": 0,
+//         "speed": 0, "shipname": "", "callsign": "", "country": "NL",
+//         "last_signal": 1788199913, ... },
+//       "geometry": { "type": "Point", "coordinates": [4.424457, 51.843967] } },
+//     ... ] }
+// LET OP de GeoJSON-coördinatenvolgorde: [lon, lat], NIET [lat, lon] — een
+// klassieke valkuil, hieronder expliciet zo uitgelezen. "heading" is al door
+// AIS-catcher zelf naar null vertaald als het niet beschikbaar is (geen
+// rauwe AIS-511-sentinel meer, maar voor de zekerheid ook die waarde nog
+// als "onbeschikbaar" behandeld). "last_signal" is een epoch-tijdstip in
+// SECONDEN — gebruikt als tijdMs i.p.v. het pollmoment zelf, dat is
+// nauwkeuriger (AIS-catcher's eigen "time_span" van 1800s bepaalt toch al
+// welke schepen meekomen; onze eigen VENSTER_MS hieronder is een striktere,
+// client-side aanvulling, zelfde opzet als vaarradar.js).
+// "shipname"/"callsign" komen als lege string binnen i.p.v. afwezig zodra ze
+// (nog) niet bekend zijn — hieronder naar null omgezet zoals de rest van de
+// app dat gewend is (zie vaarradar.js).
 
 const POLL_MS = 10 * 1000; // AIS-berichten komen vaak binnen; 10s geeft een vlotte kaart zonder de lokale AIS-catcher onnodig te bestoken
 const VENSTER_MS = 10 * 60 * 1000; // zelfde uitfaseervenster als vaarradar.js — een laatst-bekende positie zonder nieuw bericht verdwijnt na 10 min
 const BACKOFF_START_MS = 5000;
 const BACKOFF_MAX_MS = 60000;
 
-function vertaalRecord(ruw) {
-  const lat = typeof ruw?.lat === 'number' ? ruw.lat : typeof ruw?.Latitude === 'number' ? ruw.Latitude : null;
-  const lon = typeof ruw?.lon === 'number' ? ruw.lon : typeof ruw?.Longitude === 'number' ? ruw.Longitude : null;
-  if (lat === null || lon === null) return null;
+function vertaalFeature(feature) {
+  const coords = feature?.geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  const [lon, lat] = coords; // GeoJSON: [lon, lat], niet [lat, lon]
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
 
-  const mmsi = ruw?.mmsi ?? ruw?.MMSI;
+  const p = feature.properties ?? {};
+  const mmsi = p.mmsi;
   if (mmsi == null) return null;
 
-  // "heading" (true heading) is 511 als "niet beschikbaar" (AIS-conventie,
-  // zelfde als bij vaarradar.js) — val dan terug op "course" (course over
-  // ground), dat is er vrijwel altijd wel.
+  // "heading" is bij AIS-catcher al null als het niet beschikbaar is; de
+  // klassieke AIS-511-sentinel wordt hier voor de zekerheid ook nog als
+  // "onbeschikbaar" behandeld, mocht een andere/oudere AIS-catcher-versie
+  // die ooit toch rauw doorgeven. Val dan terug op cog (course over ground).
   const koersGraden =
-    typeof ruw.heading === 'number' && ruw.heading < 511 ? ruw.heading : typeof ruw.course === 'number' ? ruw.course : null;
+    typeof p.heading === 'number' && p.heading < 511 ? p.heading : typeof p.cog === 'number' ? p.cog : null;
+
+  const tijdMs = typeof p.last_signal === 'number' ? p.last_signal * 1000 : Date.now();
 
   return {
     mmsi,
-    naam: String(ruw.shipname ?? ruw.name ?? '').trim() || null,
+    naam: String(p.shipname ?? '').trim() || null,
     lat,
     lon,
     koersGraden,
-    snelheidKn: typeof ruw.speed === 'number' ? ruw.speed : null,
-    tijdMs: Date.now(),
+    snelheidKn: typeof p.speed === 'number' ? p.speed : null,
+    tijdMs,
   };
 }
 
@@ -90,19 +105,16 @@ export function startVaarradarLokaalFeed(env) {
       const res = await fetch(env.vaarradarLokaalUrl, { headers: { Connection: 'close' } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
-      // AIS-catcher's /ships.json is (volgens documentatie) een platte
-      // array; sommige varianten/wrappers zetten 'm onder een "ships"-sleutel
-      // — allebei geaccepteerd, net zoals vliegradar.js met ac/aircraft doet.
-      const lijst = Array.isArray(body) ? body : Array.isArray(body?.ships) ? body.ships : null;
-      if (lijst === null) throw new Error('onherkenbaar antwoord (geen array en geen "ships"-lijst)');
+      const features = Array.isArray(body?.features) ? body.features : null;
+      if (features === null) throw new Error('onherkenbaar antwoord (geen GeoJSON FeatureCollection met "features")');
 
-      if (voorbeeldenGelogd < 3 && lijst.length) {
+      if (voorbeeldenGelogd < 3 && features.length) {
         voorbeeldenGelogd++;
-        log(`voorbeeldrecord ${voorbeeldenGelogd}: ${JSON.stringify(lijst[0]).slice(0, 400)}`);
+        log(`voorbeeldrecord ${voorbeeldenGelogd}: ${JSON.stringify(features[0]).slice(0, 400)}`);
       }
 
-      for (const ruw of lijst) {
-        const p = vertaalRecord(ruw);
+      for (const feature of features) {
+        const p = vertaalFeature(feature);
         if (p) posities.set(p.mmsi, p);
       }
       opschonen();

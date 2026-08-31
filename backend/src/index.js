@@ -46,7 +46,7 @@ const env = {
   // AIS-catcher's eigen webviewer-poort (8100) op localhost, aan te passen
   // via VAARRADAR_LOKAAL_URL in .env als de service op een andere poort
   // draait. Leeglaten (VAARRADAR_LOKAAL_URL=) zet deze bron uit.
-  vaarradarLokaalUrl: process.env.VAARRADAR_LOKAAL_URL === '' ? '' : (process.env.VAARRADAR_LOKAAL_URL ?? 'http://127.0.0.1:8100/ships.json'),
+  vaarradarLokaalUrl: process.env.VAARRADAR_LOKAAL_URL === '' ? '' : (process.env.VAARRADAR_LOKAAL_URL ?? 'http://127.0.0.1:8100/geojson'),
   // 2026-08-22, op verzoek van Lex — Web Push (zie sources/webpush.js) als
   // eigen, niet-storend PWA-alarmkanaal naast Pushover. De publieke sleutel
   // is (per ontwerp van VAPID) niet geheim — mag gewoon naar de frontend via
