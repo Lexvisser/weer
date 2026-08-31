@@ -163,17 +163,19 @@
            SVG zoals bij Lifeliner, zonder dat de rest van de logica
            verandert. Zie toggleVliegradar()/toggleVaarradar() in app.js. -->
       <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
-      <!-- 2026-08-21: Vaart-knop verborgen, geen functionaliteit verwijderd.
-           aisstream.io (de databron in backend/src/sources/vaarradar.js)
-           levert structureel geen data — bevestigd met twee onafhankelijke
-           live-tests (deze app + los Python-scriptje) en een bekend, open,
-           onopgelost issue bij aisstream.io zelf
-           (github.com/aisstream/aisstream/issues/15). De backend blijft
-           gewoon draaien/proberen; zodra er weer echt een scheepspositie
-           binnenkomt stuurt vaarradar.js automatisch een Pushover/mail-
-           melding (zie eersteDataMelden() daar). Kom je die melding tegen:
-           haal dan gewoon de style="display:none" hieronder weg. -->
-      <button id="toggleVaarradar" class="satelliet-toggle" style="display:none">⛴️<span class="knop-tekst"> Vaart</span></button>
+      <!-- 2026-08-21: Vaart-knop was hier verborgen omdat aisstream.io (de
+           databron in backend/src/sources/vaarradar.js) structureel geen
+           data levert — bekend, open, onopgelost issue bij aisstream.io
+           zelf (github.com/aisstream/aisstream/issues/15).
+           2026-08-31: weer zichtbaar. Eigen ontvangst (RTL-SDR Blog V4 +
+           AIS-catcher op lexdev-nw, zie backend/src/sources/
+           vaarradarLokaal.js) levert nu wél live posities — bevestigd met
+           een echte curl tegen AIS-catcher's /geojson én met de
+           "voorbeeldrecord"-logregels van de app zelf. /api/vaarradar
+           verkiest die lokale bron zodra 'ie data heeft (server.js) en
+           valt terug op aisstream.io (dat blijft gewoon meedraaien) als de
+           lokale ontvangst ooit leeg/onbereikbaar is. -->
+      <button id="toggleVaarradar" class="satelliet-toggle">⛴️<span class="knop-tekst"> Vaart</span></button>
       </div>
       <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
            Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS
