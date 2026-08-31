@@ -5068,19 +5068,22 @@ function bouwVliegIcon(koersGraden) {
 // (zijaanzicht) met een geraden +90deg-rotatiecorrectie, maar Lex wees erop
 // dat een zijaanzicht niet werkt voor een van-bovenaf-geroteerd icoon
 // ("dat plaatje met een zijaanzicht werkt niet, beter een soort papieren
-// bootje van bovenaf"). Vervangen door een zelf getekende SVG: een simpel
-// van-bovenaf bootje/kite-vorm (punt = boeg), precies zoals echte
-// vaarradar-apps (MarineTraffic e.d.) schepen tekenen. Voordeel t.o.v. een
-// emoji: de boeg wordt hier zelf naar boven (noord, 0°) getekend, dus geen
-// giswerk meer nodig over hoe een glyph "van nature" wijst — koersGraden kan
-// direct als rotatie gebruikt worden, geen correctie-offset.
+// bootje van bovenaf"). Vervangen door een zelf getekende SVG. Tweede
+// poging (een gladde kite-curve, boeg->volle breedte->afgeronde punt) zag er
+// volgens Lex uit als "een soort druppel", niet als een boot — een echte
+// scheepsromp van bovenaf heeft een puntige boeg maar daarna vrij RECHTE,
+// evenwijdige zijden (het "midscheeps"-gedeelte) en een platte achtersteven
+// (spiegel), geen doorlopende bolle curve. Path hieronder volgt dat: boeg
+// (punt) -> rechte schuine zijden naar volle breedte -> rechte evenwijdige
+// zijden -> licht afgeronde hoeken naar een platte achtersteven. Boeg wijst
+// naar boven (noord) bij 0°, dus koersGraden kan direct als rotatie.
 function bouwVaarIcon(koersGraden) {
   const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
   return L.divIcon({
     className: '',
-    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)"><svg viewBox="0 0 20 28" width="20" height="28"><path d="M10,0 L18,20 Q10,28 2,20 Z" fill="#f4f6fb" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
-    iconSize: [20, 28],
-    iconAnchor: [10, 14],
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)"><svg viewBox="0 0 18 30" width="18" height="30"><path d="M9,0 L15,10 L15,24 Q15,28 11,28 L7,28 Q3,28 3,24 L3,10 Z" fill="#f4f6fb" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
+    iconSize: [18, 30],
+    iconAnchor: [9, 15],
   });
 }
 
