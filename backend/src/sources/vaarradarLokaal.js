@@ -37,7 +37,11 @@
 // (nog) niet bekend zijn — hieronder naar null omgezet zoals de rest van de
 // app dat gewend is (zie vaarradar.js).
 
-const POLL_MS = 10 * 1000; // AIS-berichten komen vaak binnen; 10s geeft een vlotte kaart zonder de lokale AIS-catcher onnodig te bestoken
+const POLL_MS = 3 * 1000; // 2026-09-01, op verzoek van Lex ("dan zou de boot wat meer bewegen") verlaagd van 10s
+// naar 3s, gelijk aan de frontend-poll (RADAR_POLL_MS in app.js) — voorheen stapelden beide
+// vertragingen op (tot 10s backend + tot 3s frontend = tot 13s voor een verse positie op de
+// kaart verscheen), nu is de backend niet meer de tragere schakel. AIS-catcher's /geojson is
+// een lokaal in-memory endpoint (zelfde machine), dus 3s pollen kost niets noemenswaardigs.
 const VENSTER_MS = 10 * 60 * 1000; // zelfde uitfaseervenster als vaarradar.js — een laatst-bekende positie zonder nieuw bericht verdwijnt na 10 min
 const BACKOFF_START_MS = 5000;
 const BACKOFF_MAX_MS = 60000;
