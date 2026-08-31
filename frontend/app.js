@@ -5063,6 +5063,30 @@ function bouwVliegIcon(koersGraden) {
   });
 }
 
+// 2026-08-31, op verzoek van Lex ("een ander icoon, zonder rondje, desnoods
+// zoals de echte vaarradar dat doet") — zelfde behandeling als
+// bouwVliegIcon() hierboven: losgetrokken van bouwVerkeerIcon()'s
+// rondje-badge, en roteert mee met koersGraden (heading/cog uit
+// vaarradar.js/vaarradarLokaal.js).
+//
+// +90deg-correctie (i.p.v. de -45 bij het vliegtuig): de ⛴️-glyph wijst in
+// de meeste lettertypen (Apple/Twemoji/Noto) van nature naar LINKS (west,
+// kompaskoers 270°) i.p.v. rechtsboven zoals ✈️. Om koers 0° (noord) recht
+// omhoog te laten wijzen moet de neus dus 90° met de klok mee gedraaid
+// worden vanaf "wijst naar links". Zelfde vuistregel-voorbehoud als bij
+// bouwVliegIcon(): geen exacte per-glyph meting, bij twijfel zelf even
+// vergelijken met een schip waarvan de vaarrichting duidelijk is (bijv. een
+// rechte rivierstrook) en het getal hieronder bijstellen.
+function bouwVaarIcon(koersGraden) {
+  const rotatie = typeof koersGraden === 'number' ? koersGraden + 90 : 0;
+  return L.divIcon({
+    className: '',
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)">⛴️</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
+
 // 2026-08-21, op verzoek van Lex ("ze verdwijnen nu periodiek of zo") — elke
 // poll (om de 3s) vuurt een nieuw /api/vliegradar-verzoek af zonder het
 // vorige te annuleren. Normaal komen die keurig op volgorde terug, maar
@@ -5142,7 +5166,7 @@ async function ververVaarradar() {
     if (!vaarLaag) vaarLaag = L.layerGroup().addTo(kaart);
     vaarLaag.clearLayers();
     (data.schepen ?? []).forEach((s) => {
-      const marker = L.marker([s.lat, s.lon], { icon: bouwVerkeerIcon('⛴️') });
+      const marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden) });
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
       const details = [s.snelheidKn != null ? `${Math.round(s.snelheidKn)} kn` : null, `${s.afstandKm} km van jou`].filter(Boolean).join(' · ');
       marker.bindPopup(`<div class="popup-titel">⛴️ ${escapeHtml(naam)}</div><div class="popup-sub">${escapeHtml(details)}</div>`);
