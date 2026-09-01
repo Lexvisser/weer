@@ -46,6 +46,7 @@ import { fetchIssLive } from './sources/issLive.js';
 import { controleerIssAlarm } from './sources/celestrak.js';
 import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.js';
 import { startVaarradarLokaalFeed } from './sources/vaarradarLokaal.js';
+import { haalScheepsfotoOp } from './sources/scheepsfoto.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
 import { fetchStormvloedkering } from './sources/stormvloedkering.js';
 import { fetchPtwc } from './sources/ptwc.js';
@@ -1202,6 +1203,20 @@ export function createApp(env) {
         schepen,
         bron: lokaalHeeftData ? 'lokaal (RTL-SDR + AIS-catcher)' : 'aisstream.io',
       });
+    }
+    // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met AIS
+    // ook een fotootje hadden... ja leuk!") -- zie scheepsfoto.js voor het
+    // volledige verhaal (ongeautoriseerde publieke VesselFinder-foto-URL,
+    // bewuste keuze met Lex, cache/dedupe). BEWUST EEN LOSSE ROUTE i.p.v.
+    // meegepold in /api/vaarradar hierboven: de frontend roept dit alleen
+    // aan zodra een scheepspopup daadwerkelijk opengaat (zie app.js), niet
+    // voor elk schip in elke 3s-poll -- anders bombardeert dit VesselFinder
+    // binnen no time plat.
+    if (url === '/api/scheepsfoto') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const mmsi = params.get('mmsi');
+      const fotoUrl = await haalScheepsfotoOp(mmsi);
+      return sendJson(res, 200, { url: fotoUrl });
     }
     if (url === '/api/status') {
       return sendJson(res, 200, { bronnen: SOURCES.map((s) => states.get(s.id).toStatus()) });

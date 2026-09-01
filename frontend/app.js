@@ -5156,6 +5156,26 @@ async function ververVliegradar() {
   }
 }
 
+// 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met AIS
+// ook een fotootje hadden in zo'n app, hoe werkt dat?" -> "ja leuk!") --
+// zoekt de foto pas op als een scheepspopup daadwerkelijk opengaat (zie de
+// marker.once('popupopen', ...) hierboven in ververVaarradar), en laat de
+// popup verder gewoon ongewijzigd als er geen foto gevonden is (data.url
+// is dan null -- zie scheepsfoto.js) i.p.v. een lege/kapotte afbeelding te
+// tonen.
+async function haalEnToonScheepsfoto(marker, mmsi) {
+  try {
+    const data = await fetch(`/api/scheepsfoto?mmsi=${mmsi}`).then((r) => r.json());
+    if (!data.url) return;
+    const popup = marker.getPopup();
+    if (!popup) return;
+    popup.setContent(`<img class="popup-scheepsfoto" src="${escapeHtml(data.url)}" alt="" loading="lazy">` + popup.getContent());
+    if (marker.isPopupOpen()) popup.update();
+  } catch (err) {
+    console.error('scheepsfoto ophalen mislukt', err);
+  }
+}
+
 async function ververVaarradar() {
   if (!vaarradarActief || !kaart) return;
   try {
@@ -5170,6 +5190,13 @@ async function ververVaarradar() {
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
       const details = [s.snelheidKn != null ? `${Math.round(s.snelheidKn)} kn` : null, `${s.afstandKm} km van jou`].filter(Boolean).join(' · ');
       marker.bindPopup(`<div class="popup-titel">⛴️ ${escapeHtml(naam)}</div><div class="popup-sub">${escapeHtml(details)}</div>`);
+      // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
+      // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
+      // deze popup daadwerkelijk OPENT (marker.once, dus hooguit een keer per
+      // schip per keer dat de popup opengaat), nooit vooraf voor alle
+      // zichtbare schepen -- zie scheepsfoto.js/server.js voor waarom (geen
+      // eigen officiele API, dus zuinig zijn op het aantal opzoekingen).
+      marker.once('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
       vaarLaag.addLayer(marker);
     });
   } catch (err) {
