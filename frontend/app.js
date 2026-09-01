@@ -5077,11 +5077,40 @@ function bouwVliegIcon(koersGraden) {
 // (punt) -> rechte schuine zijden naar volle breedte -> rechte evenwijdige
 // zijden -> licht afgeronde hoeken naar een platte achtersteven. Boeg wijst
 // naar boven (noord) bij 0°, dus koersGraden kan direct als rotatie.
-function bouwVaarIcon(koersGraden) {
+// 2026-09-01, op verzoek van Lex ("ik zou de bootjes een kleurtje willen
+// geven -- kunnen we nog wat leuks doen om tussen de boten te differentieren
+// met de kleuren?"). Eerste van drie besproken opties gekozen: elk schip een
+// eigen, VASTE kleur i.p.v. per scheepstype (zou shiptype-data uit AIS-catcher
+// vereisen -- nog niet bevestigd of de lokale geojson-feed dat meegeeft, zie
+// vaarradarLokaal.js) of op snelheid/status (zegt niets over WELK schip het
+// is). Zelfde soort idee als de vaste kleur per NAVTEX-station in
+// navtexLokaal.js, maar daar is een kleine, VASTE lijst met stations die
+// stuk voor stuk met de hand een kleur kregen -- hier is elk denkbaar MMSI
+// mogelijk, dus een kleine hash i.p.v. een lookup-tabel. Simpele
+// vermenigvuldig-hash (a la Java's String.hashCode) + een extra
+// bit-menging (hash ^ hash>>>16, dezelfde afrondingstruc als MurmurHash's
+// finalizer) zodat schepen met dezelfde landcode (MMSI's beginnen met een
+// vast MID-landprefix, dus zonder die extra menging zouden bijv. alle
+// Nederlandse schepen -- 244/245/246... -- toch te dicht bij elkaar op het
+// kleurenwiel kunnen uitkomen). Zelfde MMSI geeft altijd dezelfde kleur,
+// ook over herstarts/polls heen (puur een functie van het getal, geen
+// opgeslagen state nodig).
+function kleurVoorMmsi(mmsi) {
+  let hash = 0;
+  const tekst = String(mmsi ?? '');
+  for (let i = 0; i < tekst.length; i++) {
+    hash = (Math.imul(hash, 31) + tekst.charCodeAt(i)) | 0;
+  }
+  hash ^= hash >>> 16;
+  const tint = ((hash % 360) + 360) % 360; // hash is een int32, dus kan negatief zijn
+  return `hsl(${tint}, 78%, 62%)`;
+}
+
+function bouwVaarIcon(koersGraden, kleur) {
   const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
   return L.divIcon({
     className: '',
-    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)"><svg viewBox="0 0 18 30" width="18" height="30"><path d="M9,0 L15,10 L15,24 Q15,28 11,28 L7,28 Q3,28 3,24 L3,10 Z" fill="#f4f6fb" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)"><svg viewBox="0 0 18 30" width="18" height="30"><path d="M9,0 L15,10 L15,24 Q15,28 11,28 L7,28 Q3,28 3,24 L3,10 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
     iconSize: [18, 30],
     iconAnchor: [9, 15],
   });
@@ -5186,10 +5215,16 @@ async function ververVaarradar() {
     if (!vaarLaag) vaarLaag = L.layerGroup().addTo(kaart);
     vaarLaag.clearLayers();
     (data.schepen ?? []).forEach((s) => {
-      const marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden) });
+      const kleur = kleurVoorMmsi(s.mmsi);
+      const marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur) });
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
       const details = [s.snelheidKn != null ? `${Math.round(s.snelheidKn)} kn` : null, `${s.afstandKm} km van jou`].filter(Boolean).join(' · ');
-      marker.bindPopup(`<div class="popup-titel">⛴️ ${escapeHtml(naam)}</div><div class="popup-sub">${escapeHtml(details)}</div>`);
+      // Het bolletje voor de naam herhaalt dezelfde kleur als het bootje op de
+      // kaart -- puur zodat een popup meteen te koppelen is aan "welk bootje
+      // was dat ook alweer" als er meerdere tegelijk openstaan.
+      marker.bindPopup(
+        `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}</div><div class="popup-sub">${escapeHtml(details)}</div>`
+      );
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
       // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
       // deze popup daadwerkelijk OPENT (marker.once, dus hooguit een keer per
