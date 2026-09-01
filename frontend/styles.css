@@ -687,6 +687,18 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .label-popup-inhoud .popup-surge,
 .label-popup-inhoud .popup-link { font-size:0.75em; }
 .label-popup-inhoud .popup-advies { font-size:0.9em; }
+/* 2026-09-01-bug (Lex: "ik zie een smalle strook" bij een scheepsfoto in
+   het schermvullende label) -- .popup-scheepsfoto hierboven is getuned op
+   de KLEINE Leaflet-popup (vaste max-height:140px, negatieve margin die
+   precies .leaflet-popup-content's 10px/12px-marge opheft). De
+   schermvullende overlay hergebruikt dezelfde HTML (zie
+   toonVolledigSchermPopup() in app.js) maar is veel breder en heeft een
+   ANDERE omlijsting (.label-popup-inhoud's 16px PADDING i.p.v. een marge
+   op de content zelf) -- dezelfde vaste 140px werd daardoor een dun
+   streepje over de volle breedte. Hier een eigen, grotere maat (schaalt
+   mee met de viewport i.p.v. een vast aantal pixels) en een negatieve
+   marge die bij DEZE 16px-padding hoort. */
+.label-popup-inhoud .popup-scheepsfoto { width:calc(100% + 32px); max-height:45vh; margin:-16px -16px 12px -16px; border-radius:0; }
 /* 2026-08-19: Lex meldde dat de regenradar-animatie nog steeds "schokkerig"
    voelt — "de hele bui wordt opgetild en verderop neergezet". Dat klopt: elk
    RainViewer-frame is een écht momentopname 10 minuten uit elkaar (bevestigd
