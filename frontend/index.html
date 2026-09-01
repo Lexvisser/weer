@@ -176,6 +176,14 @@
            valt terug op aisstream.io (dat blijft gewoon meedraaien) als de
            lokale ontvangst ooit leeg/onbereikbaar is. -->
       <button id="toggleVaarradar" class="satelliet-toggle">⛴️<span class="knop-tekst"> Vaart</span></button>
+      <!-- 2026-09-01, op verzoek van Lex ("kunnen we nog wat leuks doen om
+           tussen de boten te differentieren met de kleuren?") -- cyclet
+           tussen drie kleurmodi voor de bootjes op de vaarradar (per schip /
+           per scheepstype / op snelheid, zie kleurVoorSchip() in app.js).
+           Alleen zichtbaar zolang Vaart-modus aanstaat (zelfde
+           display-toggle-patroon als #toggleNavtexRuw bij Zee-modus
+           hierboven), verborgen tot dan. -->
+      <button id="vaarKleurModus" class="satelliet-toggle" style="display:none;" title="Kleur van de bootjes wisselen: per schip / per scheepstype / op snelheid">🎨<span class="knop-tekst"> Schip</span></button>
       </div>
       <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
            Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS

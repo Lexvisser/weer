@@ -49,6 +49,7 @@ const DWD_KAART_OVERLAY_EL = document.getElementById('dwdKaartOverlay');
 const DWD_KAART_IMG_EL = document.getElementById('dwdKaartImg');
 const DWD_KAART_STATUS_EL = document.getElementById('dwdKaartStatus');
 const TOGGLE_VAARRADAR_EL = document.getElementById('toggleVaarradar');
+const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
 // zijn weg, zie index.html) — één gedeelde Stop-knop voor kaartVolgType,
 // zie startKaartVolgen()/stopKaartVolgen() verderop.
@@ -715,6 +716,8 @@ function initMap() {
   // Tik op de kaart: wisselen tussen passend en 100% (dan scrollen/pinchen).
   DWD_KAART_IMG_EL?.addEventListener('click', () => DWD_KAART_IMG_EL.classList.toggle('passend'));
   TOGGLE_VAARRADAR_EL.addEventListener('click', toggleVaarradar);
+  VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
+  zetVaarKleurKnopLabel();
   // Lex: "...waarna er een knop Stop zichtbaar is. Waarmee ISS/Starlink
   // wordt verborgen, alle hazards weer terugkomen en er wordt
   // teruggenavigeerd naar Hemel." — vandaar terugNaarHemel=true hier.
@@ -5106,6 +5109,98 @@ function kleurVoorMmsi(mmsi) {
   return `hsl(${tint}, 78%, 62%)`;
 }
 
+// 2026-09-01, vervolg op kleurVoorMmsi hierboven -- Lex wilde "gewoon een
+// keuzelijst" om tussen de drie besproken kleurmodi te wisselen i.p.v. maar
+// een van de drie definitief te kiezen. vaarKleurModus (hieronder, met
+// VAARKLEUR_KEY voor het onthouden per toestel -- zelfde localStorage-
+// patroon als GRADEN_KEY/NAVTEX_AUTO_KEY elders) bepaalt welke van de drie
+// kleurVoorSchip() teruggeeft; de #vaarKleurModus-knop (zie index.html,
+// alleen zichtbaar in Vaart-modus) cyclet ertussen.
+const VAARKLEUR_KEY = 'weerVaarKleurModus';
+const VAARKLEUR_MODI = ['schip', 'type', 'snelheid'];
+const VAARKLEUR_MODUS_LABEL = { schip: 'Schip', type: 'Type', snelheid: 'Snelheid' };
+let vaarKleurModus = 'schip';
+try {
+  const opgeslagen = localStorage.getItem(VAARKLEUR_KEY);
+  if (VAARKLEUR_MODI.includes(opgeslagen)) vaarKleurModus = opgeslagen;
+} catch (_) {
+  /* privé-modus, gewoon bij de standaard ('schip') blijven */
+}
+
+// Optie 2: kleur per scheepscategorie (zie categoriseerScheepstype() in
+// vaarradarLokaal.js voor hoe s.scheepscategorie tot stand komt). 'overig'
+// (bekend type, maar geen van de onderstaande) en een ontbrekende categorie
+// (geen scheepstype-data binnengekomen) delen bewust dezelfde neutrale
+// grijstint -- hetzelfde "geen idee"-grijs (#9aa0b4) dat de NAVTEX-kaart ook
+// al gebruikt voor een onbevestigd station (zie STATION_KLEUR_ONBEKEND in
+// navtexLokaal.js), voor eenzelfde visuele taal door de hele app heen.
+const KLEUR_SCHEEP_ONBEKEND = '#9aa0b4';
+const KLEUR_PER_SCHEEPSCATEGORIE = {
+  vracht: '#4c9df0',
+  tanker: '#f0824c',
+  vissersboot: '#5be0a0',
+  sleepboot: '#e0c14c',
+  plezierjacht: '#f04ca8',
+  passagiersschip: '#7b4cf0',
+  hogesnelheid: '#ff6b6b',
+  hulpdienst: '#4cf0e0',
+  overig: KLEUR_SCHEEP_ONBEKEND,
+};
+const SCHEEPSCATEGORIE_LABEL = {
+  vracht: 'Vrachtschip',
+  tanker: 'Tanker',
+  vissersboot: 'Vissersboot',
+  sleepboot: 'Sleepboot',
+  plezierjacht: 'Plezierjacht',
+  passagiersschip: 'Passagiersschip',
+  hogesnelheid: 'Hogesnelheidsvaartuig',
+  hulpdienst: 'Hulpvaartuig',
+  // 'overig' bewust GEEN label -- "Overig" in de popup zegt niks nuttigs,
+  // beter helemaal weglaten dan een loze regel tonen.
+};
+
+function kleurVoorScheepscategorie(categorie) {
+  return KLEUR_PER_SCHEEPSCATEGORIE[categorie] ?? KLEUR_SCHEEP_ONBEKEND;
+}
+
+// Optie 3: kleur op snelheid -- een "warmte"-schaal (grijsblauw stilliggend
+// tot rood snel) i.p.v. willekeurige kleuren, zodat de kleur zelf meteen wat
+// betekent i.p.v. alleen onderscheid te maken. Grenzen met de hand gekozen
+// (geen officiele norm zoals bij scheepstype-codes): 0-0,5kn nog als
+// "stilliggend" behandeld i.p.v. precies 0, voor kleine GPS/decodeerruis
+// rond stilstand.
+function kleurVoorSnelheid(snelheidKn) {
+  if (typeof snelheidKn !== 'number') return KLEUR_SCHEEP_ONBEKEND;
+  if (snelheidKn <= 0.5) return '#6c7a94'; // stilliggend/geankerd
+  if (snelheidKn <= 5) return '#4cd9f0'; // langzaam
+  if (snelheidKn <= 12) return '#3bff7c'; // normale vaart
+  if (snelheidKn <= 20) return '#ffce4c'; // vlot
+  return '#ff6b6b'; // snel
+}
+
+function kleurVoorSchip(s) {
+  if (vaarKleurModus === 'type') return kleurVoorScheepscategorie(s.scheepscategorie);
+  if (vaarKleurModus === 'snelheid') return kleurVoorSnelheid(s.snelheidKn);
+  return kleurVoorMmsi(s.mmsi);
+}
+
+function wisselVaarKleurModus() {
+  const huidigeIndex = VAARKLEUR_MODI.indexOf(vaarKleurModus);
+  vaarKleurModus = VAARKLEUR_MODI[(huidigeIndex + 1) % VAARKLEUR_MODI.length];
+  try {
+    localStorage.setItem(VAARKLEUR_KEY, vaarKleurModus);
+  } catch (_) {
+    /* privé-modus */
+  }
+  zetVaarKleurKnopLabel();
+  ververVaarradar(); // meteen herkleuren, niet wachten op de volgende 3s-poll
+}
+
+function zetVaarKleurKnopLabel() {
+  const label = VAAR_KLEUR_KNOP_EL?.querySelector('.knop-tekst');
+  if (label) label.textContent = ` ${VAARKLEUR_MODUS_LABEL[vaarKleurModus]}`;
+}
+
 function bouwVaarIcon(koersGraden, kleur) {
   const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
   return L.divIcon({
@@ -5215,10 +5310,22 @@ async function ververVaarradar() {
     if (!vaarLaag) vaarLaag = L.layerGroup().addTo(kaart);
     vaarLaag.clearLayers();
     (data.schepen ?? []).forEach((s) => {
-      const kleur = kleurVoorMmsi(s.mmsi);
+      const kleur = kleurVoorSchip(s);
       const marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur) });
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
-      const details = [s.snelheidKn != null ? `${Math.round(s.snelheidKn)} kn` : null, `${s.afstandKm} km van jou`].filter(Boolean).join(' · ');
+      // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
+      // 'ie bekend is, ongeacht de actieve kleurmodus -- nuttige info op
+      // zichzelf, en meteen de manier om te zien of AIS-catcher's shiptype-
+      // veld hier uberhaupt gevuld binnenkomt (zie categoriseerScheepstype()
+      // in vaarradarLokaal.js): blijft dit label overal weg, dan is dat het
+      // antwoord op die open vraag.
+      const details = [
+        s.snelheidKn != null ? `${Math.round(s.snelheidKn)} kn` : null,
+        `${s.afstandKm} km van jou`,
+        SCHEEPSCATEGORIE_LABEL[s.scheepscategorie] ?? null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       // Het bolletje voor de naam herhaalt dezelfde kleur als het bootje op de
       // kaart -- puur zodat een popup meteen te koppelen is aan "welk bootje
       // was dat ook alweer" als er meerdere tegelijk openstaan.
@@ -5333,6 +5440,10 @@ function toggleVliegradar() {
 function toggleVaarradar() {
   vaarradarActief = !vaarradarActief;
   TOGGLE_VAARRADAR_EL.classList.toggle('actief', vaarradarActief);
+  // 2026-09-01: de kleurmodus-knop is alleen zinvol zolang er bootjes op de
+  // kaart staan om te herkleuren -- zelfde display-toggle-patroon als
+  // NAVTEX_RUW_KNOP_EL bij Zee-modus.
+  if (VAAR_KLEUR_KNOP_EL) VAAR_KLEUR_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"

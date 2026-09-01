@@ -46,6 +46,34 @@ const VENSTER_MS = 10 * 60 * 1000; // zelfde uitfaseervenster als vaarradar.js �
 const BACKOFF_START_MS = 5000;
 const BACKOFF_MAX_MS = 60000;
 
+// 2026-09-01, op verzoek van Lex ("kunnen we nog wat leuks doen om tussen de
+// boten te differentieren met de kleuren?") -- optie 2 van de drie besproken
+// kleurmodi in app.js: kleur per scheepstype. AIS-catcher's eigen JSON-docu-
+// mentatie (jvde-github.github.io/AIS-catcher-docs) noemt een numeriek
+// 'shiptype'-veld (0-99, standaard ITU-R M.1371-codes) uit AIS-berichttype
+// 5/19/24 -- STATISCHE data, dus een ander bericht dan de positieberichten
+// hierboven en minder vaak uitgezonden dan die. OF de webviewer-geojson-feed
+// dat veld per schip daadwerkelijk meegeeft kon vanuit deze sessie niet los
+// bevestigd worden (geen shell-toegang tot lexdev-nw hiervandaan) -- daarom
+// hieronder defensief op twee mogelijke veldnamen gecheckt. Blijkt het veld
+// structureel te ontbreken, dan is scheepstypeRuw altijd null en daarmee
+// categorie altijd null -- de frontend valt dan simpelweg terug op een
+// neutrale "onbekend"-kleur, geen crash. Check zelf even met een curl tegen
+// 127.0.0.1:8100/geojson of er 'shiptype' in de properties van een schip
+// zit, en welke waarde, om te zien of dit ooit meer dan "onbekend" toont.
+function categoriseerScheepstype(typeCode) {
+  if (typeof typeCode !== 'number' || typeCode <= 0) return null; // 0/ontbrekend: geen data, niet hetzelfde als "overig"
+  if (typeCode === 30) return 'vissersboot';
+  if (typeCode === 31 || typeCode === 32 || typeCode === 52) return 'sleepboot';
+  if (typeCode === 36 || typeCode === 37) return 'plezierjacht'; // zeilboot + motorjacht op één hoop, zelfde "leuke" kleur
+  if (typeCode === 50 || typeCode === 51 || typeCode === 55) return 'hulpdienst'; // loods/SAR/wetshandhaving
+  if (typeCode >= 40 && typeCode <= 49) return 'hogesnelheid';
+  if (typeCode >= 60 && typeCode <= 69) return 'passagiersschip';
+  if (typeCode >= 70 && typeCode <= 79) return 'vracht';
+  if (typeCode >= 80 && typeCode <= 89) return 'tanker';
+  return 'overig'; // bekend type, maar geen van de bovenstaande (bagger/duik/militair/WIG/90-99 etc.)
+}
+
 function vertaalFeature(feature) {
   const coords = feature?.geometry?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return null;
@@ -65,6 +93,9 @@ function vertaalFeature(feature) {
 
   const tijdMs = typeof p.last_signal === 'number' ? p.last_signal * 1000 : Date.now();
 
+  const scheepstypeRuw =
+    typeof p.shiptype === 'number' ? p.shiptype : typeof p.ship_type === 'number' ? p.ship_type : null;
+
   return {
     mmsi,
     naam: String(p.shipname ?? '').trim() || null,
@@ -72,6 +103,7 @@ function vertaalFeature(feature) {
     lon,
     koersGraden,
     snelheidKn: typeof p.speed === 'number' ? p.speed : null,
+    scheepscategorie: categoriseerScheepstype(scheepstypeRuw),
     tijdMs,
   };
 }
