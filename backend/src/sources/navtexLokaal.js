@@ -157,6 +157,18 @@ export const STATIONS = [
   // zendmastlocatie), net als bij de andere stations hierboven een
   // benadering, geen officieel opgegeven zendmastpositie.
   { id: 'S', naam: 'Pinneberg Radio', land: 'DE', lat: 53.652, lon: 9.797, navarea: 'I', kleur: '#8c8cf0', zendschema: ['03:00', '07:00', '11:00', '15:00', '19:00', '23:00'] },
+  // 2026-09-01, op verzoek van Lex ("de stations moeten worden uitgebreid met
+  // Gislövshammar, Zweden") -- live ontvangst gaf code 'J' (o.a. JA11, JA61)
+  // met een Kaliningrad NAV WARN over de zuidoostelijke Oostzee (54-55N,
+  // 019-020E, ~1058 km van Lex' locatie) -- precies het dekkingsgebied van
+  // een Oostzee-coordinatiestation, dus geen bitfout-verwarring zoals bij
+  // K/Niton. De internationale 518 kHz-lijst kent letter J toe aan
+  // Gislovshammar Radio (roepletters SAA), Zweden, NAVAREA I. Coordinaat is
+  // een benadering (kustdorp tussen Brantevik en Skillinge, Simrishamn) --
+  // net als bij S/Pinneberg hierboven geen officieel opgegeven
+  // zendmastpositie. Zendschema via dezelfde 518 kHz-letterformule als de
+  // andere stations hierboven (letterpositie 10 x 10 min = 01:30).
+  { id: 'J', naam: 'Gislövshammar Radio', land: 'SE', lat: 55.51, lon: 14.30, navarea: 'I', kleur: '#4cf0c8', zendschema: ['01:30', '05:30', '09:30', '13:30', '17:30', '21:30'] },
 ];
 const STATION_PER_ID = new Map(STATIONS.map((s) => [s.id, s]));
 const STATION_KLEUR_ONBEKEND = '#9aa0b4'; // zelfde neutraal-grijs als de BEVESTIGD-pil elders — "geen idee welk station"
