@@ -4985,6 +4985,17 @@ let vliegModusActief = false;
 let vaarradarActief = false;
 let vliegLaag = null;
 let vaarLaag = null;
+// 2026-09-01-bug (Lex: "de plaatjes van de boten blijven kort in beeld") --
+// ververVaarradar() deed elke poll (RADAR_POLL_MS = 3s) een clearLayers()
+// en maakte alle bootjes opnieuw aan, dus een open scheepspopup (met de net
+// opgehaalde foto) ging binnen 3s vanzelf weer dicht. Nu blijft elke marker
+// per MMSI bestaan en wordt alleen positie/icoon/tekst bijgewerkt; de popup
+// blijft dus gewoon openstaan totdat je zelf ernaast op de kaart tikt
+// (Leaflet-standaard) of 'm sluit. De foto-url wordt per MMSI onthouden
+// zodat 'ie bij elke update in de popup blijft staan en nooit twee keer
+// opgezocht wordt.
+const vaarMarkers = new Map(); // mmsi -> L.marker
+const scheepsfotoUrls = new Map(); // mmsi -> url (string) of null (= geen foto)
 let radarPollTimer = null;
 // 2026-08-21, op verzoek van Lex ("zou kunnen [een zichtbare cirkel]") —
 // laat de VLIEGRADAR_STRAAL_KM-zoekstraal rond je live positie zien, zodat
@@ -5283,21 +5294,30 @@ async function ververVliegradar() {
 // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met AIS
 // ook een fotootje hadden in zo'n app, hoe werkt dat?" -> "ja leuk!") --
 // zoekt de foto pas op als een scheepspopup daadwerkelijk opengaat (zie de
-// marker.once('popupopen', ...) hierboven in ververVaarradar), en laat de
-// popup verder gewoon ongewijzigd als er geen foto gevonden is (data.url
-// is dan null -- zie scheepsfoto.js) i.p.v. een lege/kapotte afbeelding te
-// tonen.
+// marker.once('popupopen', ...) in ververVaarradar), en laat de popup verder
+// gewoon ongewijzigd als er geen foto gevonden is (data.url is dan null --
+// zie scheepsfoto.js) i.p.v. een lege/kapotte afbeelding te tonen.
+// 2026-09-01-bug-fix: de foto-url wordt in scheepsfotoUrls bewaard en via
+// scheepsPopupHtml() bij ELKE poll-update opnieuw in de popup gezet -- de
+// popup zelf blijft nu namelijk bestaan (zie vaarMarkers hierboven).
 async function haalEnToonScheepsfoto(marker, mmsi) {
+  if (scheepsfotoUrls.has(mmsi)) return; // al opgezocht (met of zonder resultaat)
   try {
     const data = await fetch(`/api/scheepsfoto?mmsi=${mmsi}`).then((r) => r.json());
+    scheepsfotoUrls.set(mmsi, data.url || null);
     if (!data.url) return;
     const popup = marker.getPopup();
-    if (!popup) return;
-    popup.setContent(`<img class="popup-scheepsfoto" src="${escapeHtml(data.url)}" alt="" loading="lazy">` + popup.getContent());
+    if (!popup || !marker.basisPopupHtml) return;
+    popup.setContent(scheepsPopupHtml(mmsi, marker.basisPopupHtml));
     if (marker.isPopupOpen()) popup.update();
   } catch (err) {
     console.error('scheepsfoto ophalen mislukt', err);
   }
+}
+
+function scheepsPopupHtml(mmsi, basisHtml) {
+  const url = scheepsfotoUrls.get(mmsi);
+  return (url ? `<img class="popup-scheepsfoto" src="${escapeHtml(url)}" alt="" loading="lazy">` : '') + basisHtml;
 }
 
 async function ververVaarradar() {
@@ -5308,10 +5328,10 @@ async function ververVaarradar() {
     const data = await fetch(`/api/vaarradar?lat=${lat}&lon=${lon}&straal=${VAARRADAR_STRAAL_KM}`).then((r) => r.json());
     if (!vaarradarActief) return;
     if (!vaarLaag) vaarLaag = L.layerGroup().addTo(kaart);
-    vaarLaag.clearLayers();
+    const gezien = new Set();
     (data.schepen ?? []).forEach((s) => {
+      gezien.add(s.mmsi);
       const kleur = kleurVoorSchip(s);
-      const marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur) });
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
       // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
       // 'ie bekend is, ongeacht de actieve kleurmodus -- nuttige info op
@@ -5329,17 +5349,40 @@ async function ververVaarradar() {
       // Het bolletje voor de naam herhaalt dezelfde kleur als het bootje op de
       // kaart -- puur zodat een popup meteen te koppelen is aan "welk bootje
       // was dat ook alweer" als er meerdere tegelijk openstaan.
-      marker.bindPopup(
-        `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}</div><div class="popup-sub">${escapeHtml(details)}</div>`
-      );
+      const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}</div><div class="popup-sub">${escapeHtml(details)}</div>`;
+      let marker = vaarMarkers.get(s.mmsi);
+      if (marker) {
+        // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
+        // blijft een open popup gewoon open (en de foto erin staan).
+        marker.setLatLng([s.lat, s.lon]);
+        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur));
+        if (basisHtml !== marker.basisPopupHtml) {
+          marker.basisPopupHtml = basisHtml;
+          marker.getPopup()?.setContent(scheepsPopupHtml(s.mmsi, basisHtml));
+        }
+        return;
+      }
+      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur) });
+      marker.basisPopupHtml = basisHtml;
+      marker.bindPopup(scheepsPopupHtml(s.mmsi, basisHtml));
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
       // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
-      // deze popup daadwerkelijk OPENT (marker.once, dus hooguit een keer per
-      // schip per keer dat de popup opengaat), nooit vooraf voor alle
-      // zichtbare schepen -- zie scheepsfoto.js/server.js voor waarom (geen
-      // eigen officiele API, dus zuinig zijn op het aantal opzoekingen).
-      marker.once('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
+      // deze popup daadwerkelijk OPENT, nooit vooraf voor alle zichtbare
+      // schepen -- zie scheepsfoto.js/server.js voor waarom (geen eigen
+      // officiele API, dus zuinig zijn op het aantal opzoekingen).
+      // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.
+      marker.on('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
       vaarLaag.addLayer(marker);
+      vaarMarkers.set(s.mmsi, marker);
+    });
+    // Bootjes die niet meer in de data zitten weghalen -- behalve als de
+    // popup ervan nog openstaat (AIS-data heeft wel eens een gaatje; het is
+    // vervelender dat je popup onder je vingers verdwijnt dan dat een bootje
+    // een poll langer blijft staan).
+    vaarMarkers.forEach((marker, mmsi) => {
+      if (gezien.has(mmsi) || marker.isPopupOpen()) return;
+      vaarLaag.removeLayer(marker);
+      vaarMarkers.delete(mmsi);
     });
   } catch (err) {
     console.error('vaarradar ophalen mislukt', err);
@@ -5453,6 +5496,7 @@ function toggleVaarradar() {
       kaart.removeLayer(vaarLaag);
       vaarLaag = null;
     }
+    vaarMarkers.clear(); // zie vaarMarkers hierboven; foto-urls mogen blijven
     if (zeeModusActief) toggleZeeModus(); // vaarradar "bezat" de zeemodus-activatie hierboven, dus ook weer uit
   }
   zorgRadarPolling();
