@@ -338,6 +338,15 @@ body {
    (.leaflet-tile i.p.v. de pane zelf) — zelfde uitzetting, nieuwe plek. */
 #map.zee-modus-actief .leaflet-tile-pane .leaflet-tile { filter: none; }
 
+/* 2026-09-02, op verzoek van Lex ("Donkere kaart next" -- de donkere kaart
+   moest sowieso behouden blijven voor de vaarradar, zie de allereerste wens
+   bij dit hele traject). Vaart-modus zet altijd ook Zee-modus aan (zie
+   toggleVaarradar() in app.js), dus zonder deze regel zou de kaart tijdens
+   Vaart-modus de lichte OSM-kleuren tonen (de regel hierboven, bedoeld voor
+   de losstaande Zee/NAVTEX-stand). Hogere specificiteit (twee klassen i.p.v.
+   één) wint hier automatisch van de regel hierboven, ongeacht volgorde. */
+#map.zee-modus-actief.vaar-modus-actief .leaflet-tile-pane .leaflet-tile { filter: invert(1) hue-rotate(200deg) brightness(0.95) contrast(0.9) saturate(1.4); }
+
 /* 2026-08-27: gale-windvaan per zeegebied (zie verversWindvanen() in
    app.js) — rode wimpel (het internationale stormsein) met het Beaufort-
    getal + trendpijl ernaast. Bewust groter en feller dan alle andere

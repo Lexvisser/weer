@@ -6030,6 +6030,16 @@ function toggleVaarradar() {
   TOGGLE_VAARRADAR_EL.classList.toggle('actief', vaarradarActief);
   VAAR_MENU_INHOUD_EL?.classList.toggle('verborgen', !vaarradarActief);
   if (vaarradarActief) bouwVaarTypeFilterPaneel(); // eenmalig, zie de child-count-guard daarin
+  // 2026-09-02, op verzoek van Lex ("Donkere kaart next" -- zie ook zijn
+  // allereerste wens bij dit hele vaarradar-traject: "De donkere kaart vind
+  // ik prachtig... Misschien kunnen we dat wel in zijn geheel meenemen").
+  // Zee-modus zet normaal de donkere invert-filter uit (zie de
+  // #map.zee-modus-actief-regel in styles.css, bedoeld voor de gewone
+  // Zee/NAVTEX-stand omdat de OpenSeaMap-seamark-laag op de donkere tegels
+  // niet lekker leesbaar was) -- deze extra klasse overschrijft dat weer
+  // specifiek voor Vaart-modus, dus de donkere kaart blijft staan terwijl
+  // AIS actief is, zonder de losstaande Zee/NAVTEX-stand te raken.
+  kaart.getContainer().classList.toggle('vaar-modus-actief', vaarradarActief);
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"
