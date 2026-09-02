@@ -1841,7 +1841,7 @@ function tekenGebiedOmtrek(signal) {
   // gebieden wat prominenter"): actieve tornado-omtrekken (watch én warning)
   // dikker, feller en met iets meer vulling dan de overige categorieën --
   // die 1.5px-stippellijn viel op de donkere kaart nauwelijks op.
-  const prominent = !verlopen && (signal.categorie === 'tornado' || signal.categorie === 'tornado-watch' || signal.categorie === 'tornado-bevestigd');
+  const prominent = !verlopen && DOPPLER_CATEGORIEEN.has(signal.categorie); // tornado, tornado-watch, tornado-bevestigd, severe-outlook
   if (Array.isArray(ringenLatLon) && ringenLatLon.length) {
     ringenLatLon.forEach((ring) => {
       L.polygon(ring, {
