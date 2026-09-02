@@ -251,7 +251,11 @@ const TEGEL_DIEPTE_MAX_Z = 12;
 // blijft ongewijzigd voor de rest van de app.
 const TEGEL_STADIA_BASIS_URL = 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark';
 const TEGEL_STADIA_MAX_Z = 20;
-const TEGEL_STADIA_API_KEY = (process.env.STADIAMAPS_API_KEY ?? '').trim();
+// LET OP: bewust een functie, geen constante — ES-module-imports worden
+// gehesen, dus deze module wordt geëvalueerd VÓÓRDAT index.js de .env heeft
+// ingelezen. Een constante hier was daardoor altijd leeg (501 geen-stadia-key
+// ondanks een correcte .env, 2026-09-02).
+const tegelStadiaApiKey = () => (process.env.STADIAMAPS_API_KEY ?? '').trim();
 const TEGEL_USER_AGENT = 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)';
 
 // 2026-08-25, op melding van Lex ("scherm bleef vrij lang wit voordat de
@@ -371,7 +375,7 @@ function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
     // Stadia vereist geen API-key wanneer alsnog niet ingesteld (bv. tijdens
     // ontwikkelen zonder .env) — dan meteen een nette fout i.p.v. een kale
     // 401/403 van upstream door te geven.
-    if (bron === 'stadia' && !TEGEL_STADIA_API_KEY) {
+    if (bron === 'stadia' && !tegelStadiaApiKey()) {
       return { status: 501, bron: 'geen-stadia-key' };
     }
 
@@ -379,7 +383,7 @@ function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
       // Alle bronnen gebruiken de gebruikelijke XYZ-volgorde (z/x/y).
       const basisUrl = bron === 'diepte' ? TEGEL_DIEPTE_BASIS_URL : bron === 'stadia' ? TEGEL_STADIA_BASIS_URL : TEGEL_BASIS_URL;
       const upstreamUrl = bron === 'stadia'
-        ? `${basisUrl}/${zNum}/${xNum}/${yNum}.png?api_key=${TEGEL_STADIA_API_KEY}`
+        ? `${basisUrl}/${zNum}/${xNum}/${yNum}.png?api_key=${tegelStadiaApiKey()}`
         : `${basisUrl}/${zNum}/${xNum}/${yNum}.png`;
       const upstream = await fetch(upstreamUrl, {
         headers: { 'User-Agent': TEGEL_USER_AGENT },
