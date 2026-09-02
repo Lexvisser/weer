@@ -5098,58 +5098,22 @@ let vaarLaag = null;
 // zodat 'ie bij elke update in de popup blijft staan en nooit twee keer
 // opgezocht wordt.
 const vaarMarkers = new Map(); // mmsi -> L.marker
-// 2026-09-02, op verzoek van Lex ("is het mogelijk om een specifiek gebied vrij te
-// houden van clustering" -> "vast rechthoekig gebied"). Leaflet.markercluster kent
-// geen "hier niet clusteren"-zone, dus: twee lagen. Schepen binnen een van deze
-// boxen gaan in vaarLosLaag (gewone layerGroup, nooit geclusterd), de rest in
-// vaarLaag (de clustergroep). Een schip dat de grens overvaart verhuist van laag
-// (zie ververVaarradar). De rand wordt licht gestippeld meegetekend zodat je ziet
-// waar de box ligt en 'm hier makkelijk kunt bijstellen. Meerdere boxen mag.
-const VAAR_CLUSTERVRIJE_ZONES = [
-  { naam: 'Maasvlakte-aanloop t/m Hoek van Holland/Brielle', latmin: 51.85, latmax: 52.02, lonmin: 3.9, lonmax: 4.3 },
-];
-let vaarLosLaag = null;
-function inClustervrijeZone(lat, lon) {
-  return VAAR_CLUSTERVRIJE_ZONES.some((z) => lat >= z.latmin && lat <= z.latmax && lon >= z.lonmin && lon <= z.lonmax);
-}
-
-// 2026-09-02-bug-fix, op melding van Lex ("Olea boven Vlaardingen [knippert]"
-// / "maran wave net buitengaats niet") -- ROOT CAUSE: Vlaardingen ligt vrijwel
-// EXACT op lonmax:4.3 van de clustervrije zone hierboven. Een schip dat daar
-// stil ligt of langzaam vaart, schommelt met normale GPS/AIS-ruis net over en
-// weer over die grenslijn -- elke keer dat inClustervrijeZone() daardoor van
-// resultaat wisselt, haalt ververVaarradar() de marker uit de ene laag
-// (vaarLaag/vaarLosLaag) en stopt 'm in de andere, wat het bootje (en de
-// eraan gekoppelde open hover-tooltip) zichtbaar liet verdwijnen/verschijnen.
-// "maran wave" (ruim buitengaats, ver van elke zonerand) had dit probleem
-// niet -- precies wat je zou verwachten als het aan de rand ligt, niet aan
-// de zone an sich.
-// Fix: hysterese i.p.v. één harde grens. Een schip dat al in de losse zone
-// zit, moet er met een marge (~1km) UIT bewegen voor het wisselt; een schip
-// dat er nog niet in zit, moet er met diezelfde marge IN bewegen. Bij een
-// nieuw schip (nog geen marker) geldt gewoon de exacte grens.
-const VAAR_ZONE_HYSTERESE_GRADEN = 0.01; // ~1km
-function bepaalLosLaag(lat, lon, huidigeStatus) {
-  if (huidigeStatus === true) {
-    return VAAR_CLUSTERVRIJE_ZONES.some(
-      (z) =>
-        lat >= z.latmin - VAAR_ZONE_HYSTERESE_GRADEN &&
-        lat <= z.latmax + VAAR_ZONE_HYSTERESE_GRADEN &&
-        lon >= z.lonmin - VAAR_ZONE_HYSTERESE_GRADEN &&
-        lon <= z.lonmax + VAAR_ZONE_HYSTERESE_GRADEN
-    );
-  }
-  if (huidigeStatus === false) {
-    return VAAR_CLUSTERVRIJE_ZONES.some(
-      (z) =>
-        lat >= z.latmin + VAAR_ZONE_HYSTERESE_GRADEN &&
-        lat <= z.latmax - VAAR_ZONE_HYSTERESE_GRADEN &&
-        lon >= z.lonmin + VAAR_ZONE_HYSTERESE_GRADEN &&
-        lon <= z.lonmax - VAAR_ZONE_HYSTERESE_GRADEN
-    );
-  }
-  return inClustervrijeZone(lat, lon); // nieuw schip: nog geen vorige status, gewoon de exacte grens
-}
+// 2026-09-02: de clustervrije-zone/hysterese-aanpak (opgebouwd op verzoek van
+// Lex, "is het mogelijk om een specifiek gebied vrij te houden van
+// clustering") is hier weer WEGGEHAALD, op Lex' eigen verzoek ("Alles wat
+// buiten de clustervrije zone ligt knippert. Hef anders die zone maar op").
+// Wat feitelijk bleek: niet de zonerand was het probleem (de hysterese-fix
+// van daarnet loste dat wel op) -- ALLES in de geclusterde laag (vaarLaag)
+// knipperde, ongeacht afstand tot een rand, terwijl de losse zone (nooit
+// geclusterd) nooit knipperde. Dat wijst naar L.markerClusterGroup zelf
+// (vermoedelijk refreshClusters(), zie de weggehaalde aanroep hieronder) als
+// echte oorzaak, niet naar de zonegrens. Vaarradar gebruikt hieronder nu een
+// kale L.layerGroup voor ALLE schepen -- geen clustering meer, dus ook geen
+// clustervrije-zone-onderscheid meer nodig. Lex test zelf even hoe zoomen/
+// pannen aanvoelt bij veel schepen (de oorspronkelijke reden voor clustering
+// was duizenden bootjes bij een grote straal, zie wisselVaarStraal()) --
+// mocht dat traag blijken, dan is clustering met een écht werkende refresh-
+// aanpak een latere vervolgstap, niet dit weer blind terugzetten.
 const scheepsfotoUrls = new Map(); // mmsi -> url (string) of null (= geen foto)
 let radarPollTimer = null;
 // 2026-08-21, op verzoek van Lex ("zou kunnen [een zichtbare cirkel]") —
@@ -5659,32 +5623,13 @@ async function ververVaarradar() {
     if (!vaarradarActief) return;
     const data = await fetch(`/api/vaarradar?lat=${lat}&lon=${lon}&straal=${vaarradarStraalKm}`).then((r) => r.json());
     if (!vaarradarActief) return;
-    // 2026-09-02, op verzoek van Lex (grote zoekstralen tot 250km leverden duizenden
-    // bootjes op, kaart bouwde merkbaar traag op -- zie wisselVaarStraal() hierboven) --
-    // L.markerClusterGroup i.p.v. een kale layerGroup. Verder overal drop-in compatibel
-    // (addLayer/removeLayer/clearLayers werken hetzelfde), alleen refreshClusters() erbij
-    // nodig na het in-place bijwerken van een bestaand bootje (setLatLng/setIcon), anders
-    // toont een cluster soms nog even de oude positie/kleur.
+    // 2026-09-02: was L.markerClusterGroup (voor grote zoekstralen tot 250km met
+    // duizenden bootjes, zie wisselVaarStraal() hierboven) -- nu terug naar een kale
+    // L.layerGroup, zie de toelichting hierboven bij het weggehaalde clustervrije-
+    // zone-blok. Geen refreshClusters() meer nodig: een kale layerGroup toont een
+    // in-place bijgewerkte marker (setLatLng/setIcon) gewoon meteen goed.
     if (!vaarLaag) {
-      vaarLaag = L.markerClusterGroup({
-        maxClusterRadius: 60,
-        disableClusteringAtZoom: 12, // vanaf hier altijd losse bootjes, ook al staan ze dicht op elkaar
-        showCoverageOnHover: false, // geen knipperende dekkingspolygoon bij hoveren over een cluster
-        chunkedLoading: true, // belangrijk bij duizenden schepen (250km-straal) -- blokkeert de UI niet
-        spiderfyOnMaxZoom: true,
-      }).addTo(kaart);
-    }
-    if (!vaarLosLaag) {
-      vaarLosLaag = L.layerGroup().addTo(kaart);
-      for (const z of VAAR_CLUSTERVRIJE_ZONES) {
-        L.rectangle(
-          [
-            [z.latmin, z.lonmin],
-            [z.latmax, z.lonmax],
-          ],
-          { color: '#ff9f43', weight: 1.5, dashArray: '6 6', fill: false, opacity: 0.85, interactive: false }
-        ).addTo(vaarLosLaag);
-      }
+      vaarLaag = L.layerGroup().addTo(kaart);
     }
     const gezien = new Set();
     // AISHub-only schepen (bron: 'aishub', geen eigen ontvangst) blijven weg
@@ -5727,7 +5672,6 @@ async function ververVaarradar() {
       const diepgangHtml = s.diepgangM != null ? `<div class="popup-sub">Diepgang ${s.diepgangM.toFixed(1)} m</div>` : '';
       const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}${bronLabel}</div><div class="popup-sub">${escapeHtml(details)}</div>${bestemmingHtml}${diepgangHtml}`;
       let marker = vaarMarkers.get(s.mmsi);
-      const losLaag = bepaalLosLaag(s.lat, s.lon, marker?.vaarInLosLaag); // true = vaarLosLaag, false = vaarLaag (cluster) -- hysterese, zie bepaalLosLaag()
       if (marker) {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
         // blijft een open popup gewoon open (en de foto erin staan).
@@ -5747,14 +5691,6 @@ async function ververVaarradar() {
         if (marker.vaarTooltipHtml !== tooltipHtml) {
           marker.setTooltipContent(tooltipHtml);
           marker.vaarTooltipHtml = tooltipHtml;
-        }
-        if (marker.vaarInLosLaag !== losLaag) {
-          // Grens van een clustervrije zone overgevaren: van laag wisselen.
-          (marker.vaarInLosLaag ? vaarLosLaag : vaarLaag).removeLayer(marker);
-          (losLaag ? vaarLosLaag : vaarLaag).addLayer(marker);
-          marker.vaarInLosLaag = losLaag;
-        } else if (!losLaag) {
-          vaarLaag.refreshClusters?.(marker); // clustergroep bijwerken na in-place positie/icoon-wijziging
         }
         if (basisHtml !== marker.basisPopupHtml) {
           marker.basisPopupHtml = basisHtml;
@@ -5779,8 +5715,7 @@ async function ververVaarradar() {
       // officiele API, dus zuinig zijn op het aantal opzoekingen).
       // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.
       marker.on('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
-      marker.vaarInLosLaag = losLaag;
-      (losLaag ? vaarLosLaag : vaarLaag).addLayer(marker);
+      vaarLaag.addLayer(marker);
       vaarMarkers.set(s.mmsi, marker);
     });
     // Bootjes die niet meer in de data zitten weghalen -- behalve als de
@@ -5789,7 +5724,7 @@ async function ververVaarradar() {
     // een poll langer blijft staan).
     vaarMarkers.forEach((marker, mmsi) => {
       if (gezien.has(mmsi) || marker.isPopupOpen()) return;
-      (marker.vaarInLosLaag ? vaarLosLaag : vaarLaag).removeLayer(marker);
+      vaarLaag.removeLayer(marker);
       vaarMarkers.delete(mmsi);
     });
   } catch (err) {
@@ -5905,10 +5840,6 @@ function toggleVaarradar() {
     if (vaarLaag) {
       kaart.removeLayer(vaarLaag);
       vaarLaag = null;
-    }
-    if (vaarLosLaag) {
-      kaart.removeLayer(vaarLosLaag);
-      vaarLosLaag = null;
     }
     vaarMarkers.clear(); // zie vaarMarkers hierboven; foto-urls mogen blijven
     if (zeeModusActief) toggleZeeModus(); // vaarradar "bezat" de zeemodus-activatie hierboven, dus ook weer uit
