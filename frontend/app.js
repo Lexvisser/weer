@@ -5358,6 +5358,20 @@ function etaTekst(eta) {
   return `${datum} ${String(eta.uur).padStart(2, '0')}:${String(eta.minuut).padStart(2, '0')}`;
 }
 
+// 2026-09-02, op verzoek van Lex (mouse-over i.p.v. altijd meteen klikken --
+// zie sessie-overleg, MarineTraffic/VesselFinder tonen bij hover een lichte
+// label en pas bij een klik het volledige kaartje) -- Leaflet's ingebouwde
+// (niet-permanente) tooltip regelt de show/hide-op-hover zelf, dus hier is
+// geen eigen mouseover/mouseout-wiring nodig. Bewust kort gehouden (naam +
+// snelheid) -- bestemming/ETA/status/foto blijven voorbehouden aan de volle
+// klik-popup (zie scheepsPopupEl() hieronder), anders is er geen verschil
+// meer tussen hoveren en klikken.
+function vaarTooltipHtml(s) {
+  const naam = s.naam || `MMSI ${s.mmsi}`;
+  const snelheid = s.snelheidKn != null ? ` · ${Math.round(s.snelheidKn)} kn` : '';
+  return `<strong>${escapeHtml(naam)}</strong>${snelheid}`;
+}
+
 function kleurVoorSchip(s) {
   if (vaarKleurModus === 'type') return kleurVoorScheepscategorie(s.scheepscategorie);
   if (vaarKleurModus === 'snelheid') return kleurVoorSnelheid(s.snelheidKn);
@@ -5527,27 +5541,54 @@ async function ververVliegradar() {
 // marker.once('popupopen', ...) in ververVaarradar), en laat de popup verder
 // gewoon ongewijzigd als er geen foto gevonden is (data.url is dan null --
 // zie scheepsfoto.js) i.p.v. een lege/kapotte afbeelding te tonen.
-// 2026-09-01-bug-fix: de foto-url wordt in scheepsfotoUrls bewaard en via
-// scheepsPopupHtml() bij ELKE poll-update opnieuw in de popup gezet -- de
-// popup zelf blijft nu namelijk bestaan (zie vaarMarkers hierboven).
+// 2026-09-02-bug-fix, op melding van Lex ("de foto knippert in een
+// regelmatige interval") -- ROOT CAUSE: elke poll (3s) verandert basisHtml
+// bijna altijd een klein beetje (afstandKm/snelheid schuiven mee), en de
+// oude scheepsPopupHtml() plakte de <img> en de tekst samen tot ÉÉN string
+// die bij zo'n wijziging via popup.setContent() in zijn GEHEEL werd
+// vervangen -- dus ook de <img>, die daardoor bij elke poll opnieuw werd
+// aangemaakt (en dus opnieuw laadde/knipperde), ook als de foto-url zelf
+// niet veranderde. Fix: foto en tekst zijn nu APARTE DOM-elementen
+// (marker.popupFotoEl/marker.popupTekstEl, zie scheepsPopupEl() hieronder)
+// die allebei blijven bestaan; alleen popupTekstEl.innerHTML wordt elke
+// poll bijgewerkt, popupFotoEl wordt met rust gelaten zolang de url niet
+// wijzigt -- geen herladende <img> meer bij een simpele snelheids-/
+// afstandswijziging.
 async function haalEnToonScheepsfoto(marker, mmsi) {
   if (scheepsfotoUrls.has(mmsi)) return; // al opgezocht (met of zonder resultaat)
   try {
     const data = await fetch(`/api/scheepsfoto?mmsi=${mmsi}`).then((r) => r.json());
     scheepsfotoUrls.set(mmsi, data.url || null);
-    if (!data.url) return;
-    const popup = marker.getPopup();
-    if (!popup || !marker.basisPopupHtml) return;
-    popup.setContent(scheepsPopupHtml(mmsi, marker.basisPopupHtml));
-    if (marker.isPopupOpen()) popup.update();
+    if (!data.url || !marker.popupFotoEl) return;
+    marker.popupFotoEl.innerHTML = `<img class="popup-scheepsfoto" src="${escapeHtml(data.url)}" alt="" loading="lazy">`;
+    marker.popupFotoUrl = data.url;
+    if (marker.isPopupOpen()) marker.getPopup()?.update();
   } catch (err) {
     console.error('scheepsfoto ophalen mislukt', err);
   }
 }
 
-function scheepsPopupHtml(mmsi, basisHtml) {
-  const url = scheepsfotoUrls.get(mmsi);
-  return (url ? `<img class="popup-scheepsfoto" src="${escapeHtml(url)}" alt="" loading="lazy">` : '') + basisHtml;
+// Bouwt (eenmalig per marker) een wrapper-element met twee losse kinderen --
+// popupFotoEl en popupTekstEl -- en bindt/hergebruikt die vervolgens als
+// Leaflet-popupinhoud. Alleen popupTekstEl.innerHTML wordt hier bijgewerkt;
+// popupFotoEl wordt uitsluitend door haalEnToonScheepsfoto() hierboven
+// gevuld, en alleen als de url daadwerkelijk verandert -- zie de
+// bug-fix-toelichting hierboven voor waarom dat apart moet blijven.
+function scheepsPopupEl(marker, mmsi, basisHtml) {
+  if (!marker.popupWrapperEl) {
+    marker.popupWrapperEl = document.createElement('div');
+    marker.popupFotoEl = document.createElement('div');
+    marker.popupTekstEl = document.createElement('div');
+    marker.popupWrapperEl.appendChild(marker.popupFotoEl);
+    marker.popupWrapperEl.appendChild(marker.popupTekstEl);
+    const bestaandeUrl = scheepsfotoUrls.get(mmsi);
+    if (bestaandeUrl) {
+      marker.popupFotoEl.innerHTML = `<img class="popup-scheepsfoto" src="${escapeHtml(bestaandeUrl)}" alt="" loading="lazy">`;
+      marker.popupFotoUrl = bestaandeUrl;
+    }
+  }
+  marker.popupTekstEl.innerHTML = basisHtml;
+  return marker.popupWrapperEl;
 }
 
 async function ververVaarradar() {
@@ -5631,6 +5672,7 @@ async function ververVaarradar() {
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
         marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil));
+        marker.setTooltipContent(vaarTooltipHtml(s));
         if (marker.vaarInLosLaag !== losLaag) {
           // Grens van een clustervrije zone overgevaren: van laag wisselen.
           (marker.vaarInLosLaag ? vaarLosLaag : vaarLaag).removeLayer(marker);
@@ -5641,13 +5683,18 @@ async function ververVaarradar() {
         }
         if (basisHtml !== marker.basisPopupHtml) {
           marker.basisPopupHtml = basisHtml;
-          marker.getPopup()?.setContent(scheepsPopupHtml(s.mmsi, basisHtml));
+          // Tekst-only bijwerken (zie scheepsPopupEl()/bug-fix-toelichting
+          // hierboven bij haalEnToonScheepsfoto) -- geen setContent() met een
+          // hele nieuwe string meer, dus de foto blijft met rust.
+          scheepsPopupEl(marker, s.mmsi, basisHtml);
+          if (marker.isPopupOpen()) marker.getPopup()?.update();
         }
         return;
       }
       marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil) });
       marker.basisPopupHtml = basisHtml;
-      marker.bindPopup(scheepsPopupHtml(s.mmsi, basisHtml));
+      marker.bindPopup(scheepsPopupEl(marker, s.mmsi, basisHtml));
+      marker.bindTooltip(vaarTooltipHtml(s), { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
       // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
       // deze popup daadwerkelijk OPENT, nooit vooraf voor alle zichtbare
