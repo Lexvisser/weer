@@ -58,17 +58,36 @@ const EVENT_TYPES = [
 // update/correctie van een lopende warning soms een NIEUW alert-id uit
 // (zie p.id hieronder) i.p.v. het bestaande bij te werken -- voor deze app
 // ziet dat eruit als "oude id verdwijnt (dus verlopen) + gloednieuwe id
-// verschijnt", terwijl het feitelijk dezelfde dreiging blijft.
-// Bewust NOG GEEN gedragswijziging (geen id's samenvoegen, geen mail/
-// Pushover/webpush onderdrukken) -- dit is veiligheidsrelevant, en zonder
-// live bevestiging van hoe NWS' "references"/messageType-velden er in de
-// praktijk daadwerkelijk uitzien is een blinde aanname daar te riskant (een
-// gemiste tornado-melding door een verkeerd geraden match is erger dan een
-// verwarrende "verlopen"-status). In plaats daarvan: puur loggen zodra dit
-// patroon zich voordoet (zelfde categorie + zelfde gebied, oude verdwijnt en
-// nieuwe verschijnt in dezelfde pollcyclus), zodat de eerstvolgende keer
-// meteen harde data in het log staat i.p.v. te moeten gokken op geheugen.
-let vorigePollSignalen = []; // [{ id, categorie, gebied }] van de vorige fetchNws()-cyclus
+// verschijnt", terwijl het feitelijk dezelfde dreiging blijft. Destijds
+// bewust NOG GEEN gedragswijziging, puur loggen (zie git-historie) -- zonder
+// live bevestiging van het patroon was een blinde aanname te riskant.
+//
+// 2026-09-02, op verzoek van Lex (4 losse mails voor wat 1 doorlopende
+// Tornado Warning bleek, 8:57-9:15 EDT) -- nu WEL doorgezet naar echte
+// onderdrukking, via "ketens" hieronder. Een keten volgt de laatst bekende
+// id + het laatst bekende gebied van één doorlopende dreiging: een nieuw id
+// dat verschijnt terwijl een oud id (zelfde categorie) verdwijnt, met een
+// overlappend gebied t.o.v. het LAATST bekende gebied van die keten (niet
+// per se het allereerste), telt als heruitgave van dezelfde dreiging. Dat
+// "laatst bekende" is bewust gekozen omdat het gebied vaak meebeweegt met de
+// storm (Lex' observatie: "wat je nu vaak ziet gebeuren") -- na meerdere
+// heruitgaves kan het huidige gebied heel anders zijn dan waar de keten
+// begon, zolang elke stap overlapt met de vorige blijft het dezelfde keten.
+//
+// Veiligheidsklep: als een heruitgave het dreigingsniveau verhoogt (bv. een
+// gewone warning wordt alsnog PDS/Emergency), wordt het alarm NIET
+// onderdrukt -- dat is precies het soort escalatie waar je wél opnieuw voor
+// gewaarschuwd wil worden, ongeacht dat het "dezelfde" keten is. Zie
+// dreigingsNiveauRang/vindEnSchuifKeten hieronder.
+const KETEN_TTL_MS = 3 * 60 * 60 * 1000; // 3 uur -- ruim boven duur+heruitgave-marge van een warning, voorkomt kruisbesmetting met een latere, ongerelateerde waarschuwing in hetzelfde gebied
+const actieveKetens = new Map(); // huidige id -> { categorie, gebiedTokens, niveau, laatstGezien }
+
+function ruimVerlopenKetensOp() {
+  const nu = Date.now();
+  for (const [id, keten] of actieveKetens) {
+    if (nu - keten.laatstGezien > KETEN_TTL_MS) actieveKetens.delete(id);
+  }
+}
 
 // 2026-08-27, op melding van Lex: de gebieden (county's) van opeenvolgende
 // tornado-warning-uitgaven schuiven vaak subtiel op naarmate de storm
@@ -93,22 +112,68 @@ function heeftOverlap(a, b) {
   return false;
 }
 
-function loginMogelijkeHeruitgave(signalen) {
-  const huidigeIds = new Set(signalen.map((s) => s.id));
-  const verdwenen = vorigePollSignalen.filter((v) => !huidigeIds.has(v.id));
-  const nieuweIds = new Set(vorigePollSignalen.map((v) => v.id));
-  const nieuw = signalen.filter((s) => !nieuweIds.has(s.id));
-  for (const oud of verdwenen) {
-    const oudTokens = gebiedTokens(oud.gebied);
-    if (!oudTokens.size) continue;
-    const kandidaat = nieuw.find((n) => n.categorie === oud.categorie && heeftOverlap(oudTokens, gebiedTokens(n.detail?.gebied)));
-    if (kandidaat) {
-      console.log(
-        `[weer] nws: mogelijke heruitgave gedetecteerd -- oud id "${oud.id}" (${oud.gebied}) verdween, nieuw id "${kandidaat.id}" (${kandidaat.detail?.gebied}) verscheen in dezelfde cyclus met overlappend gebied (${oud.categorie}). Nog geen automatische koppeling, puur ter info/logging.`,
-      );
-    }
+// Dreigingsniveau als rangnummer, voor de escalatie-veiligheidsklep hierboven
+// (hoger = ernstiger). Niet-tornado-categorieën (tsunami) hebben geen van
+// deze velden, dus altijd 0 -- daar wordt elke heruitgave onderdrukt, net als
+// voorheen.
+function dreigingsNiveauRang(signaal) {
+  if (signaal.detail?.tornadoEmergency) return 3;
+  if (signaal.detail?.pds) return 2;
+  if (signaal.detail?.tornadoWaargenomen) return 1;
+  return 0;
+}
+
+// Zoekt of `signaal` de voortzetting is van een bestaande keten: zelfde
+// categorie, overlappend gebied met het LAATST bekende gebied van die keten
+// (niet per se het allereerste -- zie uitleg hierboven bij KETEN_TTL_MS),
+// waarvan de oude id niet meer in de huidige pollcyclus voorkomt (dus echt
+// vervangen lijkt, niet toevallig een gelijktijdig ander signaal). Bij een
+// match schuift de keten door naar het nieuwe id/gebied/niveau.
+//
+// Return-waarde: `true` = onderdrukken (geen alarm), `false` = keten
+// gevonden maar niveau is hoger dan eerder gealarmeerd -- alarm gaat WEL
+// door (keten is al bijgewerkt), `null` = geen bestaande keten gevonden.
+function vindEnSchuifKeten(signaal, huidigeIds) {
+  const tokens = gebiedTokens(signaal.detail?.gebied);
+  if (!tokens.size) return null;
+  const niveau = dreigingsNiveauRang(signaal);
+  for (const [oudId, keten] of actieveKetens) {
+    if (oudId === signaal.id) continue;
+    if (huidigeIds.has(oudId)) continue; // oud id zelf nog steeds actief, geen reden om te koppelen
+    if (keten.categorie !== signaal.categorie) continue;
+    if (!heeftOverlap(keten.gebiedTokens, tokens)) continue;
+    actieveKetens.delete(oudId);
+    const onderdrukken = niveau <= keten.niveau;
+    actieveKetens.set(signaal.id, { categorie: signaal.categorie, gebiedTokens: tokens, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now() });
+    console.log(
+      onderdrukken
+        ? `[weer] nws: heruitgave gekoppeld -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm onderdrukt (al eerder gealarmeerd voor deze doorlopende dreiging).`
+        : `[weer] nws: heruitgave gekoppeld -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm gaat WEL door -- dreigingsniveau steeg (${keten.niveau} -> ${niveau}).`,
+    );
+    return onderdrukken;
   }
-  vorigePollSignalen = signalen.map((s) => ({ id: s.id, categorie: s.categorie, gebied: s.detail?.gebied ?? null }));
+  return null;
+}
+
+function registreerNieuweKeten(signaal) {
+  actieveKetens.set(signaal.id, {
+    categorie: signaal.categorie,
+    gebiedTokens: gebiedTokens(signaal.detail?.gebied),
+    niveau: dreigingsNiveauRang(signaal),
+    laatstGezien: Date.now(),
+  });
+}
+
+// Centrale poort vóór elke stuurAlarm/stuurMailAlarm/stuurWebPushAlarm-
+// aanroep in fetchNws() hieronder: true = stuur het alarm, false = een
+// heruitgave van een al-gealarmeerde keten, dus onderdrukken.
+function magDoorAlarmeren(signaal, huidigeIds) {
+  const onderdrukken = vindEnSchuifKeten(signaal, huidigeIds);
+  if (onderdrukken === null) {
+    registreerNieuweKeten(signaal);
+    return true;
+  }
+  return !onderdrukken;
 }
 
 // 2026-08-22: voor de media-zoekterm (zie verversMedia hieronder) — alleen
@@ -415,42 +480,49 @@ export async function fetchNws() {
   // trigger/tekst als Pushover hierboven (kaartTekst(s), "kaart is leidend"),
   // los aan/uit-schakelbaar (EMAIL_INGESCHAKELD) en met een eigen dedup, dus
   // onafhankelijk van of Pushover aan- of uitstaat.
+  // 2026-09-02: keten-opruiming + de verzameling "nog live" ids éénmalig per
+  // cyclus vóór de lus, zodat magDoorAlarmeren() hieronder voor elk signaal
+  // dezelfde snapshot gebruikt (zie vindEnSchuifKeten hierboven).
+  ruimVerlopenKetensOp();
+  const liveIds = new Set(signalen.map((s) => s.id));
   for (const s of signalen) {
     if (s.categorie === 'tornado' || s.categorie === 'tornado-watch') {
-      // 2026-08-20: de alarm-titel (het vetgedrukte deel op het lockscreen)
-      // volgt nu ook het dreigingsniveau (zie tornadoDreigingsniveau
-      // hierboven) — bij Tornado Emergency, het hoogste niveau, moet dát
-      // meteen bovenaan staan i.p.v. de generieke "Tornado Warning"-titel.
-      const titel = s.detail?.tornadoEmergency
-        ? '🚨 TORNADO EMERGENCY'
-        : s.detail?.pds
-        ? `⚠️ PDS ${s.categorie === 'tornado' ? 'Tornado Warning' : 'Tornado Watch'}`
-        : s.detail?.tornadoWaargenomen
-        ? '🎯 Tornado op de grond'
-        : s.categorie === 'tornado'
-        ? '🌪️ Tornado Warning'
-        : 'Tornado Watch';
-      const bericht = kaartTekst(s);
-      stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tornado' ? 2 : 1 });
-      // 2026-08-20: lat/lon/gebiedPolygon erbij op verzoek van Lex ("kaartje
-      // met de boundary in de mail") — zie kaartUrlVoor() in email.js.
-      stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
-      // 2026-08-22: derde, rustige (niet-herhalende) alarmkanaal naast
-      // Pushover/mail hierboven — zie webpush.js voor de aanleiding.
-      // lat/lon/gebiedPolygon erbij (2026-08-22, tweede toevoeging) zodat
-      // de melding zelf ook het kaartje kan tonen, zelfde bron als de mail.
-      // url erbij (2026-08-22, derde toevoeging, na Lex' "klikken opent wel
-      // de app maar niet de melding zelf") — /?signaal=<id> laat app.js bij
-      // het laden de kaart op precies dit signaal centreren, zie verversen().
-      stuurWebPushAlarm({
-        id: s.id,
-        titel,
-        bericht,
-        url: `/?signaal=${encodeURIComponent(s.id)}`,
-        lat: s.lat,
-        lon: s.lon,
-        gebiedPolygon: s.detail?.gebiedPolygon,
-      });
+      if (magDoorAlarmeren(s, liveIds)) {
+        // 2026-08-20: de alarm-titel (het vetgedrukte deel op het lockscreen)
+        // volgt nu ook het dreigingsniveau (zie tornadoDreigingsniveau
+        // hierboven) — bij Tornado Emergency, het hoogste niveau, moet dát
+        // meteen bovenaan staan i.p.v. de generieke "Tornado Warning"-titel.
+        const titel = s.detail?.tornadoEmergency
+          ? '🚨 TORNADO EMERGENCY'
+          : s.detail?.pds
+          ? `⚠️ PDS ${s.categorie === 'tornado' ? 'Tornado Warning' : 'Tornado Watch'}`
+          : s.detail?.tornadoWaargenomen
+          ? '🎯 Tornado op de grond'
+          : s.categorie === 'tornado'
+          ? '🌪️ Tornado Warning'
+          : 'Tornado Watch';
+        const bericht = kaartTekst(s);
+        stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tornado' ? 2 : 1 });
+        // 2026-08-20: lat/lon/gebiedPolygon erbij op verzoek van Lex ("kaartje
+        // met de boundary in de mail") — zie kaartUrlVoor() in email.js.
+        stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
+        // 2026-08-22: derde, rustige (niet-herhalende) alarmkanaal naast
+        // Pushover/mail hierboven — zie webpush.js voor de aanleiding.
+        // lat/lon/gebiedPolygon erbij (2026-08-22, tweede toevoeging) zodat
+        // de melding zelf ook het kaartje kan tonen, zelfde bron als de mail.
+        // url erbij (2026-08-22, derde toevoeging, na Lex' "klikken opent wel
+        // de app maar niet de melding zelf") — /?signaal=<id> laat app.js bij
+        // het laden de kaart op precies dit signaal centreren, zie verversen().
+        stuurWebPushAlarm({
+          id: s.id,
+          titel,
+          bericht,
+          url: `/?signaal=${encodeURIComponent(s.id)}`,
+          lat: s.lat,
+          lon: s.lon,
+          gebiedPolygon: s.detail?.gebiedPolygon,
+        });
+      }
     }
     // 2026-08-27, op verzoek van Lex ("telefoonalarm graag") — de
     // VS-tsunami's uit deze bron stuurden tot nu toe GEEN telefoonalarm
@@ -460,19 +532,21 @@ export async function fetchNws() {
     // in te stellen via Instellingen -> Alarmen). Warning = emergency-
     // prioriteit 2 (zelfde afweging als tornado warning), watch = 1.
     if ((s.categorie === 'tsunami' || s.categorie === 'tsunami-watch') && telefoonAlarmAan('tsunami')) {
-      const titel = s.categorie === 'tsunami' ? '🌊 Tsunami Warning' : 'Tsunami Watch';
-      const bericht = kaartTekst(s);
-      stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tsunami' ? 2 : 1 });
-      stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
-      stuurWebPushAlarm({
-        id: s.id,
-        titel,
-        bericht,
-        url: `/?signaal=${encodeURIComponent(s.id)}`,
-        lat: s.lat,
-        lon: s.lon,
-        gebiedPolygon: s.detail?.gebiedPolygon,
-      });
+      if (magDoorAlarmeren(s, liveIds)) {
+        const titel = s.categorie === 'tsunami' ? '🌊 Tsunami Warning' : 'Tsunami Watch';
+        const bericht = kaartTekst(s);
+        stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tsunami' ? 2 : 1 });
+        stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
+        stuurWebPushAlarm({
+          id: s.id,
+          titel,
+          bericht,
+          url: `/?signaal=${encodeURIComponent(s.id)}`,
+          lat: s.lat,
+          lon: s.lon,
+          gebiedPolygon: s.detail?.gebiedPolygon,
+        });
+      }
     }
   }
 
@@ -481,7 +555,6 @@ export async function fetchNws() {
   // een teruggehaald "verlopen"-signaal van hieronder (die zouden toch al
   // gededupliceerd worden via de gemeld-Set in pushover.js/email.js, maar dit
   // voorkomt sowieso elke twijfel daarover).
-  loginMogelijkeHeruitgave(signalen.filter((s) => s.categorie === 'tornado' || s.categorie === 'tornado-watch'));
   const totaal = metHistorie('nws', signalen);
 
   // 2026-08-22: verlopen signalen zitten niet meer in `signalen` hierboven
