@@ -79,12 +79,15 @@ const BOX_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag
 // maar voor als straks de antenne komt", dus pas aanzetten (op het dan opnieuw
 // gemeten bereik) als de VHF-antenne gemonteerd is.
 //
-// 2026-09-02 (later die dag): nadat de merge eindelijk werkte wil Lex de grens
-// "langzaam optrekken" -- eerst 800, nu 2000. Daarom instelbaar via AISHUB_MAX_SCHEPEN
-// in .env (standaard hieronder), zodat de volgende stap een .env-wijziging + restart
-// is i.p.v. een commit. Let bij elke stap op de journal-regel "... bewaard." en op
-// free -h / de responstijd van /api/vaarradar.
-const MAX_AISHUB_SCHEPEN_STANDAARD = 2000;
+// 2026-09-02 (later die dag): eerst 800, toen 2000, en toen bleek dat verwarrend
+// naast de rangeknop in de kaart: de 2000 dichtstbijzijnde rond Rotterdam liggen
+// allemaal binnen enkele tientallen km, dus de rangeknop op 250km toonde daarbuiten
+// toch geen AISHub-schepen -- twee knoppen voor een gevoel. Besluit van Lex: de
+// rangeknop (app.js, 50-250km) is de ENIGE knop die de gebruiker voelt; deze cap is
+// puur een noodrem tegen een op hol geslagen API-antwoord en hoort zo hoog te staan
+// dat hij binnen de 250km-box (~8600 schepen gemeten) nooit bijt. Vandaar 10000.
+// Overschrijfbaar via AISHUB_MAX_SCHEPEN in .env.
+const MAX_AISHUB_SCHEPEN_STANDAARD = 10000;
 
 function bounding(homeLat, homeLon) {
   const latMargin = BOX_KM / 111; // 1 breedtegraad ~ 111km, overal op aarde
