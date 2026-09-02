@@ -5645,16 +5645,17 @@ function vaarIconSleutel(kleur, bron, stil) {
 function zetVaarRingKleur(marker, kleur) {
   marker._icon?.style?.setProperty('--vaar-ring-kleur', kleur);
 }
-// 2026-09-02-herziening, op verzoek van Lex ("Als er wordt geklikt, verschijnt
-// de grotere kaart en dan pas gaat dat rondje pulseren") -- de ring hoort dus
-// alleen te pulseren zodra het bootje geselecteerd is (de popup/het grotere
-// kaartje openstaat), NIET al bij een simpele mouse-over. De hover-tooltip
-// (vaarTooltipHtml()/Leaflet's eigen tooltip) blijft gewoon apart op hover
-// werken -- alleen de ring is nu popup-only.
+// 2026-09-02-CORRECTIE (zelfde sessie): kort geprobeerd om de ring alleen bij
+// selectie (popup open) te laten pulseren -- Lex corrigeerde dit direct
+// ("NEE er verschijnt geen rondje bij de hover!!!"): de ring hoort dus WEL
+// gewoon al bij hover te verschijnen, net als de tooltip. "Actief" = aan het
+// hoveren OF de popup staat open (losse booleans i.p.v. alleen
+// marker.isPopupOpen(), zodat mouseout tijdens een open popup de ring niet
+// per ongeluk uitzet).
 function vaarRingBijwerken(marker) {
   const el = marker._icon;
   if (!el) return;
-  el.classList.toggle('vaar-marker-actief', marker.isPopupOpen());
+  el.classList.toggle('vaar-marker-actief', !!marker._vaarHover || marker.isPopupOpen());
 }
 
 function werkVaarIconRotatieBij(marker, koersGraden) {
@@ -5894,6 +5895,8 @@ async function ververVaarradar() {
       marker.bindPopup(scheepsPopupEl(marker, s.mmsi, basisHtml));
       marker.vaarTooltipHtml = vaarTooltipHtml(s);
       marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
+      marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
+      marker.on('mouseout', () => { marker._vaarHover = false; vaarRingBijwerken(marker); });
       marker.on('popupopen', () => vaarRingBijwerken(marker));
       marker.on('popupclose', () => vaarRingBijwerken(marker));
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
