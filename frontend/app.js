@@ -5645,17 +5645,20 @@ function vaarIconSleutel(kleur, bron, stil) {
 function zetVaarRingKleur(marker, kleur) {
   marker._icon?.style?.setProperty('--vaar-ring-kleur', kleur);
 }
-// 2026-09-02-DEFINITIEVE VERSIE (na twee keer heen-en-weer in dezelfde sessie
-// -- eerst popup-only, toen op Lex' "NEE er verschijnt geen rondje bij de
-// hover!!!" naar hover-OF-popup omgezet, en uiteindelijk expliciet
-// teruggedraaid op Lex' "NEE DAT MOET JUIST NIET!!!!"): de ring pulseert
-// ALLEEN als het bootje geselecteerd is (de popup/het grotere kaartje
-// openstaat) -- NIET al bij een simpele mouse-over. De hover-tooltip
-// (vaarTooltipHtml()) blijft gewoon apart op hover werken, alleen de ring
-// is popup-only.
+// 2026-09-02-DEFINITIEVE VERSIE (na Lex' volledige stap-voor-stap uitleg,
+// zie sessie-overleg): TWEE losse ring-standen, niet één aan/uit-vlag.
+// 1) Hoveren -> een STATISCH rondje verschijnt (samen met het bestaande
+//    hover-tooltipje) bij elk schip -- geen animatie.
+// 2) Klikken (popup/foto-kaartje open) -> het rondje gaat PAS DAN pulseren.
+// Twee losse CSS-classes (.vaar-marker-ring voor het statische rondje,
+// .vaar-marker-actief voor de puls-animatie erbovenop, zie styles.css) i.p.v.
+// één "actief"-klasse, zodat beide standen onafhankelijk van elkaar aan/uit
+// kunnen -- losse booleans (_vaarHover / isPopupOpen()) i.p.v. een simpele
+// OR, zodat mouseout tijdens een open popup de puls niet per ongeluk uitzet.
 function vaarRingBijwerken(marker) {
   const el = marker._icon;
   if (!el) return;
+  el.classList.toggle('vaar-marker-ring', !!marker._vaarHover);
   el.classList.toggle('vaar-marker-actief', marker.isPopupOpen());
 }
 
@@ -5896,6 +5899,8 @@ async function ververVaarradar() {
       marker.bindPopup(scheepsPopupEl(marker, s.mmsi, basisHtml));
       marker.vaarTooltipHtml = vaarTooltipHtml(s);
       marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
+      marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
+      marker.on('mouseout', () => { marker._vaarHover = false; vaarRingBijwerken(marker); });
       marker.on('popupopen', () => vaarRingBijwerken(marker));
       marker.on('popupclose', () => vaarRingBijwerken(marker));
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met

@@ -1038,7 +1038,15 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    al op position:absolute, dus de ::after hieronder mag daar gewoon
    overheen tekenen) en pointer-events:none zodat de ring zelf nooit de
    hover/klik op het bootje blokkeert. */
+/* 2026-09-02-DEFINITIEVE VERSIE (zie vaarRingBijwerken() in app.js): twee
+   losse standen i.p.v. één aan/uit-ring. .vaar-marker-ring (hover) tekent
+   een STATISCH rondje; .vaar-marker-actief (popup open) voegt de puls-
+   animatie TOEVOEGD aan datzelfde ::after-element toe (beide selectors
+   raken hetzelfde ::after op hetzelfde element, dus dit is één ring die of
+   stilstaat of pulseert, nooit twee ringen over elkaar). */
+.leaflet-marker-icon.vaar-marker-ring,
 .leaflet-marker-icon.vaar-marker-actief { position:absolute; }
+.leaflet-marker-icon.vaar-marker-ring::after,
 .leaflet-marker-icon.vaar-marker-actief::after {
   content:'';
   position:absolute;
@@ -1046,6 +1054,8 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
   border-radius:50%;
   border:2px solid var(--vaar-ring-kleur, #3ec6ff);
   pointer-events:none;
+}
+.leaflet-marker-icon.vaar-marker-actief::after {
   animation: vaarRingPuls 1.4s ease-out infinite;
 }
 @keyframes vaarRingPuls {
