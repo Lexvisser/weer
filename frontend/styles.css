@@ -521,18 +521,41 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .radar-controls .satelliet-toggle { width:auto; border-radius:9px; padding:3px 8px; font-family:'JetBrains Mono',monospace; }
 .radar-controls .satelliet-toggle.actief { background:#3ec6ff; color:#05060a; }
 
-/* 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
-   "Ship Type"-paneel) -- #vaarTypeFilterPaneel (index.html), inhoud
-   opgebouwd door bouwVaarTypeFilterPaneel() in app.js. Los boven de kaart
-   uitgeklapt (position:absolute t.o.v. .map-wrap, niet t.o.v. .radar-controls
-   zelf -- die laatste kan twee regels worden op smalle schermen, zie
-   .radar-groep hierboven, en dan zou dit paneel meebewegen/verspringen).
-   Zelfde donkere kaart-stijl als .vaar-tooltip/.radar-controls. */
-.vaar-type-filter-paneel { position:absolute; right:10px; bottom:46px; z-index:1001; background:#141826; border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:8px 10px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#f4f6fb; box-shadow:0 4px 16px rgba(0,0,0,0.5); max-height:60vh; overflow-y:auto; min-width:170px; }
+/* 2026-09-02-herziening: het scheepstype-filterpaneel was eerst een los
+   uitklapbaar paneeltje (eigen knop + position:absolute), maar zit nu
+   INLINE in #vaarMenu hieronder (zie de "verticaal menu"-toelichting daar)
+   -- dus geen eigen positionering/achtergrond/border meer nodig, dat levert
+   .vaar-menu-inhoud hieronder al. .vaar-type-filter-lijst is de nieuwe,
+   simpelere klasse op dezelfde #vaarTypeFilterPaneel-div (zie index.html);
+   de rij-opmaak (.vaar-type-filter-item/-kleur/-alles) blijft ongewijzigd,
+   bouwVaarTypeFilterPaneel() in app.js bouwt nog steeds dezelfde rijen. */
+.vaar-type-filter-lijst { max-height:38vh; overflow-y:auto; }
 .vaar-type-filter-item { display:flex; align-items:center; gap:7px; padding:4px 2px; cursor:pointer; }
 .vaar-type-filter-item input { margin:0; }
 .vaar-type-filter-kleur { width:9px; height:9px; border-radius:50%; flex:none; }
 .vaar-type-filter-alles { border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:2px; padding-bottom:6px; font-weight:bold; }
+
+/* 2026-09-02, op verzoek van Lex ("een verticaal menu voor AIS aan de
+   rechterkant. Uitklappen =aan en daaronder alle opties") -- vervangt de
+   losse ⛴️ Vaart-knop (voorheen in .radar-controls) en de vier losse
+   Vaart-only-subknoppen. #vaarMenuHandle is zowel de aan/uit-knop voor
+   Vaart-modus als de uitklap-knop (zie toggleVaarradar() in app.js) --
+   vandaar geen apart "actief"-icoon-verschil nodig tussen "aan" en
+   "uitgeklapt", dat is hier letterlijk hetzelfde moment.
+   Verticaal gecentreerd tegen de rechterrand (top:50%+translateY), niet
+   top/bottom-gebonden zoals .map-toggle/.radar-controls hierboven -- dat
+   voorkomt overlap met zowel de bovenste knoppenrij (.map-toggle/
+   .doppler-producten) als de onderste (.radar-controls). */
+.vaar-menu { position:absolute; top:50%; right:10px; transform:translateY(-50%); z-index:1000; display:flex; flex-direction:column; align-items:flex-end; }
+.vaar-menu-handle { width:34px; height:34px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(10,11,18,0.85); color:#f4f6fb; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:1px; }
+.vaar-menu-handle.actief { background:#3ec6ff; color:#05060a; border-color:#3ec6ff; }
+.vaar-menu-handle-pijl { font-size:8px; transition: transform 0.15s ease; }
+.vaar-menu-handle.actief .vaar-menu-handle-pijl { transform: rotate(180deg); }
+.vaar-menu-inhoud { margin-top:8px; width:180px; max-height:70vh; display:flex; flex-direction:column; gap:5px; background:#141826; border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:9px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#f4f6fb; box-shadow:0 4px 16px rgba(0,0,0,0.5); }
+.vaar-menu-item { display:flex; align-items:center; gap:6px; width:100%; text-align:left; background:#1c2030; border:none; border-radius:8px; padding:6px 8px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:11px; cursor:pointer; }
+.vaar-menu-item.actief { background:#3ec6ff; color:#05060a; }
+.vaar-menu-scheidslijn { border-top:1px solid rgba(255,255,255,0.12); margin:2px 0; }
+.vaar-menu-kop { opacity:0.7; padding:2px 2px 0; }
 
 /* 2026-08-21: de losstaande groot/klein-driehoekknop (.uitvergroot-driehoek)
    is vervallen op verzoek van Lex ("de kaart standaard groot altijd groot...

@@ -104,6 +104,40 @@
       <button class="doppler-product-btn actief" data-product="reflectiviteit">Reflectiviteit</button>
       <button class="doppler-product-btn" data-product="rotatie">Rotatie</button>
     </div>
+    <!-- 2026-09-02, op verzoek van Lex ("Ik denk dat we een verticaal menu
+         moeten hebben voor AIS aan de rechterkant. Uitklappen =aan en
+         daaronder alle opties") -- vervangt de losse ⛴️ Vaart-knop en de
+         vier losse Vaart-only-subknoppen die voorheen in .radar-controls
+         stonden (kleurmodus/AISHub/straal/scheepstype-filter, zie de
+         git-historie van vandaag). #vaarMenuHandle is nu ZOWEL de aan/uit-
+         knop voor Vaart-modus ALS de uitklap-knop -- uitgeklapt = Vaart-modus
+         staat aan, ingeklapt = uit, expliciet zo gekozen op Lex' verzoek
+         (geen apart uit-/aanzetten los van het openklappen). Zie
+         toggleVaarradar() in app.js. -->
+    <div class="vaar-menu" id="vaarMenu">
+      <button id="vaarMenuHandle" class="vaar-menu-handle" title="AIS/vaarradar aan- of uitzetten">⛴️<span class="vaar-menu-handle-pijl">◂</span></button>
+      <div class="vaar-menu-inhoud verborgen" id="vaarMenuInhoud">
+        <!-- 2026-09-01, op verzoek van Lex ("kunnen we nog wat leuks doen om
+             tussen de boten te differentieren met de kleuren?") -- cyclet
+             tussen drie kleurmodi (per schip / per scheepstype / op snelheid,
+             zie kleurVoorSchip() in app.js). -->
+        <button id="vaarKleurModus" class="vaar-menu-item" title="Kleur van de bootjes wisselen: per schip / per scheepstype / op snelheid">🎨 <span class="knop-tekst">Type</span></button>
+        <!-- 2026-09-01: AISHub-aanvulling aan/uit. Standaard AAN (zie
+             aishubZichtbaar in app.js). -->
+        <button id="vaarAishubToggle" class="vaar-menu-item actief" title="AISHub-schepen (aanvulling naast eigen ontvangst) tonen/verbergen">🌐 <span class="knop-tekst">AISHub</span></button>
+        <!-- 2026-09-02, op verzoek van Lex ("maak de straal instelbaar van 50
+             in stappen van 25 tot 250, voor noodgevallen, standaard 50"). -->
+        <button id="vaarStraalKnop" class="vaar-menu-item" title="Zoekstraal van de vaarradar wisselen: 50-250km in stappen van 25">📡 <span class="knop-tekst">50km</span></button>
+        <div class="vaar-menu-scheidslijn"></div>
+        <!-- 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
+             "Ship Type"-paneel) -- geen apart uitklap-knopje meer nodig zoals
+             eerst (#vaarTypeFilterKnop, vervallen): staat dit hele menu open,
+             dan staat de scheepstype-lijst hieronder ook meteen open.
+             Inhoud opgebouwd door bouwVaarTypeFilterPaneel() in app.js. -->
+        <div class="vaar-menu-kop">Scheepstypes</div>
+        <div id="vaarTypeFilterPaneel" class="vaar-type-filter-lijst"></div>
+      </div>
+    </div>
     <div class="radar-controls" id="radarControls">
       <!-- 2026-08-21, op verzoek van Lex ("Vlucht op de eerste regel, als het
            krap wordt mag de tekst eraf") — elke knoptekst hieronder staat nu
@@ -170,55 +204,14 @@
            SVG zoals bij Lifeliner, zonder dat de rest van de logica
            verandert. Zie toggleVliegradar()/toggleVaarradar() in app.js. -->
       <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
-      <!-- 2026-08-21: Vaart-knop was hier verborgen omdat aisstream.io (de
-           databron in backend/src/sources/vaarradar.js) structureel geen
-           data levert — bekend, open, onopgelost issue bij aisstream.io
-           zelf (github.com/aisstream/aisstream/issues/15).
-           2026-08-31: weer zichtbaar. Eigen ontvangst (RTL-SDR Blog V4 +
-           AIS-catcher op lexdev-nw, zie backend/src/sources/
-           vaarradarLokaal.js) levert nu wél live posities — bevestigd met
-           een echte curl tegen AIS-catcher's /geojson én met de
-           "voorbeeldrecord"-logregels van de app zelf. /api/vaarradar
-           verkiest die lokale bron zodra 'ie data heeft (server.js) en
-           valt terug op aisstream.io (dat blijft gewoon meedraaien) als de
-           lokale ontvangst ooit leeg/onbereikbaar is. -->
-      <button id="toggleVaarradar" class="satelliet-toggle">⛴️<span class="knop-tekst"> Vaart</span></button>
-      <!-- 2026-09-01, op verzoek van Lex ("kunnen we nog wat leuks doen om
-           tussen de boten te differentieren met de kleuren?") -- cyclet
-           tussen drie kleurmodi voor de bootjes op de vaarradar (per schip /
-           per scheepstype / op snelheid, zie kleurVoorSchip() in app.js).
-           Alleen zichtbaar zolang Vaart-modus aanstaat (zelfde
-           display-toggle-patroon als #toggleNavtexRuw bij Zee-modus
-           hierboven), verborgen tot dan. -->
-      <button id="vaarKleurModus" class="satelliet-toggle" style="display:none;" title="Kleur van de bootjes wisselen: per schip / per scheepstype / op snelheid">🎨<span class="knop-tekst"> Schip</span></button>
-      <!-- 2026-09-01: AISHub-aanvulling aan/uit -- alleen zichtbaar in Vaart-modus, zelfde
-           display-toggle-patroon als vaarKleurModus hierboven. Standaard AAN (zie
-           aishubZichtbaar in app.js), dit knopje is om het desgewenst uit te zetten en zo
-           alleen eigen ontvangst te zien. -->
-      <button id="vaarAishubToggle" class="satelliet-toggle actief" style="display:none;" title="AISHub-schepen (aanvulling naast eigen ontvangst) tonen/verbergen">🌐<span class="knop-tekst"> AISHub</span></button>
-      <!-- 2026-09-02, op verzoek van Lex ("maak de straal instelbaar van 50 in stappen
-           van 25 tot 250, voor noodgevallen, standaard 50") -- cyclet net als
-           vaarKleurModus hierboven, label toont het huidige aantal km (zie
-           wisselVaarStraal()/zetVaarStraalKnopLabel() in app.js). -->
-      <button id="vaarStraalKnop" class="satelliet-toggle" style="display:none;" title="Zoekstraal van de vaarradar wisselen: 50-250km in stappen van 25">📡<span class="knop-tekst"> 50km</span></button>
-      <!-- 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
-           "Ship Type"-paneel met aan/uit-vinkjes per scheepstype) -- opent/sluit
-           #vaarTypeFilterPaneel hieronder. Zelfde display-toggle-patroon als de
-           andere Vaart-only-knoppen hierboven, verborgen tot Vaart-modus aanstaat.
-           Paneelinhoud wordt dynamisch opgebouwd in bouwVaarTypeFilterPaneel()
-           (app.js) vanuit dezelfde SCHEEPSCATEGORIE_LABEL/KLEUR_PER_SCHEEPSCATEGORIE
-           die ook de kleurmodus 'type' gebruikt, dus geen dubbele lijst om
-           handmatig gelijk te houden. -->
-      <button id="vaarTypeFilterKnop" class="satelliet-toggle" style="display:none;" title="Welke scheepstypes tonen">🚦<span class="knop-tekst"> Types</span></button>
+      <!-- 2026-09-02, op verzoek van Lex ("een verticaal menu voor AIS aan de
+           rechterkant. Uitklappen = aan en daaronder alle opties") --
+           vervangt de losse ⛴️ Vaart-knop + de vier losse Vaart-only-
+           subknoppen (kleurmodus/AISHub/straal/type-filter) die hier
+           stonden -- die zijn nu allemaal opgegaan in #vaarMenu, zie
+           verderop in dit bestand en toggleVaarradar()/vaarMenuOpbouwen()
+           in app.js. -->
       </div>
-      <!-- 2026-09-02: het filterpaneel zelf, zie vaarTypeFilterKnop hierboven --
-           los van .radar-controls (dat is een horizontale knoppenbalk, dit is
-           een verticale lijst die eroverheen moet kunnen uitklappen), vandaar
-           een aparte positionering in styles.css i.p.v. gewoon meegroeien in
-           de knoppenbalk. Leeg tot bouwVaarTypeFilterPaneel() 'm vult; blijft
-           verborgen buiten Vaart-modus (toggleVaarradar() in app.js zet
-           display net als de knoppen hierboven). -->
-      <div id="vaarTypeFilterPaneel" class="vaar-type-filter-paneel verborgen"></div>
       <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
            Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS
            knop ook niet. Die zouden gewoon vanaf hemel naar de kaart moeten

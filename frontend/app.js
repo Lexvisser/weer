@@ -48,11 +48,14 @@ const TOGGLE_DWD_KAART_EL = document.getElementById('toggleDwdKaart'); // 2026-0
 const DWD_KAART_OVERLAY_EL = document.getElementById('dwdKaartOverlay');
 const DWD_KAART_IMG_EL = document.getElementById('dwdKaartImg');
 const DWD_KAART_STATUS_EL = document.getElementById('dwdKaartStatus');
-const TOGGLE_VAARRADAR_EL = document.getElementById('toggleVaarradar');
+// 2026-09-02: vervangt de losse #toggleVaarradar-knop -- #vaarMenuHandle in
+// het nieuwe verticale AIS-menu (zie index.html) is nu zowel de aan/uit-knop
+// als de uitklap-knop, zie toggleVaarradar() hieronder.
+const TOGGLE_VAARRADAR_EL = document.getElementById('vaarMenuHandle');
+const VAAR_MENU_INHOUD_EL = document.getElementById('vaarMenuInhoud');
 const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
 const VAAR_AISHUB_KNOP_EL = document.getElementById('vaarAishubToggle');
 const VAAR_STRAAL_KNOP_EL = document.getElementById('vaarStraalKnop');
-const VAAR_TYPE_FILTER_KNOP_EL = document.getElementById('vaarTypeFilterKnop');
 const VAAR_TYPE_FILTER_PANEEL_EL = document.getElementById('vaarTypeFilterPaneel');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
 // zijn weg, zie index.html) — één gedeelde Stop-knop voor kaartVolgType,
@@ -796,7 +799,6 @@ function initMap() {
   VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
   VAAR_AISHUB_KNOP_EL?.addEventListener('click', wisselVaarAishubZichtbaar);
   VAAR_STRAAL_KNOP_EL?.addEventListener('click', wisselVaarStraal);
-  VAAR_TYPE_FILTER_KNOP_EL?.addEventListener('click', toggleVaarTypeFilterPaneel);
   zetVaarStraalKnopLabel(); // meteen bij opstarten het opgeslagen/standaard getal tonen
   zetVaarKleurKnopLabel();
   // Lex: "...waarna er een knop Stop zichtbaar is. Waarmee ISS/Starlink
@@ -5412,11 +5414,8 @@ function bouwVaarTypeFilterPaneel() {
   });
 }
 
-function toggleVaarTypeFilterPaneel() {
-  if (!VAAR_TYPE_FILTER_PANEEL_EL) return;
-  bouwVaarTypeFilterPaneel();
-  VAAR_TYPE_FILTER_PANEEL_EL.classList.toggle('verborgen');
-}
+// toggleVaarTypeFilterPaneel() is vervallen -- het scheepstype-filter zit nu
+// altijd inline in #vaarMenu, zie toggleVaarradar() hieronder.
 
 // Optie 3: kleur op snelheid -- een "warmte"-schaal (grijsblauw stilliggend
 // tot rood snel) i.p.v. willekeurige kleuren, zodat de kleur zelf meteen wat
@@ -6006,17 +6005,15 @@ function toggleVliegradar() {
 
 function toggleVaarradar() {
   vaarradarActief = !vaarradarActief;
+  // 2026-09-02-herziening: #vaarMenuHandle is nu ZOWEL de aan/uit-knop als de
+  // uitklap-knop van het verticale AIS-menu (zie index.html/styles.css) --
+  // "actief" bepaalt dus in één keer het handle-uiterlijk EN of
+  // #vaarMenuInhoud (kleurmodus/AISHub/straal/scheepstype-filter, voorheen
+  // vier losse knoppen + een los paneel) zichtbaar is. Geen apart
+  // show/hide meer per los knopje nodig zoals voorheen.
   TOGGLE_VAARRADAR_EL.classList.toggle('actief', vaarradarActief);
-  // 2026-09-01: de kleurmodus-knop is alleen zinvol zolang er bootjes op de
-  // kaart staan om te herkleuren -- zelfde display-toggle-patroon als
-  // NAVTEX_RUW_KNOP_EL bij Zee-modus.
-  if (VAAR_KLEUR_KNOP_EL) VAAR_KLEUR_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
-  if (VAAR_AISHUB_KNOP_EL) VAAR_AISHUB_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
-  if (VAAR_STRAAL_KNOP_EL) VAAR_STRAAL_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
-  if (VAAR_TYPE_FILTER_KNOP_EL) VAAR_TYPE_FILTER_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
-  // Paneel altijd dicht bij het uitzetten van Vaart-modus -- anders blijft het
-  // openstaan (leeg, want de knop erboven is dan ook weg) bij een volgende keer aanzetten.
-  if (!vaarradarActief) VAAR_TYPE_FILTER_PANEEL_EL?.classList.add('verborgen');
+  VAAR_MENU_INHOUD_EL?.classList.toggle('verborgen', !vaarradarActief);
+  if (vaarradarActief) bouwVaarTypeFilterPaneel(); // eenmalig, zie de child-count-guard daarin
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"
