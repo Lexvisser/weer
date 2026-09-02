@@ -43,6 +43,21 @@
 
 import { bepaalScheepscategorie, normaliseerEta, vulOntbrekendeVeldenAan } from './vaarradarLokaal.js';
 import { afstandKm } from '../normalize.js';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 2026-09-02, op melding van Lex ("na een commit en een sync moet ik telkens
+// wachten op AISHub"): bij elke herstart begon deze feed leeg én pollde hij
+// meteen -- binnen AISHub's 1x/minuut-limiet als de vorige poll kort ervoor
+// was, dus ERROR + backoff, en de kaart bleef ruim een minuut zonder
+// AISHub-schepen. Nu: na elke geslaagde poll een snapshot (posities +
+// tijdstip) op schijf in backend/data/ (staat in .gitignore, net als de
+// historie); bij het opstarten die snapshot inlezen (alleen wat nog binnen
+// VENSTER_MS valt) en de eerste poll pas plannen zodra er sinds de vorige
+// poll POLL_MS verstreken is. Effect: direct na een sync staan de AISHub-
+// schepen er weer, en de limiet wordt niet meer geraakt.
+const SNAPSHOT_PAD = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'aishub-snapshot.json');
 
 const POLL_MS = 65 * 1000; // ruim boven AISHub's "niet vaker dan 1x/minuut"
 const VENSTER_MS = 15 * 60 * 1000; // iets ruimer dan vaarradarLokaal.js's 10 min -- AISHub's eigen
@@ -176,9 +191,40 @@ export function startVaarradarAishubFeed(env) {
   let backoffMs = 0;
   let voorbeeldenGelogd = 0;
   let pollTimer = null;
+  let laatstePollMs = 0;
 
   function log(bericht) {
     console.log(`[weer] vaarradarAishub: ${bericht}`);
+  }
+
+  function bewaarSnapshot() {
+    try {
+      mkdirSync(dirname(SNAPSHOT_PAD), { recursive: true });
+      const tmp = `${SNAPSHOT_PAD}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ laatstePollMs, posities: [...posities.values()] }));
+      renameSync(tmp, SNAPSHOT_PAD); // atomair, zodat een halve file nooit ingelezen wordt
+    } catch (err) {
+      log(`snapshot bewaren mislukt (${err.message ?? err})`);
+    }
+  }
+
+  function laadSnapshot() {
+    try {
+      if (!existsSync(SNAPSHOT_PAD)) return;
+      const data = JSON.parse(readFileSync(SNAPSHOT_PAD, 'utf-8'));
+      const nu = Date.now();
+      let geladen = 0;
+      for (const p of data.posities ?? []) {
+        if (p?.mmsi && Number.isFinite(p.tijdMs) && nu - p.tijdMs <= VENSTER_MS) {
+          posities.set(p.mmsi, p);
+          geladen++;
+        }
+      }
+      laatstePollMs = Number(data.laatstePollMs) || 0;
+      log(`snapshot geladen: ${geladen} schepen, vorige poll ${laatstePollMs ? Math.round((nu - laatstePollMs) / 1000) + 's geleden' : 'onbekend'}.`);
+    } catch (err) {
+      log(`snapshot laden mislukt (${err.message ?? err}), begin leeg`);
+    }
   }
 
   function opschonen() {
@@ -238,6 +284,8 @@ export function startVaarradarAishubFeed(env) {
       );
       if (backoffMs) log('AISHub weer bereikbaar.');
       backoffMs = 0;
+      laatstePollMs = Date.now();
+      bewaarSnapshot();
     } catch (err) {
       backoffMs = backoffMs ? Math.min(backoffMs * 2, BACKOFF_MAX_MS) : BACKOFF_START_MS;
       log(`poll mislukt (${err.message ?? err}), volgende poging over ${Math.round((POLL_MS + backoffMs) / 1000)}s`);
@@ -252,7 +300,12 @@ export function startVaarradarAishubFeed(env) {
     }, POLL_MS + backoffMs);
   }
 
-  pollEenmaal().then(planVolgende);
+  laadSnapshot();
+  // Eerste poll pas als AISHub's minuutlimiet zeker verstreken is sinds de
+  // vorige (bewaarde) poll -- direct na een herstart is dat meestal nog niet zo.
+  const wachtMs = Math.max(0, laatstePollMs + POLL_MS - Date.now());
+  if (wachtMs > 0) log(`eerste poll over ${Math.round(wachtMs / 1000)}s (minuutlimiet AISHub).`);
+  pollTimer = setTimeout(() => pollEenmaal().then(planVolgende), wachtMs);
   const opschoonTimer = setInterval(opschonen, 60 * 1000);
 
   return {
