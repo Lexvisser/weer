@@ -5113,6 +5113,11 @@ const VAARRADAR_STRAAL_STAPPEN = [50, 75, 100, 125, 150, 175, 200, 225, 250];
 // bewust hoger -- "vrij fors" was Lex' eigen woordkeuze); bijstellen als het
 // te laat/te vroeg aanvoelt.
 const VAAR_MIN_ZOOM_VOOR_SCHEPEN = 10;
+// Startbeeld bij het aanzetten van de vaarradar: de Maasmond (zie
+// toggleVaarradar()). Zoom 12 toont Hoek van Holland t/m de Maasvlakte en
+// een stuk Nieuwe Waterweg.
+const VAAR_STARTPOSITIE = [51.975, 4.08];
+const VAAR_STARTZOOM = 12;
 const VAARRADAR_STRAAL_KEY = 'weerVaarradarStraalKm';
 let vaarradarStraalKm = 50;
 try {
@@ -6189,6 +6194,13 @@ function toggleVaarradar() {
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"
+    // 2026-09-02, op verzoek van Lex ("gelijk inzoomen op de maasmond zodra
+    // ik kies voor AIS") -- toggleZeeModus() hierboven zoomt naar het hele
+    // Noordzeegebied (fitBounds op de NAVTEX-gebieden); voor de vaarradar is
+    // dat veel te ver uit (schepen verschijnen pas vanaf zoom
+    // VAAR_MIN_ZOOM_VOOR_SCHEPEN). Daarom direct erna naar de Maasmond
+    // (Hoek van Holland / Maasvlakte / Nieuwe Waterweg), zoom 12.
+    beweegKaartProgrammatisch(() => kaart.setView(VAAR_STARTPOSITIE, VAAR_STARTZOOM, { animate: false }));
     // 2026-09-02, op melding van Lex ("Deze kaart is ook nog eens zeer
     // vaag" -- een haven-screenshot in Vaart-modus toonde een wazige
     // beige/grijze waas over de hele kaart): de EMODnet-dieptelaag
