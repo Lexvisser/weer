@@ -1051,8 +1051,11 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    vaarTooltipHtml() in app.js. Leaflet's standaard-tooltip is een witte
    doos met een puntje eronder; hier omgezet naar dezelfde donkere stijl als
    de rest van de app (vgl. .leaflet-popup-content-wrapper hierboven). */
-.vaar-tooltip { background:#0e111c; color:#e8eaed; border:1px solid rgba(255,255,255,0.15); font-size:11px; padding:3px 7px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.45); }
-.vaar-tooltip.leaflet-tooltip-top::before { border-top-color:#0e111c; }
+/* 2026-09-02, op verzoek van Lex ("kan je de labels wit maken" / "de labels
+   zijn nog zwart") -- wit hoverkaartje met donkere tekst, zoals MarineTraffic,
+   i.p.v. het eerdere donkere blok (dat viel weg tegen de donkere Stadia-kaart). */
+.vaar-tooltip { background:#fff; color:#1a1d26; border:1px solid rgba(0,0,0,0.2); font-size:11px; padding:3px 7px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.45); }
+.vaar-tooltip.leaflet-tooltip-top::before { border-top-color:#fff; }
 
 /* 2026-09-02-herziening, op verzoek van Lex ("dit kaartje namaken", zie het
    gedeelde MarineTraffic-hoverkaartje) -- meerdere regels (naam+land,
@@ -1061,7 +1064,7 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    regelafstand nodig dan de oorspronkelijke .vaar-tooltip hierboven. */
 .vaar-tooltip { padding:6px 9px; line-height:1.5; min-width:150px; }
 .vaar-tooltip div { white-space:nowrap; }
-.vaar-tooltip-land { opacity:0.75; font-weight:normal; }
+.vaar-tooltip-land { opacity:0.6; font-weight:normal; }
 
 /* 2026-09-02, op verzoek van Lex ("dat rondje om het item als er een
    mouseover is... namaken", zie het gedeelde MarineTraffic-screenshot) --
