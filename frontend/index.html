@@ -18,6 +18,13 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=nood1">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<!-- 2026-09-02, op verzoek van Lex ("prima", clustering voor de vaarradar bij een grote
+     zoekstraal, zie de sessie-notitie over 5977/9261 schepen bij 250km) -- groepeert dicht
+     opeengepakte bootjes tot een cijfer-bolletje bij uitzoomen, precies zoals gangbare
+     vaarradar-apps dat doen. Alleen relevant voor de vaarradar-laag, geen effect op de
+     rest van de kaart. -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="kaart-actief">
@@ -189,6 +196,11 @@
            aishubZichtbaar in app.js), dit knopje is om het desgewenst uit te zetten en zo
            alleen eigen ontvangst te zien. -->
       <button id="vaarAishubToggle" class="satelliet-toggle actief" style="display:none;" title="AISHub-schepen (aanvulling naast eigen ontvangst) tonen/verbergen">🌐<span class="knop-tekst"> AISHub</span></button>
+      <!-- 2026-09-02, op verzoek van Lex ("maak de straal instelbaar van 50 in stappen
+           van 25 tot 250, voor noodgevallen, standaard 50") -- cyclet net als
+           vaarKleurModus hierboven, label toont het huidige aantal km (zie
+           wisselVaarStraal()/zetVaarStraalKnopLabel() in app.js). -->
+      <button id="vaarStraalKnop" class="satelliet-toggle" style="display:none;" title="Zoekstraal van de vaarradar wisselen: 50-250km in stappen van 25">📡<span class="knop-tekst"> 50km</span></button>
       </div>
       <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
            Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS
@@ -482,6 +494,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

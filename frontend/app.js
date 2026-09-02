@@ -51,6 +51,7 @@ const DWD_KAART_STATUS_EL = document.getElementById('dwdKaartStatus');
 const TOGGLE_VAARRADAR_EL = document.getElementById('toggleVaarradar');
 const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
 const VAAR_AISHUB_KNOP_EL = document.getElementById('vaarAishubToggle');
+const VAAR_STRAAL_KNOP_EL = document.getElementById('vaarStraalKnop');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
 // zijn weg, zie index.html) — één gedeelde Stop-knop voor kaartVolgType,
 // zie startKaartVolgen()/stopKaartVolgen() verderop.
@@ -719,6 +720,8 @@ function initMap() {
   TOGGLE_VAARRADAR_EL.addEventListener('click', toggleVaarradar);
   VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
   VAAR_AISHUB_KNOP_EL?.addEventListener('click', wisselVaarAishubZichtbaar);
+  VAAR_STRAAL_KNOP_EL?.addEventListener('click', wisselVaarStraal);
+  zetVaarStraalKnopLabel(); // meteen bij opstarten het opgeslagen/standaard getal tonen
   zetVaarKleurKnopLabel();
   // Lex: "...waarna er een knop Stop zichtbaar is. Waarmee ISS/Starlink
   // wordt verborgen, alle hazards weer terugkomen en er wordt
@@ -4974,10 +4977,21 @@ function toggleZeeModus() {
 // adsb.lol, niet gevoelig voor de straal/antwoordgrootte). Dus weer terug
 // naar 75.
 const VLIEGRADAR_STRAAL_KM = 75;
-const VAARRADAR_STRAAL_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag
-// meer zien") -- was 50, dat was de eigenlijke bottleneck (ruim onder zelfs de oude
-// 100km-servergrens in server.js). Zie ook BOX_KM in vaarradarAishub.js, die moet
-// minstens even groot zijn anders wordt AISHub's aanvulling zelf al eerder afgekapt.
+// 2026-09-02: eerst hard op 250 gezet (zie de git-geschiedenis), maar met 9261 schepen bij
+// die volle 250km bleek de kaart merkbaar traag op te bouwen -- Lex wilde 'm daarom
+// INSTELBAAR i.p.v. een vaste waarde: standaard 50 (net als voorheen), met een knopje
+// (#vaarStraalKnop) om 'm in stappen van 25 op te hogen tot 250 "voor noodgevallen".
+// Servergrens (server.js, Math.min(250,...)) en BOX_KM (vaarradarAishub.js) blijven op
+// 250 staan -- die bepalen het PLAFOND, dit hier is wat de kaart daadwerkelijk opvraagt.
+const VAARRADAR_STRAAL_STAPPEN = [50, 75, 100, 125, 150, 175, 200, 225, 250];
+const VAARRADAR_STRAAL_KEY = 'weerVaarradarStraalKm';
+let vaarradarStraalKm = 50;
+try {
+  const opgeslagen = Number(localStorage.getItem(VAARRADAR_STRAAL_KEY));
+  if (VAARRADAR_STRAAL_STAPPEN.includes(opgeslagen)) vaarradarStraalKm = opgeslagen;
+} catch (_) {
+  /* prive-modus, gewoon bij de standaard (50) blijven */
+}
 // 2026-08-21: eerst 15s -> 5s, en op Lex' vervolgverzoek ("kan het nog
 // sneller") -> 3s. De servercache in backend/src/sources/vliegradar.js is
 // om dezelfde reden mee omlaag (zie CACHE_MS daar) zodat pollen sneller dan
@@ -5236,6 +5250,23 @@ try {
 }
 const AISHUB_OPACITEIT = 0.55; // vol dekkend voor lokaal, duidelijk getemperd voor AISHub-only
 
+function wisselVaarStraal() {
+  const huidigeIndex = VAARRADAR_STRAAL_STAPPEN.indexOf(vaarradarStraalKm);
+  vaarradarStraalKm = VAARRADAR_STRAAL_STAPPEN[(huidigeIndex + 1) % VAARRADAR_STRAAL_STAPPEN.length];
+  try {
+    localStorage.setItem(VAARRADAR_STRAAL_KEY, String(vaarradarStraalKm));
+  } catch (_) {
+    /* prive-modus */
+  }
+  zetVaarStraalKnopLabel();
+  ververVaarradar(); // meteen opnieuw ophalen met de nieuwe straal, niet wachten op de volgende 3s-poll
+}
+
+function zetVaarStraalKnopLabel() {
+  const label = VAAR_STRAAL_KNOP_EL?.querySelector('.knop-tekst');
+  if (label) label.textContent = ` ${vaarradarStraalKm}km`;
+}
+
 function wisselVaarAishubZichtbaar() {
   aishubZichtbaar = !aishubZichtbaar;
   VAAR_AISHUB_KNOP_EL?.classList.toggle('actief', aishubZichtbaar);
@@ -5361,9 +5392,23 @@ async function ververVaarradar() {
   try {
     const { lat, lon } = await huidigePositie();
     if (!vaarradarActief) return;
-    const data = await fetch(`/api/vaarradar?lat=${lat}&lon=${lon}&straal=${VAARRADAR_STRAAL_KM}`).then((r) => r.json());
+    const data = await fetch(`/api/vaarradar?lat=${lat}&lon=${lon}&straal=${vaarradarStraalKm}`).then((r) => r.json());
     if (!vaarradarActief) return;
-    if (!vaarLaag) vaarLaag = L.layerGroup().addTo(kaart);
+    // 2026-09-02, op verzoek van Lex (grote zoekstralen tot 250km leverden duizenden
+    // bootjes op, kaart bouwde merkbaar traag op -- zie wisselVaarStraal() hierboven) --
+    // L.markerClusterGroup i.p.v. een kale layerGroup. Verder overal drop-in compatibel
+    // (addLayer/removeLayer/clearLayers werken hetzelfde), alleen refreshClusters() erbij
+    // nodig na het in-place bijwerken van een bestaand bootje (setLatLng/setIcon), anders
+    // toont een cluster soms nog even de oude positie/kleur.
+    if (!vaarLaag) {
+      vaarLaag = L.markerClusterGroup({
+        maxClusterRadius: 60,
+        disableClusteringAtZoom: 12, // vanaf hier altijd losse bootjes, ook al staan ze dicht op elkaar
+        showCoverageOnHover: false, // geen knipperende dekkingspolygoon bij hoveren over een cluster
+        chunkedLoading: true, // belangrijk bij duizenden schepen (250km-straal) -- blokkeert de UI niet
+        spiderfyOnMaxZoom: true,
+      }).addTo(kaart);
+    }
     const gezien = new Set();
     // AISHub-only schepen (bron: 'aishub', geen eigen ontvangst) blijven weg
     // als de knop uitstaat -- lokaal ontvangen schepen (bron: 'lokaal')
@@ -5400,6 +5445,7 @@ async function ververVaarradar() {
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
         marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron));
+        vaarLaag.refreshClusters?.(marker); // clustergroep bijwerken na in-place positie/icoon-wijziging
         if (basisHtml !== marker.basisPopupHtml) {
           marker.basisPopupHtml = basisHtml;
           marker.getPopup()?.setContent(scheepsPopupHtml(s.mmsi, basisHtml));
@@ -5532,6 +5578,7 @@ function toggleVaarradar() {
   // NAVTEX_RUW_KNOP_EL bij Zee-modus.
   if (VAAR_KLEUR_KNOP_EL) VAAR_KLEUR_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
   if (VAAR_AISHUB_KNOP_EL) VAAR_AISHUB_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
+  if (VAAR_STRAAL_KNOP_EL) VAAR_STRAAL_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"
