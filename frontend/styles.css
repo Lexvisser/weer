@@ -1689,3 +1689,9 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .graden-vak.verborgen { display:none; }
 .graden-vak-cursor { color:#e6e9f2; opacity:0.85; }
 .graden-sublabel { font-size:8px; color:#8fdcff; background:rgba(5,6,10,0.5); padding:1px 3px; }
+
+/* 2026-09-02, op verzoek van Lex: de omgerekende NL-tijd "(2 sep 14:57 NL)"
+   in meldingstitels/popups in een eigen kleur, zodat die meteen te
+   onderscheiden is van de Amerikaanse brontijd ervoor. Zie markeerNlTijd()
+   in app.js. */
+.nl-tijd { color:#3ec6ff; }

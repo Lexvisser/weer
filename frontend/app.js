@@ -224,6 +224,16 @@ function verrijkTekstMetNlTijd(tekst) {
   return uit + tekst.slice(vorige);
 }
 
+// 2026-09-02, op verzoek van Lex ("kan je de NL tijden hier een ander
+// kleurtje geven?"): het door verrijkTekstMetNlTijd() toegevoegde
+// "(2 sep 14:57 NL)" in een eigen span zetten, PAS bij het renderen (niet in
+// s.titel zelf, want die wordt ook als platte tekst gebruikt, bijv. in de
+// alarm-popup via textContent). Zie .nl-tijd in styles.css.
+function markeerNlTijd(html) {
+  if (typeof html !== 'string') return html;
+  return html.replace(/\((\d{1,2} [a-z]{3}\.? \d{2}:\d{2}) NL\)/g, '<span class="nl-tijd">($1 NL)</span>');
+}
+
 // Muteert s.titel (in place) voor elk signaal dat een NWS-achtige tijd
 // bevat -- op één centrale plek aangeroepen (verversen() hieronder) zodat
 // elk kaartje/popup dat s.titel toont (Meldingen-lijst, kaart-popup,
@@ -2611,7 +2621,7 @@ function popupHtml(s) {
   // GROND/weerwaarschuwing) heeft nooit in de popup gestaan en dat is hier
   // niet gevraagd, dus die laat ik met rust.
   const pilHtml = s.categorie === 'tornado-bevestigd' ? `<span class="pil grijs">BEVESTIGD</span>` : '';
-  const titelHtml = riglijstTitelHtml(s) ?? s.titel;
+  const titelHtml = markeerNlTijd(riglijstTitelHtml(s) ?? s.titel);
   // 2026-08-24, op verzoek van Lex ("het icon waarop werd geklikt als grote
   // kopie bij de tekst... dan zie je ook eindelijk eens goed hoe mooi die
   // icons zijn") — zelfde hazardIconHtml(s) als de kaart-pin, alleen hier
@@ -7007,7 +7017,7 @@ function maakMeldingItem(s) {
     <span class="em">${hazardIconHtml(s)}</span>
     <span class="txt">
       ${navtexNummerHtml}
-      <div class="titel">${pilHtml}${datumOnbetrouwbaarHtml}${s.titel}</div>
+      <div class="titel">${pilHtml}${datumOnbetrouwbaarHtml}${markeerNlTijd(s.titel)}</div>
       <div class="sub">${subRegel}</div>
     </span>
     ${opKaart ? '<span class="chev">›</span>' : ''}
@@ -7097,7 +7107,7 @@ function maakVerlopenMeldingItem(s) {
   btn.innerHTML = `
     <span class="em">${hazardIconHtml(s)}</span>
     <span class="txt">
-      <div class="titel">${pilHtml}${s.detail?.gebied ?? s.titel}</div>
+      <div class="titel">${pilHtml}${markeerNlTijd(s.detail?.gebied ?? s.titel)}</div>
       <div class="sub">🕓 Verlopen${tijdregel ? ` ${tijdregel}` : ''}</div>
     </span>
     <span class="chev">›</span>
