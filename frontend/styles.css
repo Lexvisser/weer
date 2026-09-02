@@ -1046,13 +1046,17 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    stilstaat of pulseert, nooit twee ringen over elkaar). */
 .leaflet-marker-icon.vaar-marker-ring,
 .leaflet-marker-icon.vaar-marker-actief { position:absolute; }
+/* 2026-09-02, op verzoek van Lex ("Je laat het rondje zien in de kleur ik
+   wil het wit") -- vaste witte ring i.p.v. de kleur van het bootje zelf
+   (--vaar-ring-kleur, zie zetVaarRingKleur() in app.js, blijft gezet maar
+   wordt hier niet meer gebruikt). */
 .leaflet-marker-icon.vaar-marker-ring::after,
 .leaflet-marker-icon.vaar-marker-actief::after {
   content:'';
   position:absolute;
   inset:-8px;
   border-radius:50%;
-  border:2px solid var(--vaar-ring-kleur, #3ec6ff);
+  border:2px solid #ffffff;
   pointer-events:none;
 }
 .leaflet-marker-icon.vaar-marker-actief::after {
