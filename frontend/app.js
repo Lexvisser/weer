@@ -5014,6 +5014,20 @@ let vaarLaag = null;
 // zodat 'ie bij elke update in de popup blijft staan en nooit twee keer
 // opgezocht wordt.
 const vaarMarkers = new Map(); // mmsi -> L.marker
+// 2026-09-02, op verzoek van Lex ("is het mogelijk om een specifiek gebied vrij te
+// houden van clustering" -> "vast rechthoekig gebied"). Leaflet.markercluster kent
+// geen "hier niet clusteren"-zone, dus: twee lagen. Schepen binnen een van deze
+// boxen gaan in vaarLosLaag (gewone layerGroup, nooit geclusterd), de rest in
+// vaarLaag (de clustergroep). Een schip dat de grens overvaart verhuist van laag
+// (zie ververVaarradar). De rand wordt licht gestippeld meegetekend zodat je ziet
+// waar de box ligt en 'm hier makkelijk kunt bijstellen. Meerdere boxen mag.
+const VAAR_CLUSTERVRIJE_ZONES = [
+  { naam: 'Rotterdamse haven + Oude Maas t/m Dordrecht', latmin: 51.75, latmax: 52.02, lonmin: 3.9, lonmax: 4.75 },
+];
+let vaarLosLaag = null;
+function inClustervrijeZone(lat, lon) {
+  return VAAR_CLUSTERVRIJE_ZONES.some((z) => lat >= z.latmin && lat <= z.latmax && lon >= z.lonmin && lon <= z.lonmax);
+}
 const scheepsfotoUrls = new Map(); // mmsi -> url (string) of null (= geen foto)
 let radarPollTimer = null;
 // 2026-08-21, op verzoek van Lex ("zou kunnen [een zichtbare cirkel]") —
@@ -5409,6 +5423,18 @@ async function ververVaarradar() {
         spiderfyOnMaxZoom: true,
       }).addTo(kaart);
     }
+    if (!vaarLosLaag) {
+      vaarLosLaag = L.layerGroup().addTo(kaart);
+      for (const z of VAAR_CLUSTERVRIJE_ZONES) {
+        L.rectangle(
+          [
+            [z.latmin, z.lonmin],
+            [z.latmax, z.lonmax],
+          ],
+          { color: '#7fd1ff', weight: 1, dashArray: '4 6', fill: false, opacity: 0.45, interactive: false }
+        ).addTo(vaarLosLaag);
+      }
+    }
     const gezien = new Set();
     // AISHub-only schepen (bron: 'aishub', geen eigen ontvangst) blijven weg
     // als de knop uitstaat -- lokaal ontvangen schepen (bron: 'lokaal')
@@ -5439,13 +5465,21 @@ async function ververVaarradar() {
       // een bootje getemperd (opacity) getekend is, niet alleen op de kaart.
       const bronLabel = s.bron === 'aishub' ? '<span class="popup-aishub-label">via AISHub</span>' : '';
       const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}${bronLabel}</div><div class="popup-sub">${escapeHtml(details)}</div>`;
+      const losLaag = inClustervrijeZone(s.lat, s.lon); // true = vaarLosLaag, false = vaarLaag (cluster)
       let marker = vaarMarkers.get(s.mmsi);
       if (marker) {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
         marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron));
-        vaarLaag.refreshClusters?.(marker); // clustergroep bijwerken na in-place positie/icoon-wijziging
+        if (marker.vaarInLosLaag !== losLaag) {
+          // Grens van een clustervrije zone overgevaren: van laag wisselen.
+          (marker.vaarInLosLaag ? vaarLosLaag : vaarLaag).removeLayer(marker);
+          (losLaag ? vaarLosLaag : vaarLaag).addLayer(marker);
+          marker.vaarInLosLaag = losLaag;
+        } else if (!losLaag) {
+          vaarLaag.refreshClusters?.(marker); // clustergroep bijwerken na in-place positie/icoon-wijziging
+        }
         if (basisHtml !== marker.basisPopupHtml) {
           marker.basisPopupHtml = basisHtml;
           marker.getPopup()?.setContent(scheepsPopupHtml(s.mmsi, basisHtml));
@@ -5462,7 +5496,8 @@ async function ververVaarradar() {
       // officiele API, dus zuinig zijn op het aantal opzoekingen).
       // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.
       marker.on('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
-      vaarLaag.addLayer(marker);
+      marker.vaarInLosLaag = losLaag;
+      (losLaag ? vaarLosLaag : vaarLaag).addLayer(marker);
       vaarMarkers.set(s.mmsi, marker);
     });
     // Bootjes die niet meer in de data zitten weghalen -- behalve als de
@@ -5471,7 +5506,7 @@ async function ververVaarradar() {
     // een poll langer blijft staan).
     vaarMarkers.forEach((marker, mmsi) => {
       if (gezien.has(mmsi) || marker.isPopupOpen()) return;
-      vaarLaag.removeLayer(marker);
+      (marker.vaarInLosLaag ? vaarLosLaag : vaarLaag).removeLayer(marker);
       vaarMarkers.delete(mmsi);
     });
   } catch (err) {
@@ -5587,6 +5622,10 @@ function toggleVaarradar() {
     if (vaarLaag) {
       kaart.removeLayer(vaarLaag);
       vaarLaag = null;
+    }
+    if (vaarLosLaag) {
+      kaart.removeLayer(vaarLosLaag);
+      vaarLosLaag = null;
     }
     vaarMarkers.clear(); // zie vaarMarkers hierboven; foto-urls mogen blijven
     if (zeeModusActief) toggleZeeModus(); // vaarradar "bezat" de zeemodus-activatie hierboven, dus ook weer uit
