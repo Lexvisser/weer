@@ -1000,7 +1000,11 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    rechte zijden + platte achtersteven) — dit is een zelfgetekende SVG,
    geen font-size/text-shadow meer nodig; drop-shadow op de SVG zelf voor
    contrast tegen de kaartondergrond. */
-.vaar-pin { width:18px; height:30px; display:flex; align-items:center; justify-content:center; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
+/* 2026-09-02-herziening: 16x16 i.p.v. de oude 18x30 -- zie bouwVaarIcon()
+   in app.js, het compacte pijltje/chevron-icoon past nu binnen een vierkante
+   bounding box zodat de pulserende ring (.vaar-marker-actief) er netjes
+   omheen past i.p.v. om een langwerpige vorm. */
+.vaar-pin { width:16px; height:16px; display:flex; align-items:center; justify-content:center; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
 
 /* 2026-09-02, op verzoek van Lex ("alles wat stil ligt is een stip") --
    stilliggende schepen (zie schipLigtStil()/bouwVaarIcon() in app.js) krijgen

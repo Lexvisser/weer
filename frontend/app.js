@@ -5296,7 +5296,7 @@ try {
 const KLEUR_SCHEEP_ONBEKEND = '#9aa0b4';
 const KLEUR_PER_SCHEEPSCATEGORIE = {
   vracht: '#4c9df0',
-  tanker: '#f0824c',
+  tanker: '#ff2020', // 2026-09-02, op verzoek van Lex ("die wil ik fel rood, net als bij MarineTraffic") -- was #f0824c
   vissersboot: '#5be0a0',
   sleepboot: '#e0c14c',
   plezierjacht: '#f04ca8',
@@ -5602,11 +5602,17 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil) {
     });
   }
   const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
+  // 2026-09-02-herziening, op verzoek van Lex ("je moet eerst de icons omvormen
+  // naar dat pijltje dat zij ook hebben, zodat het een mooi rondje wordt") --
+  // de oude langwerpige scheepsromp-SVG (18x30) paste niet netjes binnen de
+  // pulserende ring (.vaar-marker-actief, zie styles.css): een compact
+  // vierkant pijltje/chevron (16x16, net als MarineTraffic/VesselFinder)
+  // geeft een centreerbare vorm waar een cirkelvormige ring omheen past.
   return L.divIcon({
     className: '',
-    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking}"><svg viewBox="0 0 18 30" width="18" height="30"><path d="M9,0 L15,10 L15,24 Q15,28 11,28 L7,28 Q3,28 3,24 L3,10 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
-    iconSize: [18, 30],
-    iconAnchor: [9, 15],
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking}"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M8,0 L14,15 L8,11.5 L2,15 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.3" stroke-linejoin="round"/></svg></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   });
 }
 
@@ -5639,11 +5645,16 @@ function vaarIconSleutel(kleur, bron, stil) {
 function zetVaarRingKleur(marker, kleur) {
   marker._icon?.style?.setProperty('--vaar-ring-kleur', kleur);
 }
+// 2026-09-02-herziening, op verzoek van Lex ("Als er wordt geklikt, verschijnt
+// de grotere kaart en dan pas gaat dat rondje pulseren") -- de ring hoort dus
+// alleen te pulseren zodra het bootje geselecteerd is (de popup/het grotere
+// kaartje openstaat), NIET al bij een simpele mouse-over. De hover-tooltip
+// (vaarTooltipHtml()/Leaflet's eigen tooltip) blijft gewoon apart op hover
+// werken -- alleen de ring is nu popup-only.
 function vaarRingBijwerken(marker) {
   const el = marker._icon;
   if (!el) return;
-  const actief = !!marker._vaarHover || marker.isPopupOpen();
-  el.classList.toggle('vaar-marker-actief', actief);
+  el.classList.toggle('vaar-marker-actief', marker.isPopupOpen());
 }
 
 function werkVaarIconRotatieBij(marker, koersGraden) {
@@ -5883,8 +5894,6 @@ async function ververVaarradar() {
       marker.bindPopup(scheepsPopupEl(marker, s.mmsi, basisHtml));
       marker.vaarTooltipHtml = vaarTooltipHtml(s);
       marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
-      marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
-      marker.on('mouseout', () => { marker._vaarHover = false; vaarRingBijwerken(marker); });
       marker.on('popupopen', () => vaarRingBijwerken(marker));
       marker.on('popupclose', () => vaarRingBijwerken(marker));
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
