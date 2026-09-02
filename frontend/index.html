@@ -117,6 +117,12 @@
     <div class="vaar-menu" id="vaarMenu">
       <button id="vaarMenuHandle" class="vaar-menu-handle" title="AIS/vaarradar aan- of uitzetten">⛴️<span class="vaar-menu-handle-pijl">◂</span></button>
       <div class="vaar-menu-inhoud verborgen" id="vaarMenuInhoud">
+        <!-- 2026-09-02, op verzoek van Lex ("het menu voor de AIS kan dat weer
+             inklappen? ... 3 seconden na start en geen keuze gemaakt menu
+             weer dicht?") -- de handle klapt nu alleen nog het menu in/uit;
+             AIS zelf gaat uit via deze knop. Zie vaarMenuHandleKlik() in app.js. -->
+        <button id="vaarUitKnop" class="vaar-menu-item" title="Vaarradar/AIS uitzetten">⏻ <span class="knop-tekst">AIS uit</span></button>
+        <div class="vaar-menu-scheidslijn"></div>
         <!-- 2026-09-01, op verzoek van Lex ("kunnen we nog wat leuks doen om
              tussen de boten te differentieren met de kleuren?") -- cyclet
              tussen drie kleurmodi (per schip / per scheepstype / op snelheid,

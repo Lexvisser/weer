@@ -53,6 +53,7 @@ const DWD_KAART_STATUS_EL = document.getElementById('dwdKaartStatus');
 // als de uitklap-knop, zie toggleVaarradar() hieronder.
 const TOGGLE_VAARRADAR_EL = document.getElementById('vaarMenuHandle');
 const VAAR_MENU_INHOUD_EL = document.getElementById('vaarMenuInhoud');
+const VAAR_UIT_KNOP_EL = document.getElementById('vaarUitKnop');
 const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
 const VAAR_AISHUB_KNOP_EL = document.getElementById('vaarAishubToggle');
 const VAAR_BOEIEN_KNOP_EL = document.getElementById('vaarBoeienToggle');
@@ -819,7 +820,10 @@ function initMap() {
   document.getElementById('dwdKaartSluiten')?.addEventListener('click', sluitDwdKaart);
   // Tik op de kaart: wisselen tussen passend en 100% (dan scrollen/pinchen).
   DWD_KAART_IMG_EL?.addEventListener('click', () => DWD_KAART_IMG_EL.classList.toggle('passend'));
-  TOGGLE_VAARRADAR_EL.addEventListener('click', toggleVaarradar);
+  TOGGLE_VAARRADAR_EL.addEventListener('click', vaarMenuHandleKlik);
+  VAAR_UIT_KNOP_EL?.addEventListener('click', () => { if (vaarradarActief) toggleVaarradar(); });
+  // Elke keuze/aanraking in het menu = "er wordt gekozen": auto-inklappen afblazen.
+  VAAR_MENU_INHOUD_EL?.addEventListener('pointerdown', annuleerVaarMenuAutoDicht);
   VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
   VAAR_AISHUB_KNOP_EL?.addEventListener('click', wisselVaarAishubZichtbaar);
   VAAR_BOEIEN_KNOP_EL?.addEventListener('click', wisselVaarBoeienZichtbaar);
@@ -6164,6 +6168,37 @@ function toggleVliegradar() {
   renderMap(laatsteMeldingenSignalen);
 }
 
+// 2026-09-02, op verzoek van Lex ("het menu voor de AIS kan dat weer
+// inklappen? en slim te openen zijn? 3 seconden na start en geen keuze
+// gemaakt menu weer dicht?") -- de handle is niet langer de aan/uit-knop:
+// - AIS uit + klik  -> AIS aan én menu open (met 3s-auto-inklap-timer)
+// - AIS aan + klik  -> menu in-/uitklappen, AIS blijft aan
+// - AIS uit gaat via de ⏻-knop bovenin het menu (#vaarUitKnop).
+// Auto-inklappen: 3 s na het openen, tenzij er in het menu iets aangeraakt
+// wordt (pointerdown in #vaarMenuInhoud -> annuleerVaarMenuAutoDicht()).
+const VAAR_MENU_AUTO_DICHT_MS = 3000;
+let vaarMenuAutoDichtTimer = null;
+
+function annuleerVaarMenuAutoDicht() {
+  if (vaarMenuAutoDichtTimer) clearTimeout(vaarMenuAutoDichtTimer);
+  vaarMenuAutoDichtTimer = null;
+}
+
+function zetVaarMenuOpen(open) {
+  VAAR_MENU_INHOUD_EL?.classList.toggle('verborgen', !open);
+  TOGGLE_VAARRADAR_EL.classList.toggle('open', open);
+  annuleerVaarMenuAutoDicht();
+  if (open) vaarMenuAutoDichtTimer = setTimeout(() => zetVaarMenuOpen(false), VAAR_MENU_AUTO_DICHT_MS);
+}
+
+function vaarMenuHandleKlik() {
+  if (!vaarradarActief) {
+    toggleVaarradar(); // zet ook het menu open, zie daar
+    return;
+  }
+  zetVaarMenuOpen(VAAR_MENU_INHOUD_EL?.classList.contains('verborgen'));
+}
+
 function toggleVaarradar() {
   vaarradarActief = !vaarradarActief;
   // 2026-09-02-herziening: #vaarMenuHandle is nu ZOWEL de aan/uit-knop als de
@@ -6173,7 +6208,7 @@ function toggleVaarradar() {
   // vier losse knoppen + een los paneel) zichtbaar is. Geen apart
   // show/hide meer per los knopje nodig zoals voorheen.
   TOGGLE_VAARRADAR_EL.classList.toggle('actief', vaarradarActief);
-  VAAR_MENU_INHOUD_EL?.classList.toggle('verborgen', !vaarradarActief);
+  zetVaarMenuOpen(vaarradarActief); // aan = menu open (klapt na 3s vanzelf in), uit = dicht
   if (vaarradarActief) bouwVaarTypeFilterPaneel(); // eenmalig, zie de child-count-guard daarin
   // 2026-09-02, op verzoek van Lex ("Donkere kaart next" -- zie ook zijn
   // allereerste wens bij dit hele vaarradar-traject: "De donkere kaart vind

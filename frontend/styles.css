@@ -569,7 +569,9 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .vaar-menu-handle { width:34px; height:34px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(10,11,18,0.85); color:#f4f6fb; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:1px; }
 .vaar-menu-handle.actief { background:#3ec6ff; color:#05060a; border-color:#3ec6ff; }
 .vaar-menu-handle-pijl { font-size:8px; transition: transform 0.15s ease; }
-.vaar-menu-handle.actief .vaar-menu-handle-pijl { transform: rotate(180deg); }
+/* 2026-09-02: pijl volgt nu de menustand (open/dicht), niet meer AIS aan/uit
+   -- zie vaarMenuHandleKlik() in app.js. */
+.vaar-menu-handle.open .vaar-menu-handle-pijl { transform: rotate(180deg); }
 .vaar-menu-inhoud { margin-top:8px; width:180px; max-height:70vh; display:flex; flex-direction:column; gap:5px; background:#141826; border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:9px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#f4f6fb; box-shadow:0 4px 16px rgba(0,0,0,0.5); }
 .vaar-menu-item { display:flex; align-items:center; gap:6px; width:100%; text-align:left; background:#1c2030; border:none; border-radius:8px; padding:6px 8px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:11px; cursor:pointer; }
 .vaar-menu-item.actief { background:#3ec6ff; color:#05060a; }
