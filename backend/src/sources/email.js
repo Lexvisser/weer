@@ -127,12 +127,14 @@ export function kaartUrlVoor({ lat, lon, gebiedPolygon }) {
 // ---- Tijdzone-verrijking (2026-08-28) ---------------------------------
 // Op verzoek van Lex: NWS-mails noemen tijden in de lokale Amerikaanse zone
 // ("Tornado Warning issued August 27 at 8:24PM EDT until ...") — daar komt
-// nu per gevonden tijd een vermelding in UTC én Amsterdamse tijd achter,
-// in de HTML-mail als twee gekleurde pillen (inline styles, want
-// mailclients kennen geen stylesheets), in de platte-tekst-variant als
-// " (28 aug 00:24 UTC · 28 aug 02:24 NL)". De datum staat er telkens bij:
-// juist rond middernacht schuift die bij het omrekenen (Lex' voorbeeld:
-// 27 aug 20:24 EDT = 28 aug 00:24 UTC).
+// nu per gevonden tijd meteen de Amsterdamse tijd achter (dus lokale
+// Amerikaanse TZ, direct gevolgd door NL — geen UTC ertussenin, op verzoek
+// van Lex 2026-09-02, was eerst UTC + NL), in de HTML-mail als gekleurde pil
+// (inline styles, want mailclients kennen geen stylesheets), in de
+// platte-tekst-variant als " (28 aug 02:24 NL)". De datum staat er telkens
+// bij: juist rond middernacht schuift die bij het omrekenen (Lex' voorbeeld:
+// 27 aug 20:24 EDT = 28 aug 02:24 NL, een dag later dan de Amerikaanse datum
+// zelf zou kunnen zijn).
 //
 // Vaste offset-tabel voor de zone-afkortingen die NWS gebruikt — de
 // afkorting zelf codeert al zomer- of wintertijd (EDT vs EST), dus dit is
@@ -180,19 +182,21 @@ function vindTijdVerrijkingen(tekst) {
     const halfJaar = 183 * 24 * 3600e3;
     if (utcMs - nu > halfJaar) utcMs -= 365 * 24 * 3600e3;
     else if (nu - utcMs > halfJaar) utcMs += 365 * 24 * 3600e3;
-    uit.push({ index: m.index, lengte: m[0].length, utc: formatteerKort(utcMs, 'UTC'), nl: formatteerKort(utcMs, 'Europe/Amsterdam') });
+    // utcMs is puur een rekentussenstap (het epoch-moment) -- alleen de
+    // Amsterdamse tijd wordt daadwerkelijk getoond, zie uitleg hierboven.
+    uit.push({ index: m.index, lengte: m[0].length, nl: formatteerKort(utcMs, 'Europe/Amsterdam') });
   }
   return uit;
 }
 
-// Platte tekst: " (28 aug 00:24 UTC · 28 aug 02:24 NL)" direct achter de tijd.
+// Platte tekst: " (28 aug 02:24 NL)" direct achter de tijd.
 export function verrijkTekstMetTijdzones(tekst) {
   const verrijkingen = vindTijdVerrijkingen(tekst);
   if (!verrijkingen.length) return tekst;
   let uit = '';
   let vorige = 0;
   for (const v of verrijkingen) {
-    uit += tekst.slice(vorige, v.index + v.lengte) + ` (${v.utc} UTC · ${v.nl} NL)`;
+    uit += tekst.slice(vorige, v.index + v.lengte) + ` (${v.nl} NL)`;
     vorige = v.index + v.lengte;
   }
   return uit + tekst.slice(vorige);
@@ -204,17 +208,16 @@ function escapeHtmlMail(tekst) {
 
 const PIL_BASIS = 'display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-family:monospace;white-space:nowrap;margin:0 2px;';
 
-// HTML: zelfde tekst, maar met de UTC- en NL-tijd als twee gekleurde pillen
-// achter elke gevonden tijd (blauw = UTC, oranje = NL — elk "in eigen kleur
-// in kadertje of pil", zoals gevraagd).
+// HTML: zelfde tekst, maar met de NL-tijd als gekleurde pil achter elke
+// gevonden tijd (oranje — "in eigen kleur in kadertje of pil", zoals
+// gevraagd; de UTC-pil is 2026-09-02 op verzoek van Lex weer verwijderd).
 function htmlMetTijdzonePillen(tekst) {
   const verrijkingen = vindTijdVerrijkingen(tekst);
   let uit = '';
   let vorige = 0;
   for (const v of verrijkingen) {
     uit += escapeHtmlMail(tekst.slice(vorige, v.index + v.lengte));
-    uit += ` <span style="${PIL_BASIS}background:#eaf3ff;color:#1b5fae;border:1px solid #7cb4ea;">${escapeHtmlMail(v.utc)} UTC</span>`;
-    uit += `<span style="${PIL_BASIS}background:#fff3e0;color:#a35a00;border:1px solid #f0b46a;">${escapeHtmlMail(v.nl)} NL</span>`;
+    uit += ` <span style="${PIL_BASIS}background:#fff3e0;color:#a35a00;border:1px solid #f0b46a;">${escapeHtmlMail(v.nl)} NL</span>`;
     vorige = v.index + v.lengte;
   }
   return uit + escapeHtmlMail(tekst.slice(vorige));

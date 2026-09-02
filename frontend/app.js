@@ -159,6 +159,75 @@ function tijdstempelTekst(iso) {
   return `${datum} ${tijd}`;
 }
 
+// 2026-09-02, op verzoek van Lex ("dat ook zo maken op de kaartjes in de
+// app") -- zelfde tijdzone-verrijking als backend/src/sources/email.js
+// (verrijkTekstMetTijdzones), maar dan front-end en zonder UTC: NWS-titels
+// bevatten de lokale Amerikaanse tijd ("... issued August 27 at 8:24PM EDT
+// until ..."), hier komt daar meteen de Amsterdamse tijd achter, geen UTC
+// ertussenin (net als de mail sinds vandaag). Losse duplicate van dezelfde
+// tabellen/regex i.p.v. gedeeld bestand -- dit project heeft geen
+// frontend/backend-buildstap die modules tussen de twee kan delen (losse
+// <script>, geen bundler), zie ook de "dependency-loos"-keuze elders.
+const TZ_OFFSET_UREN_FE = {
+  EDT: -4, EST: -5, CDT: -5, CST: -6, MDT: -6, MST: -7, PDT: -7, PST: -8,
+  AKDT: -8, AKST: -9, HDT: -9, HST: -10, AST: -4, ADT: -3, SST: -11, CHST: 10,
+  GMT: 0, UTC: 0,
+};
+const MAAND_INDEX_FE = {
+  JANUARY: 0, FEBRUARY: 1, MARCH: 2, APRIL: 3, MAY: 4, JUNE: 5,
+  JULY: 6, AUGUST: 7, SEPTEMBER: 8, OCTOBER: 9, NOVEMBER: 10, DECEMBER: 11,
+};
+const TIJD_REGEX_FE = new RegExp(
+  `\\b(${Object.keys(MAAND_INDEX_FE).join('|')})\\s+(\\d{1,2})\\s+at\\s+(\\d{1,2}):(\\d{2})\\s*(AM|PM)\\s+(${Object.keys(TZ_OFFSET_UREN_FE).join('|')})\\b`,
+  'gi',
+);
+
+// Zelfde jaarwisseling-afhandeling als backend (geen jaartal in de
+// brontekst, dus het jaar kiezen dat de datum het dichtst bij nu legt).
+function verrijkTekstMetNlTijd(tekst) {
+  if (typeof tekst !== 'string') return tekst;
+  TIJD_REGEX_FE.lastIndex = 0;
+  let uit = '';
+  let vorige = 0;
+  let m;
+  while ((m = TIJD_REGEX_FE.exec(tekst)) !== null) {
+    const maand = MAAND_INDEX_FE[m[1].toUpperCase()];
+    const dag = Number(m[2]);
+    let uur = Number(m[3]) % 12;
+    if (m[5].toUpperCase() === 'PM') uur += 12;
+    const minuut = Number(m[4]);
+    const offset = TZ_OFFSET_UREN_FE[m[6].toUpperCase()];
+    const eind = m.index + m[0].length;
+    if (maand == null || offset == null) {
+      uit += tekst.slice(vorige, eind);
+      vorige = eind;
+      continue;
+    }
+    const nu = Date.now();
+    let utcMs = Date.UTC(new Date().getUTCFullYear(), maand, dag, uur, minuut) - offset * 3600e3;
+    const halfJaar = 183 * 24 * 3600e3;
+    if (utcMs - nu > halfJaar) utcMs -= 365 * 24 * 3600e3;
+    else if (nu - utcMs > halfJaar) utcMs += 365 * 24 * 3600e3;
+    const nl = new Date(utcMs)
+      .toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+      .replace(',', '');
+    uit += tekst.slice(vorige, eind) + ` (${nl} NL)`;
+    vorige = eind;
+  }
+  return uit + tekst.slice(vorige);
+}
+
+// Muteert s.titel (in place) voor elk signaal dat een NWS-achtige tijd
+// bevat -- op één centrale plek aangeroepen (verversen() hieronder) zodat
+// elk kaartje/popup dat s.titel toont (Meldingen-lijst, kaart-popup,
+// schermvullende overlay, alarm-popup) de verrijking automatisch meekrijgt,
+// zonder elke renderplek los aan te passen.
+function verrijkSignalenMetNlTijd(signalen) {
+  for (const s of signalen) {
+    if (typeof s.titel === 'string') s.titel = verrijkTekstMetNlTijd(s.titel);
+  }
+}
+
 // 2026-08-25, op verzoek van Lex ("ik zie op de kaart een klok zonder datum
 // ... ik hoef dan geen backend tijd te zien dat is verwarrend"): bij een
 // NAVTEX-bericht zonder betrouwbare eigen datum (detail.datumOnbetrouwbaar,
@@ -753,7 +822,9 @@ function initMap() {
     if (!inhoudEl || inhoudEl.dataset.volledigSchermGekoppeld) return;
     inhoudEl.dataset.volledigSchermGekoppeld = '1';
     inhoudEl.addEventListener('click', (klikEvent) => {
-      if (klikEvent.target.closest('a')) return; // echte links/foto's ongemoeid laten
+      // echte links/foto's (a) én de open/dicht-knop van de community-
+      // miniaturenstrip (summary, 2026-09-02) ongemoeid laten
+      if (klikEvent.target.closest('a, summary')) return;
       toonVolledigSchermPopup(inhoudEl.innerHTML);
     });
   });
@@ -2710,6 +2781,17 @@ function popupExtraHtml(s) {
 // externe bronnen, en direct inline afspelen zou zonder enige controle
 // content van derden laten draaien in de popup — een klik-door naar de
 // bronpagina is hier de veiligere keuze.
+// 2026-09-02, op verzoek van Lex ("niet meteen zichtbaar, met een teller
+// erop") — de strip staat nu standaard dicht achter een <summary>-knop met
+// het aantal miniaturen erop. <details>/<summary> i.p.v. een eigen
+// show/hide-knop met JS-state: dit werkt vanzelf zowel in de kleine
+// Leaflet-popup als in de schermvullende overlay (die de popup-HTML 1-op-1
+// kopieert, zie toonVolledigSchermPopup) zonder dat er ergens apart
+// open/dicht-state bijgehouden hoeft te worden. De bestaande "tik op de
+// popup opent schermvullend"-listener sluit .popup-fotostrip-toggle
+// (de summary) nu ook uit, naast .popup-fotostrip-item (echte links) --
+// anders zou open-/dichtklikken van de strip zelf ook meteen de
+// schermvullende weergave triggeren.
 function popupFotostripHtml(items) {
   const html = items
     .map((m) => {
@@ -2717,7 +2799,9 @@ function popupFotostripHtml(items) {
       return `<a href="${m.link}" target="_blank" rel="noopener" title="${escapeAttr(m.titel)}" class="popup-fotostrip-item"><img src="${m.thumbUrl ?? m.url}" alt="${m.type === 'video' ? 'Communityvideo' : 'Communityfoto'}" loading="lazy" onerror="this.closest('a').remove()">${badge}</a>`;
     })
     .join('');
-  return `<div class="popup-fotostrip">${html}</div><div class="popup-fotostrip-label">📷 community, ongecontroleerd</div>`;
+  const aantal = items.length;
+  const label = `📷 ${aantal} community-miniatu${aantal === 1 ? 'ur' : 'ren'} tonen`;
+  return `<details class="popup-fotostrip-details"><summary class="popup-fotostrip-toggle">${escapeHtml(label)}</summary><div class="popup-fotostrip">${html}</div><div class="popup-fotostrip-label">📷 community, ongecontroleerd</div></details>`;
 }
 
 // Lifeliner (traumahelikopter) krijgt een eigen geel icoon i.p.v. de
@@ -8547,6 +8631,8 @@ async function verversen() {
       fetch('/api/status').then((r) => r.json()),
     ]);
     ERROR_EL.classList.remove('show');
+
+    verrijkSignalenMetNlTijd(signalenRes.signalen);
 
     const perCategorie = {};
     for (const s of signalenRes.signalen) {
