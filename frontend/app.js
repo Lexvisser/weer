@@ -1827,16 +1827,21 @@ function tekenGebiedOmtrek(signal) {
     ? '#9ea6b4'
     : (GEBIED_OMTREK_KLEUR_PER_CATEGORIE[signal.categorie] ?? GEBIED_OMTREK_KLEUR_STANDAARD);
   let ietsGetekend = false;
+  // 2026-09-02, op verzoek van Lex ("maak de rasters bij tornado watch
+  // gebieden wat prominenter"): actieve tornado-omtrekken (watch én warning)
+  // dikker, feller en met iets meer vulling dan de overige categorieën --
+  // die 1.5px-stippellijn viel op de donkere kaart nauwelijks op.
+  const prominent = !verlopen && (signal.categorie === 'tornado' || signal.categorie === 'tornado-watch' || signal.categorie === 'tornado-bevestigd');
   if (Array.isArray(ringenLatLon) && ringenLatLon.length) {
     ringenLatLon.forEach((ring) => {
       L.polygon(ring, {
         className: 'gebied-omtrek',
         color: omtrekKleur,
-        weight: 1.5,
-        opacity: verlopen ? 0.4 : 0.55,
-        dashArray: verlopen ? '3 7' : '5 7',
+        weight: prominent ? 3 : 1.5,
+        opacity: verlopen ? 0.4 : prominent ? 0.95 : 0.55,
+        dashArray: verlopen ? '3 7' : prominent ? '10 6' : '5 7',
         fillColor: omtrekKleur,
-        fillOpacity: verlopen ? 0.04 : 0.05,
+        fillOpacity: verlopen ? 0.04 : prominent ? 0.12 : 0.05,
         interactive: false,
       }).addTo(gebiedLaag);
     });
