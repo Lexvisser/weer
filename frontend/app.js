@@ -55,6 +55,7 @@ const TOGGLE_VAARRADAR_EL = document.getElementById('vaarMenuHandle');
 const VAAR_MENU_INHOUD_EL = document.getElementById('vaarMenuInhoud');
 const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
 const VAAR_AISHUB_KNOP_EL = document.getElementById('vaarAishubToggle');
+const VAAR_BOEIEN_KNOP_EL = document.getElementById('vaarBoeienToggle');
 const VAAR_STRAAL_KNOP_EL = document.getElementById('vaarStraalKnop');
 const VAAR_TYPE_FILTER_PANEEL_EL = document.getElementById('vaarTypeFilterPaneel');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
@@ -821,6 +822,7 @@ function initMap() {
   TOGGLE_VAARRADAR_EL.addEventListener('click', toggleVaarradar);
   VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
   VAAR_AISHUB_KNOP_EL?.addEventListener('click', wisselVaarAishubZichtbaar);
+  VAAR_BOEIEN_KNOP_EL?.addEventListener('click', wisselVaarBoeienZichtbaar);
   VAAR_STRAAL_KNOP_EL?.addEventListener('click', wisselVaarStraal);
   zetVaarStraalKnopLabel(); // meteen bij opstarten het opgeslagen/standaard getal tonen
   zetVaarKleurKnopLabel();
@@ -5609,6 +5611,42 @@ function wisselVaarAishubZichtbaar() {
   ververVaarradar(); // meteen bijwerken, niet wachten op de volgende 3s-poll
 }
 
+// 2026-09-02, op verzoek van Lex ("Is het mogelijk om de boeien te verbergen?
+// Dat zit ws vast aan een zeelaag. Aan uit knopje misschien. Het is erg druk
+// nu") -- de OpenSeaMap-seamark-laag (zeeLaag: boeien, lichten, vaargeulen)
+// in Vaart-modus aan/uit. Bewust ALLEEN voor Vaart-modus: de losstaande
+// Zee/NAVTEX-stand heeft geen knop hiervoor, dus daar blijft de laag altijd
+// gewoon aan (anders zou een hier verborgen laag daar onzichtbaar "vast"
+// blijven staan). Zelfde localStorage-patroon als VAAR_AISHUB_KEY.
+const VAAR_BOEIEN_KEY = 'weerVaarBoeienZichtbaar';
+let vaarBoeienZichtbaar = true;
+try {
+  if (localStorage.getItem(VAAR_BOEIEN_KEY) === '0') vaarBoeienZichtbaar = false;
+} catch (_) {
+  /* prive-modus, gewoon bij de standaard (aan) blijven */
+}
+VAAR_BOEIEN_KNOP_EL?.classList.toggle('actief', vaarBoeienZichtbaar);
+
+// Past de zichtbaarheid van zeeLaag toe op de huidige stand (Vaart-modus
+// aan + knop uit = laag weg; anders laag aan zolang Zee-modus actief is).
+function pasVaarBoeienToe() {
+  if (!zeeLaag || !zeeModusActief) return;
+  const moetTonen = !(vaarradarActief && !vaarBoeienZichtbaar);
+  if (moetTonen && !kaart.hasLayer(zeeLaag)) kaart.addLayer(zeeLaag);
+  if (!moetTonen && kaart.hasLayer(zeeLaag)) kaart.removeLayer(zeeLaag);
+}
+
+function wisselVaarBoeienZichtbaar() {
+  vaarBoeienZichtbaar = !vaarBoeienZichtbaar;
+  VAAR_BOEIEN_KNOP_EL?.classList.toggle('actief', vaarBoeienZichtbaar);
+  try {
+    localStorage.setItem(VAAR_BOEIEN_KEY, vaarBoeienZichtbaar ? '1' : '0');
+  } catch (_) {
+    /* prive-modus */
+  }
+  pasVaarBoeienToe();
+}
+
 // 2026-09-02, op verzoek van Lex ("alles wat stil ligt is een stip") --
 // stilliggende schepen (zie schipLigtStil() hierboven) krijgen nu een simpel
 // rond stipje i.p.v. de geroteerde scheepsromp, zelfde patroon als
@@ -6095,6 +6133,7 @@ function toggleVaarradar() {
     // specifiek uitzetten voor Vaart-modus (de losstaande Zee/NAVTEX-stand
     // op de OSM-kaart houdt 'm gewoon, daar was hij nooit het probleem).
     if (zeeDiepteLaag && kaart.hasLayer(zeeDiepteLaag)) kaart.removeLayer(zeeDiepteLaag);
+    pasVaarBoeienToe(); // 2026-09-02: ⚓-knop in het vaarmenu, zie wisselVaarBoeienZichtbaar()
     if (kaartVolgType) stopKaartVolgen(false); // zie toggleVliegradar
   } else {
     if (vaarLaag) {
