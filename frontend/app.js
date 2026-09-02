@@ -5116,8 +5116,12 @@ const VAAR_MIN_ZOOM_VOOR_SCHEPEN = 10;
 // Startbeeld bij het aanzetten van de vaarradar: de Maasmond (zie
 // toggleVaarradar()). Zoom 12 toont Hoek van Holland t/m de Maasvlakte en
 // een stuk Nieuwe Waterweg.
-const VAAR_STARTPOSITIE = [51.975, 4.08];
-const VAAR_STARTZOOM = 12;
+// 2026-09-02-herziening, op Lex' screenshot ("Wil je de initiele zoom zo
+// maken?"): niet alleen de Maasmond, maar het hele Rijnmondgebied --
+// Maasvlakte/Hoek van Holland in het westen t/m Dordrecht/Gouda in het
+// oosten, Haringvliet/Hollands Diep in het zuiden. fitBounds i.p.v. een
+// vaste zoom, zodat het op telefoon én breed scherm hetzelfde gebied toont.
+const VAAR_STARTBOUNDS = [[51.70, 3.85], [52.05, 4.85]];
 const VAARRADAR_STRAAL_KEY = 'weerVaarradarStraalKm';
 let vaarradarStraalKm = 50;
 try {
@@ -6200,7 +6204,7 @@ function toggleVaarradar() {
     // dat veel te ver uit (schepen verschijnen pas vanaf zoom
     // VAAR_MIN_ZOOM_VOOR_SCHEPEN). Daarom direct erna naar de Maasmond
     // (Hoek van Holland / Maasvlakte / Nieuwe Waterweg), zoom 12.
-    beweegKaartProgrammatisch(() => kaart.setView(VAAR_STARTPOSITIE, VAAR_STARTZOOM, { animate: false }));
+    beweegKaartProgrammatisch(() => kaart.fitBounds(VAAR_STARTBOUNDS, { animate: false }));
     // 2026-09-02, op melding van Lex ("Deze kaart is ook nog eens zeer
     // vaag" -- een haven-screenshot in Vaart-modus toonde een wazige
     // beige/grijze waas over de hele kaart): de EMODnet-dieptelaag
