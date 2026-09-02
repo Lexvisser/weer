@@ -5729,7 +5729,14 @@ function vaarRingBijwerken(marker) {
   const el = marker._icon;
   if (!el) return;
   el.classList.toggle('vaar-marker-ring', !!marker._vaarHover);
-  el.classList.toggle('vaar-marker-actief', marker.isPopupOpen());
+  // 2026-09-02-bug-fix, op melding van Lex ("het pulseren blijft actief als
+  // ik naar een ander vessel ga en klik, alles blijft pulseren"): Leaflet
+  // vuurt 'popupclose' op de marker terwijl de popup intern nog als "open"
+  // geldt (het event komt uit onRemove(), vóórdat de map-koppeling weg is),
+  // dus marker.isPopupOpen() gaf hier nog steeds true en de puls bleef
+  // staan. Daarom een eigen vlag (_vaarPopupOpen, gezet in de popupopen/
+  // popupclose-handlers in ververVaarradar) i.p.v. isPopupOpen().
+  el.classList.toggle('vaar-marker-actief', !!marker._vaarPopupOpen);
 }
 
 function werkVaarIconRotatieBij(marker, koersGraden) {
@@ -6039,8 +6046,8 @@ async function ververVaarradar() {
       marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
       marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
       marker.on('mouseout', () => { marker._vaarHover = false; vaarRingBijwerken(marker); });
-      marker.on('popupopen', () => vaarRingBijwerken(marker));
-      marker.on('popupclose', () => vaarRingBijwerken(marker));
+      marker.on('popupopen', () => { marker._vaarPopupOpen = true; vaarRingBijwerken(marker); });
+      marker.on('popupclose', () => { marker._vaarPopupOpen = false; vaarRingBijwerken(marker); });
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
       // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
       // deze popup daadwerkelijk OPENT, nooit vooraf voor alle zichtbare
