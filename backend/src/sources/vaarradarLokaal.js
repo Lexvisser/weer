@@ -52,17 +52,19 @@ const BACKOFF_MAX_MS = 60000;
 // mentatie (jvde-github.github.io/AIS-catcher-docs) noemt een numeriek
 // 'shiptype'-veld (0-99, standaard ITU-R M.1371-codes) uit AIS-berichttype
 // 5/19/24 -- STATISCHE data, dus een ander bericht dan de positieberichten
-// hierboven en minder vaak uitgezonden dan die. OF de webviewer-geojson-feed
-// dat veld per schip daadwerkelijk meegeeft kon vanuit deze sessie niet los
-// bevestigd worden (geen shell-toegang tot lexdev-nw hiervandaan) -- daarom
-// hieronder defensief op twee mogelijke veldnamen gecheckt. Blijkt het veld
-// structureel te ontbreken, dan is scheepstypeRuw altijd null en daarmee
-// categorie altijd null -- de frontend valt dan simpelweg terug op een
-// neutrale "onbekend"-kleur, geen crash. Check zelf even met een curl tegen
-// 127.0.0.1:8100/geojson of er 'shiptype' in de properties van een schip
-// zit, en welke waarde, om te zien of dit ooit meer dan "onbekend" toont.
+// hierboven en minder vaak uitgezonden dan die.
+// 2026-09-02-UPDATE: BEVESTIGD -- Lex' eigen curl tegen 127.0.0.1:8100/geojson
+// (sessie-overleg over het loskoppelen/opnieuw vormgeven van de vaarradar)
+// toonde "shiptype": 8010 bij een echt schip (NAVATA, op weg naar Frankfurt).
+// Het veld zit er dus gewoon in -- de eerdere onzekerheid hieronder is
+// opgelost. WEL bleek 8010 geen gewone ITU-R-code (die zijn 0-99) maar een
+// 4-cijferige ERI/Inland-AIS-scheepstypecode (CCNR/CESNI-standaard voor
+// binnenvaart) -- logisch bij deze locatie (Maasmond/Rotterdamse aanloop),
+// waar veel Rijnvaart tussen de zeevaart zit. categoriseerEriType()
+// hieronder vangt die range (>=1000) apart op.
 export function categoriseerScheepstype(typeCode) {
   if (typeof typeCode !== 'number' || typeCode <= 0) return null; // 0/ontbrekend: geen data, niet hetzelfde als "overig"
+  if (typeCode >= 1000) return categoriseerEriType(typeCode); // ERI/Inland-AIS, zie hieronder
   if (typeCode === 30) return 'vissersboot';
   if (typeCode === 31 || typeCode === 32 || typeCode === 52) return 'sleepboot';
   if (typeCode === 36 || typeCode === 37) return 'plezierjacht'; // zeilboot + motorjacht op één hoop, zelfde "leuke" kleur
@@ -72,6 +74,53 @@ export function categoriseerScheepstype(typeCode) {
   if (typeCode >= 70 && typeCode <= 79) return 'vracht';
   if (typeCode >= 80 && typeCode <= 89) return 'tanker';
   return 'overig'; // bekend type, maar geen van de bovenstaande (bagger/duik/militair/WIG/90-99 etc.)
+}
+
+// 2026-09-02: ERI/Inland-AIS-scheepstypecodes (4-cijferig, >=1000) -- tabel
+// overgenomen uit CESNI/ERI's publieke Annex-1-documentatie voor Inland AIS
+// (zie sessienotitie), NIET stuk voor stuk live geverifieerd tegen echte
+// schepen -- alleen 8010 is hard bevestigd (NAVATA, zie boven). Bij twijfel
+// over een code: laat 'm in 'overig' vallen, nooit gokken naar een "leukere"
+// categorie. 8000 ("Vessel, type unknown") wordt als "geen data" behandeld,
+// net als een ontbrekende ITU-R-code hierboven.
+const ERI_TANKER = new Set([8020, 8021, 8022, 8023, 8040, 8060, 8160, 8161, 8162, 8163, 8180, 8490, 8500]);
+const ERI_VRACHT = new Set([8010, 8030, 8050, 8070, 8080, 8090, 8100, 8150, 8170]);
+const ERI_SLEEPBOOT = new Set([8110, 8120, 8130, 8140, 8400, 8410, 8420, 8430]);
+const ERI_PASSAGIER = new Set([8440, 8441, 8442, 8443, 8444]);
+const ERI_HULPDIENST = new Set([8450, 8460]);
+const ERI_VISSER = new Set([8480]);
+
+function categoriseerEriType(typeCode) {
+  if (typeCode === 8000) return null; // "type unknown" -- geen data
+  if (ERI_TANKER.has(typeCode) || (typeCode >= 8310 && typeCode <= 8399)) return 'tanker'; // losse tankcodes + duw/sleep-combi's met tank-/gasbak(ken)
+  if (ERI_VRACHT.has(typeCode) || (typeCode >= 8210 && typeCode <= 8299)) return 'vracht'; // losse vrachtcodes + duw/sleep-combi's met droge-lading-bak(ken)
+  if (ERI_SLEEPBOOT.has(typeCode)) return 'sleepboot';
+  if (ERI_PASSAGIER.has(typeCode)) return 'passagiersschip';
+  if (ERI_HULPDIENST.has(typeCode)) return 'hulpdienst';
+  if (ERI_VISSER.has(typeCode)) return 'vissersboot';
+  return 'overig'; // bekende ERI-range, maar geen van bovenstaande (getrokken object, bunkerschip, onbekend object...)
+}
+
+// 2026-09-02: ETA komt bij AIS in vier losse velden (maand/dag/uur/minuut),
+// met vaste ITU-R M.1371-sentinelwaarden voor "onbekend per veld" (maand 0,
+// dag 0, uur 24, minuut 60) -- geen eigen aanname, staat zo in de standaard.
+// Eén normalisatiefunctie hier zodat beide bronnen (lokaal: losse velden,
+// AISHub: samengevoegde tekst, zie vaarradarAishub.js) hetzelfde opleveren
+// voor de frontend. Zonder bruikbare maand/dag (het meest gebruikelijke
+// "nog niet bekend"-geval) geeft dit null terug -- geen halve/misleidende
+// datum tonen.
+export function normaliseerEta(maand, dag, uur, minuut) {
+  const m = Number(maand);
+  const d = Number(dag);
+  if (!Number.isFinite(m) || !Number.isFinite(d) || m <= 0 || d <= 0) return null;
+  const u = Number(uur);
+  const min = Number(minuut);
+  return {
+    maand: m,
+    dag: d,
+    uur: Number.isFinite(u) && u < 24 ? u : null,
+    minuut: Number.isFinite(min) && min < 60 ? min : null,
+  };
 }
 
 function vertaalFeature(feature) {
@@ -96,6 +145,21 @@ function vertaalFeature(feature) {
   const scheepstypeRuw =
     typeof p.shiptype === 'number' ? p.shiptype : typeof p.ship_type === 'number' ? p.ship_type : null;
 
+  // 2026-09-02, op verzoek van Lex (bestemming/ETA/status/diepgang erbij --
+  // zie sessie-overleg): stuk voor stuk bevestigd aanwezig in Lex' eigen
+  // curl tegen 127.0.0.1:8100/geojson (NAVATA-voorbeeld: destination
+  // "FRANKFURT  HOCHST", draught 1.5, eta_month/day/hour/minute, status 0).
+  // "status" is de officiële AIS-navigatiestatus (0-15, zie NAVSTATUS_LABEL
+  // in app.js) -- gebruikt door de frontend om stilliggende schepen als stip
+  // i.p.v. driehoekje te tekenen, betrouwbaarder dan zelf een snelheids-
+  // drempel verzinnen.
+  const bestemming = String(p.destination ?? '').trim() || null;
+  const diepgangM = typeof p.draught === 'number' && p.draught > 0 ? p.draught : null;
+  const eta = normaliseerEta(p.eta_month, p.eta_day, p.eta_hour, p.eta_minute);
+  const status = typeof p.status === 'number' ? p.status : null;
+  const callsign = String(p.callsign ?? '').trim() || null;
+  const imo = typeof p.imo === 'number' && p.imo > 0 ? p.imo : null;
+
   return {
     mmsi,
     naam: String(p.shipname ?? '').trim() || null,
@@ -104,6 +168,12 @@ function vertaalFeature(feature) {
     koersGraden,
     snelheidKn: typeof p.speed === 'number' ? p.speed : null,
     scheepscategorie: categoriseerScheepstype(scheepstypeRuw),
+    bestemming,
+    diepgangM,
+    eta,
+    status,
+    callsign,
+    imo,
     tijdMs,
   };
 }

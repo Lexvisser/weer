@@ -750,6 +750,12 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    eigen RTL-SDR-ontvangst binnenkwamen) -- zelfde signaal als de getemperde opacity van
    het bootje zelf (zie AISHUB_OPACITEIT in app.js), nu ook leesbaar in de popup. */
 .popup-aishub-label { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:8px; font-size:10px; font-family:'JetBrains Mono',monospace; background:rgba(255,255,255,0.12); color:rgba(244,246,251,0.75); vertical-align:1px; }
+/* 2026-09-02, op verzoek van Lex (bestemming/ETA tonen in de scheepspopup) --
+   zelfde cyaan-accent als de overige uitgelichte popup-regels (zie
+   .popup-golfhoogte verderop), maar subtieler qua formaat -- puur om deze
+   regel iets te laten opvallen tussen de neutrale .popup-sub-regels. */
+.popup-bestemming { color:#3ec6ff; font-size:10.5px; margin-top:3px; font-weight:600; }
+.popup-eta { color:#9199b5; font-weight:400; }
 /* 2026-08-24, op verzoek van Lex ("het icon waarop werd geklikt als grote
    kopie bij de tekst... dan zie je ook eindelijk eens goed hoe mooi die
    icons zijn") — een uitvergrote kopie van hetzelfde icoon als op de kaart-
@@ -959,6 +965,12 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    geen font-size/text-shadow meer nodig; drop-shadow op de SVG zelf voor
    contrast tegen de kaartondergrond. */
 .vaar-pin { width:18px; height:30px; display:flex; align-items:center; justify-content:center; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
+
+/* 2026-09-02, op verzoek van Lex ("alles wat stil ligt is een stip") --
+   stilliggende schepen (zie schipLigtStil()/bouwVaarIcon() in app.js) krijgen
+   dit ronde stipje i.p.v. de geroteerde scheepsromp hierboven -- zelfde
+   soort visuele taal als MarineTraffic/VesselFinder gebruiken. */
+.vaar-stip { width:12px; height:12px; border-radius:50%; border:1.5px solid #0a0d16; box-shadow:0 1px 3px rgba(0,0,0,0.6); }
 
 .home-pin { width:14px; height:14px; border-radius:50%; background:rgba(62,198,255,0.9); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); box-shadow:0 0 0 5px rgba(62,198,255,0.25), 0 0 12px rgba(62,198,255,0.55), 0 2px 6px rgba(10,13,22,0.3); }
 

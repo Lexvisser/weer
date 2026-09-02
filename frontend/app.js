@@ -5247,12 +5247,21 @@ function kleurVoorMmsi(mmsi) {
 const VAARKLEUR_KEY = 'weerVaarKleurModus';
 const VAARKLEUR_MODI = ['schip', 'type', 'snelheid'];
 const VAARKLEUR_MODUS_LABEL = { schip: 'Schip', type: 'Type', snelheid: 'Snelheid' };
-let vaarKleurModus = 'schip';
+// 2026-09-02, op verzoek van Lex ("nooit goed begrepen wat 'Schip' anders
+// doet dan dat je alle kleuren ziet") -- 'schip' geeft elk MMSI gewoon een
+// eigen VASTE, willekeurig ogende kleur (zie kleurVoorMmsi() hierboven) --
+// nuttig om twee dicht-bij-elkaar-liggende bootjes uit elkaar te houden,
+// maar zegt verder niets over het schip zelf. Nu de ERI/binnenvaart-codes
+// ook meegenomen worden in categoriseerScheepstype() (zie
+// vaarradarLokaal.js), is 'type' een stuk informatiever geworden -- daarom
+// als standaard gekozen i.p.v. 'schip'. 'schip' blijft gewoon beschikbaar
+// via de kleurmodus-knop, alleen niet meer de eerste keer die je ziet.
+let vaarKleurModus = 'type';
 try {
   const opgeslagen = localStorage.getItem(VAARKLEUR_KEY);
   if (VAARKLEUR_MODI.includes(opgeslagen)) vaarKleurModus = opgeslagen;
 } catch (_) {
-  /* privé-modus, gewoon bij de standaard ('schip') blijven */
+  /* privé-modus, gewoon bij de standaard ('type') blijven */
 }
 
 // Optie 2: kleur per scheepscategorie (zie categoriseerScheepstype() in
@@ -5304,6 +5313,49 @@ function kleurVoorSnelheid(snelheidKn) {
   if (snelheidKn <= 12) return '#3bff7c'; // normale vaart
   if (snelheidKn <= 20) return '#ffce4c'; // vlot
   return '#ff6b6b'; // snel
+}
+
+// 2026-09-02, op verzoek van Lex (AIS verder uitbouwen -- status, bestemming/
+// ETA tonen, stilliggende schepen als stip i.p.v. driehoekje, net als
+// MarineTraffic/VesselFinder) -- de officiële AIS-navigatiestatus (ITU-R
+// M.1371, 0-15) komt nu mee vanuit de backend (zie "status" in
+// vaarradarLokaal.js/vaarradarAishub.js). Codes 9/10/13 zijn gereserveerd/
+// regionaal en hebben bewust geen label (zouden toch niets zeggen).
+const NAVSTATUS_LABEL = {
+  0: 'Varend, motor aan',
+  1: 'Voor anker',
+  2: 'Niet onder besturing',
+  3: 'Beperkt manoeuvreerbaar',
+  4: 'Beperkt door diepgang',
+  5: 'Afgemeerd',
+  6: 'Aan de grond',
+  7: 'Aan het vissen',
+  8: 'Varend onder zeil',
+  11: 'Duwend/slepend (regionaal)',
+  12: 'Duwend/gekoppeld (regionaal)',
+  14: 'Noodsignaal actief',
+};
+// Voor-anker/afgemeerd/aan-de-grond -> stip i.p.v. driehoekje (zie
+// bouwVaarIcon() hieronder). Betrouwbaarder dan zelf een snelheidsdrempel
+// verzinnen (status is wat het schip zelf uitzendt), met een snelheids-
+// fallback voor het geval status ontbreekt (bijv. een oudere AISHub-respons
+// zonder NAVSTAT-veld) -- Lex meldde tot nu toe geen last van GPS-jitter
+// rond stilstand, dus bewust geen extra marge ingebouwd totdat dat wél
+// nodig blijkt.
+const NAVSTATUS_STILLIGGEND = new Set([1, 5, 6]);
+function schipLigtStil(s) {
+  if (typeof s.status === 'number') return NAVSTATUS_STILLIGGEND.has(s.status);
+  return typeof s.snelheidKn === 'number' && s.snelheidKn <= 0.5;
+}
+
+// ETA komt genormaliseerd binnen als { maand, dag, uur, minuut } (zie
+// normaliseerEta() in vaarradarLokaal.js) -- uur/minuut kunnen los ontbreken
+// (AIS-sentinel voor "tijd onbekend, datum wel") terwijl maand/dag er altijd
+// zijn zodra deze functie een niet-null object teruggeeft.
+function etaTekst(eta) {
+  const datum = `${String(eta.dag).padStart(2, '0')}-${String(eta.maand).padStart(2, '0')}`;
+  if (eta.uur == null || eta.minuut == null) return datum;
+  return `${datum} ${String(eta.uur).padStart(2, '0')}:${String(eta.minuut).padStart(2, '0')}`;
 }
 
 function kleurVoorSchip(s) {
@@ -5376,9 +5428,22 @@ function wisselVaarAishubZichtbaar() {
   ververVaarradar(); // meteen bijwerken, niet wachten op de volgende 3s-poll
 }
 
-function bouwVaarIcon(koersGraden, kleur, bron) {
-  const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
+// 2026-09-02, op verzoek van Lex ("alles wat stil ligt is een stip") --
+// stilliggende schepen (zie schipLigtStil() hierboven) krijgen nu een simpel
+// rond stipje i.p.v. de geroteerde scheepsromp, zelfde patroon als
+// MarineTraffic/VesselFinder: vorm zegt "vaart/ligt stil", kleur blijft
+// zeggen wat de actieve kleurmodus zegt (zie kleurVoorSchip()).
+function bouwVaarIcon(koersGraden, kleur, bron, stil) {
   const dekking = bron === 'aishub' ? AISHUB_OPACITEIT : 1;
+  if (stil) {
+    return L.divIcon({
+      className: '',
+      html: `<div class="vaar-stip" style="background:${kleur};opacity:${dekking}"></div>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+    });
+  }
+  const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
   return L.divIcon({
     className: '',
     html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking}"><svg viewBox="0 0 18 30" width="18" height="30"><path d="M9,0 L15,10 L15,24 Q15,28 11,28 L7,28 Q3,28 3,24 L3,10 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
@@ -5527,7 +5592,9 @@ async function ververVaarradar() {
     zichtbareSchepen.forEach((s) => {
       gezien.add(s.mmsi);
       const kleur = kleurVoorSchip(s);
+      const stil = schipLigtStil(s);
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
+      const statusTekst = typeof s.status === 'number' ? NAVSTATUS_LABEL[s.status] ?? null : null;
       // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
       // 'ie bekend is, ongeacht de actieve kleurmodus -- nuttige info op
       // zichzelf, en meteen de manier om te zien of AIS-catcher's shiptype-
@@ -5538,6 +5605,7 @@ async function ververVaarradar() {
         s.snelheidKn != null ? `${Math.round(s.snelheidKn)} kn` : null,
         `${s.afstandKm} km van jou`,
         SCHEEPSCATEGORIE_LABEL[s.scheepscategorie] ?? null,
+        statusTekst,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -5548,14 +5616,21 @@ async function ververVaarradar() {
       // ontvangst komt -- zo blijft in de popup zelf ook zichtbaar waarom
       // een bootje getemperd (opacity) getekend is, niet alleen op de kaart.
       const bronLabel = s.bron === 'aishub' ? '<span class="popup-aishub-label">via AISHub</span>' : '';
-      const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}${bronLabel}</div><div class="popup-sub">${escapeHtml(details)}</div>`;
+      // 2026-09-02, op verzoek van Lex (bestemming/ETA erbij, net als
+      // MarineTraffic/VesselFinder) -- alleen getoond als de bron het meegeeft
+      // (niet elk schip zendt voyage-data uit, en niet elke bron decodeert 'm).
+      const bestemmingHtml = s.bestemming
+        ? `<div class="popup-bestemming">→ ${escapeHtml(s.bestemming)}${s.eta ? ` <span class="popup-eta">(ETA ${etaTekst(s.eta)})</span>` : ''}</div>`
+        : '';
+      const diepgangHtml = s.diepgangM != null ? `<div class="popup-sub">Diepgang ${s.diepgangM.toFixed(1)} m</div>` : '';
+      const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}${bronLabel}</div><div class="popup-sub">${escapeHtml(details)}</div>${bestemmingHtml}${diepgangHtml}`;
       const losLaag = inClustervrijeZone(s.lat, s.lon); // true = vaarLosLaag, false = vaarLaag (cluster)
       let marker = vaarMarkers.get(s.mmsi);
       if (marker) {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
-        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron));
+        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil));
         if (marker.vaarInLosLaag !== losLaag) {
           // Grens van een clustervrije zone overgevaren: van laag wisselen.
           (marker.vaarInLosLaag ? vaarLosLaag : vaarLaag).removeLayer(marker);
@@ -5570,7 +5645,7 @@ async function ververVaarradar() {
         }
         return;
       }
-      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron) });
+      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil) });
       marker.basisPopupHtml = basisHtml;
       marker.bindPopup(scheepsPopupHtml(s.mmsi, basisHtml));
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met

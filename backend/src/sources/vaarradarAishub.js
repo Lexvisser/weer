@@ -41,7 +41,7 @@
 // M.1371-scheepstypecode als AIS-catcher's shiptype-veld — vandaar hergebruik
 // van categoriseerScheepstype() uit vaarradarLokaal.js i.p.v. een eigen kopie.
 
-import { categoriseerScheepstype } from './vaarradarLokaal.js';
+import { categoriseerScheepstype, normaliseerEta } from './vaarradarLokaal.js';
 import { afstandKm } from '../normalize.js';
 
 const POLL_MS = 65 * 1000; // ruim boven AISHub's "niet vaker dan 1x/minuut"
@@ -115,6 +115,23 @@ function vertaalVaartuig(v) {
   const geparsed = typeof v.TIME === 'string' ? Date.parse(v.TIME) : NaN;
   const tijdMs = Number.isFinite(geparsed) ? geparsed : Date.now();
 
+  // 2026-09-02, zelfde uitbreiding als vaarradarLokaal.js (bestemming/eta/
+  // status/diepgang/callsign/imo) -- AISHub's eigen documentatievoorbeeld
+  // (zie de bestandskop hierboven) toont DEST/ETA/DRAUGHT/NAVSTAT/CALLSIGN/
+  // IMO, dus dezelfde velden zijn hier ook beschikbaar, alleen anders
+  // gevormd. ETA komt bij AISHub als samengevoegde tekst "MM-DD HH:MM" i.p.v.
+  // vier losse velden -- ontleed hier en dan door dezelfde normaliseerEta()
+  // als vaarradarLokaal.js, zodat de frontend beide bronnen identiek kan
+  // behandelen. NAVSTAT is dezelfde AIS-navigatiestatus-codering (0-15) als
+  // "status" bij de lokale bron.
+  const bestemming = String(v.DEST ?? '').trim() || null;
+  const diepgangM = typeof v.DRAUGHT === 'number' && v.DRAUGHT > 0 ? v.DRAUGHT : null;
+  const etaMatch = typeof v.ETA === 'string' ? v.ETA.match(/^(\d{2})-(\d{2}) (\d{2}):(\d{2})$/) : null;
+  const eta = etaMatch ? normaliseerEta(etaMatch[1], etaMatch[2], etaMatch[3], etaMatch[4]) : null;
+  const status = typeof v.NAVSTAT === 'number' ? v.NAVSTAT : null;
+  const callsign = String(v.CALLSIGN ?? '').trim() || null;
+  const imo = typeof v.IMO === 'number' && v.IMO > 0 ? v.IMO : null;
+
   return {
     mmsi,
     naam: String(v.NAME ?? '').trim() || null,
@@ -123,6 +140,12 @@ function vertaalVaartuig(v) {
     koersGraden,
     snelheidKn: typeof v.SOG === 'number' ? v.SOG : null,
     scheepscategorie: categoriseerScheepstype(typeof v.TYPE === 'number' ? v.TYPE : null),
+    bestemming,
+    diepgangM,
+    eta,
+    status,
+    callsign,
+    imo,
     tijdMs,
   };
 }
