@@ -8,7 +8,7 @@ import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { SOURCES } from './config.js';
-import { SourceState, afstandKm } from './normalize.js';
+import { SourceState } from './normalize.js';
 
 import { fetchUsgs } from './sources/usgs.js';
 import { fetchMoon } from './sources/moon.js';
@@ -1208,22 +1208,14 @@ export function createApp(env) {
       // draaien, alleen gebruikt als zowel lokaal als AISHub leeg zijn. Zie
       // de EERLIJKE WAARSCHUWING in vaarradar.js voor waarom die zelf
       // structureel leeg kan blijven.
-      // 2026-09-02, op verzoek van Lex ("bouw het maar voor als straks de antenne komt")
-      // -- optie 3 van de eerder besproken drie: AISHub-schepen die BINNEN de eigen
-      // dekkingsradius vallen (rond de antenne op HOME_LAT/HOME_LON, NIET rond de
-      // opvragende telefoonpositie hierboven) worden weggelaten, zodat je alleen de
-      // ECHTE aanvulling ziet i.p.v. AISHub die de hele box dubbel vult. Nu nog weinig
-      // effect (LOKALE_DEKKING_KM staat net boven de hard gemeten ~11km met de
-      // meegeleverde antenne, zie de sessie-notitie van 2026-09-01) -- pas als de
-      // VHF-antenne straks gemonteerd is en het werkelijke bereik opnieuw gemeten
-      // wordt, dit getal optrekken (en dan gaat deze filter pas echt iets doen).
-      const LOKALE_DEKKING_KM = 15;
+      // 2026-09-02: de gap-filter ("AISHub-schepen binnen het eigen antennebereik
+      // weglaten") stond eerst HIER, na de 800-cap in vaarradarAishub.js -- en die
+      // twee samen leverden 0 AISHub-schepen op (de 800 dichtstbijzijnde lagen
+      // allemaal binnen de 15km die hier weer weggegooid werd). Hij zit nu in
+      // vaarradarAishub.js zelf, bij binnenkomst en voor de cap, instelbaar via
+      // AISHUB_LOKALE_DEKKING_KM (standaard uit). Hier alleen nog mergen.
       const merged = new Map();
-      for (const p of vaarradarAishubFeed.posities.values()) {
-        const afstandTotAntenne = afstandKm(env.homeLat, env.homeLon, p.lat, p.lon);
-        if (afstandTotAntenne <= LOKALE_DEKKING_KM) continue; // binnen eigen bereik: lokaal hoort dit toch te zien
-        merged.set(p.mmsi, { ...p, bron: 'aishub' });
-      }
+      for (const p of vaarradarAishubFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'aishub' });
       for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
       const heeftLokaal = vaarradarLokaalFeed.posities.size > 0;
       const heeftAishub = vaarradarAishubFeed.posities.size > 0;

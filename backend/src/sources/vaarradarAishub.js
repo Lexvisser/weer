@@ -65,6 +65,19 @@ const BOX_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag
 // het dichtstbijzijnde deel over -- de instelbare straal-knop in de kaart (app.js) bepaalt
 // verder nog steeds wat je daadwerkelijk TE ZIEN krijgt, dit is puur een geheugen-/CPU-
 // veiligheidsklep die nooit had mogen ontbreken.
+//
+// 2026-09-02, TWEEDE HARDE LES (zelfde dag): de gap-filter ("AISHub-schepen binnen
+// het eigen antennebereik weglaten") stond eerst in server.js NA deze cap. Gevolg,
+// hard gemeten in de journal: 8618 schepen binnen -> 800 dichtstbijzijnde bewaard ->
+// die 800 lagen ALLEMAAL binnen de 15km rond Oud-Beijerland (Botlek, Waalhaven,
+// Oude Maas, Dordrecht...) -> de route gooide ze daarna allemaal weg -> 0 AISHub-
+// schepen op de kaart. Twee filters die elk apart kloppen, kannibaliseerden elkaar.
+// Daarom staat de gap-filter nu HIER, bij binnenkomst en VOOR de cap: eerst het
+// gebied weglaten dat de eigen antenne toch al dekt, dan pas de 800 dichtstbijzijnde
+// van wat overblijft bewaren. En hij is instelbaar via AISHUB_LOKALE_DEKKING_KM in
+// .env, standaard 0 (= uit) -- Lex zei letterlijk "nu niet van belang, maar bouw het
+// maar voor als straks de antenne komt", dus pas aanzetten (op het dan opnieuw
+// gemeten bereik) als de VHF-antenne gemonteerd is.
 const MAX_AISHUB_SCHEPEN = 800;
 
 function bounding(homeLat, homeLon) {
@@ -117,6 +130,7 @@ export function startVaarradarAishubFeed(env) {
     return { posities, stop: () => {} };
   }
 
+  const dekkingKm = Number.isFinite(env.aishubLokaleDekkingKm) && env.aishubLokaleDekkingKm > 0 ? env.aishubLokaleDekkingKm : 0;
   const { latmin, latmax, lonmin, lonmax } = bounding(env.homeLat, env.homeLon);
   const url =
     `https://data.aishub.net/ws.php?username=${encodeURIComponent(env.aishubUsername)}` +
@@ -154,19 +168,35 @@ export function startVaarradarAishubFeed(env) {
         log(`voorbeeldrecord ${voorbeeldenGelogd}: ${JSON.stringify(vaartuigen[0]).slice(0, 400)}`);
       }
 
+      let binnenDekking = 0;
       for (const v of vaartuigen) {
         const p = vertaalVaartuig(v);
-        if (p) posities.set(p.mmsi, p);
+        if (!p) continue;
+        // Gap-filter (zie toelichting boven MAX_AISHUB_SCHEPEN): binnen het eigen
+        // antennebereik hoort vaarradarLokaal.js dit schip te zien, dus AISHub's
+        // (oudere) positie is daar alleen maar ruis. Staat standaard uit (0).
+        if (dekkingKm > 0 && afstandKm(env.homeLat, env.homeLon, p.lat, p.lon) <= dekkingKm) {
+          binnenDekking++;
+          posities.delete(p.mmsi); // ook een eerder bewaarde positie van dit schip opruimen
+          continue;
+        }
+        posities.set(p.mmsi, p);
       }
       opschonen();
+      let afgekapt = 0;
       if (posities.size > MAX_AISHUB_SCHEPEN) {
-        const gesorteerd = [...posities.values()].sort(
-          (a, b) => afstandKm(env.homeLat, env.homeLon, a.lat, a.lon) - afstandKm(env.homeLat, env.homeLon, b.lat, b.lon)
-        );
-        const teVeel = gesorteerd.length - MAX_AISHUB_SCHEPEN;
-        for (const p of gesorteerd.slice(MAX_AISHUB_SCHEPEN)) posities.delete(p.mmsi);
-        log(`${gesorteerd.length} schepen binnen, ${teVeel} verste afgekapt op MAX_AISHUB_SCHEPEN=${MAX_AISHUB_SCHEPEN} (geheugen-/CPU-veiligheidsklep).`);
+        // Afstand eenmalig per schip berekenen i.p.v. twee keer per vergelijking in de sort.
+        const metAfstand = [...posities.values()].map((p) => ({ p, d: afstandKm(env.homeLat, env.homeLon, p.lat, p.lon) }));
+        metAfstand.sort((a, b) => a.d - b.d);
+        afgekapt = metAfstand.length - MAX_AISHUB_SCHEPEN;
+        for (const { p } of metAfstand.slice(MAX_AISHUB_SCHEPEN)) posities.delete(p.mmsi);
       }
+      log(
+        `${vaartuigen.length} schepen binnen` +
+          (dekkingKm > 0 ? `, ${binnenDekking} binnen eigen dekking (${dekkingKm}km) weggelaten` : '') +
+          (afgekapt ? `, ${afgekapt} verste afgekapt op MAX_AISHUB_SCHEPEN=${MAX_AISHUB_SCHEPEN}` : '') +
+          `, ${posities.size} bewaard.`
+      );
       if (backoffMs) log('AISHub weer bereikbaar.');
       backoffMs = 0;
     } catch (err) {

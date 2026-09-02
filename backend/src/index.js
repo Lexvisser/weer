@@ -50,6 +50,7 @@ const env = {
   // 2026-09-01, AISHub-lidmaatschap (zie sources/vaarradarAishub.js) -- eigen ontvangst
   // (hierboven) blijft leidend, dit vult schepen aan die de lokale antenne mist.
   aishubUsername: (process.env.AISHUB_USERNAME ?? '').trim(),
+  aishubLokaleDekkingKm: Number(process.env.AISHUB_LOKALE_DEKKING_KM) || 0,
   // 2026-08-22, op verzoek van Lex — Web Push (zie sources/webpush.js) als
   // eigen, niet-storend PWA-alarmkanaal naast Pushover. De publieke sleutel
   // is (per ontwerp van VAPID) niet geheim — mag gewoon naar de frontend via
