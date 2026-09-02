@@ -699,6 +699,10 @@ function initMap() {
   kaart.on('moveend zoomend', () => { if (gradenActief) tekenGradenGrid(); });
   // 2026-08-30: isobaar-labels/H-L alleen vanaf ISOBAAR_LABEL_MIN_ZOOM, zie tekenIsobaren().
   kaart.on('zoomend', zetIsobaarLabelsZichtbaar);
+  // 2026-09-02, op verzoek van Lex (zoom-gate voor vaarradar, zie
+  // VAAR_MIN_ZOOM_VOOR_SCHEPEN hierboven) -- meteen reageren op een zoom-
+  // wissel i.p.v. tot de eerstvolgende 3s-poll te wachten.
+  kaart.on('zoomend', () => { if (vaarradarActief) ververVaarradar(); });
   // 2026-08-30, op verzoek van Lex ("in welk gridvak de cursor is"): vak
   // onder de muis oplichten + uitlezen. Op touch geen hover, dus daar telt
   // een tik op de kaart als 'cursor'. Zie toonGradenVak().
@@ -5068,6 +5072,17 @@ const VLIEGRADAR_STRAAL_KM = 75;
 // Servergrens (server.js, Math.min(250,...)) en BOX_KM (vaarradarAishub.js) blijven op
 // 250 staan -- die bepalen het PLAFOND, dit hier is wat de kaart daadwerkelijk opvraagt.
 const VAARRADAR_STRAAL_STAPPEN = [50, 75, 100, 125, 150, 175, 200, 225, 250];
+// 2026-09-02, op verzoek van Lex ("zoomen gaat niet lekker meer met een
+// range boven de 50... pas opbouwen na een vrij forse zoomfactor") -- na het
+// weghalen van clustering (zie vorige commit) worden bij een grote straal
+// alle schepen als losse DOM-markers opgebouwd, ook ver uitgezoomd waar je
+// toch niks van de losse stipjes kunt onderscheiden. Onder dit zoomniveau
+// bouwt ververVaarradar() de laag niet meer op (en slaat zelfs de dure
+// /api/vaarradar-aanvraag over) -- pas erboven verschijnen de schepen weer.
+// 10 is een eerste inschatting (vergelijkbaar met VLIEGRADAR_ZOOM=8, maar
+// bewust hoger -- "vrij fors" was Lex' eigen woordkeuze); bijstellen als het
+// te laat/te vroeg aanvoelt.
+const VAAR_MIN_ZOOM_VOOR_SCHEPEN = 10;
 const VAARRADAR_STRAAL_KEY = 'weerVaarradarStraalKm';
 let vaarradarStraalKm = 50;
 try {
@@ -5618,6 +5633,13 @@ function scheepsPopupEl(marker, mmsi, basisHtml) {
 
 async function ververVaarradar() {
   if (!vaarradarActief || !kaart) return;
+  if (kaart.getZoom() < VAAR_MIN_ZOOM_VOOR_SCHEPEN) {
+    // Nog te ver uitgezoomd -- laag leeghouden i.p.v. duizenden onbruikbare
+    // stipjes op te bouwen, en de dure aanvraag+JSON-parse overslaan.
+    if (vaarLaag) vaarLaag.clearLayers();
+    vaarMarkers.clear();
+    return;
+  }
   try {
     const { lat, lon } = await huidigePositie();
     if (!vaarradarActief) return;
