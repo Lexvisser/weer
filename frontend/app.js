@@ -50,6 +50,7 @@ const DWD_KAART_IMG_EL = document.getElementById('dwdKaartImg');
 const DWD_KAART_STATUS_EL = document.getElementById('dwdKaartStatus');
 const TOGGLE_VAARRADAR_EL = document.getElementById('toggleVaarradar');
 const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
+const VAAR_AISHUB_KNOP_EL = document.getElementById('vaarAishubToggle');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
 // zijn weg, zie index.html) — één gedeelde Stop-knop voor kaartVolgType,
 // zie startKaartVolgen()/stopKaartVolgen() verderop.
@@ -717,6 +718,7 @@ function initMap() {
   DWD_KAART_IMG_EL?.addEventListener('click', () => DWD_KAART_IMG_EL.classList.toggle('passend'));
   TOGGLE_VAARRADAR_EL.addEventListener('click', toggleVaarradar);
   VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
+  VAAR_AISHUB_KNOP_EL?.addEventListener('click', wisselVaarAishubZichtbaar);
   zetVaarKleurKnopLabel();
   // Lex: "...waarna er een knop Stop zichtbaar is. Waarmee ISS/Starlink
   // wordt verborgen, alle hazards weer terugkomen en er wordt
@@ -5212,11 +5214,42 @@ function zetVaarKleurKnopLabel() {
   if (label) label.textContent = ` ${VAARKLEUR_MODUS_LABEL[vaarKleurModus]}`;
 }
 
-function bouwVaarIcon(koersGraden, kleur) {
+// 2026-09-01, op verzoek van Lex (AISHub als aanvulling naast eigen
+// ontvangst, zie sources/vaarradarAishub.js) -- twee dingen om lokaal
+// ontvangen schepen te onderscheiden van AISHub-aanvulling: (a) een
+// aan/uit-knop (#vaarAishubToggle) om AISHub-schepen helemaal te verbergen,
+// (b) ongeacht die knop krijgen AISHub-only schepen altijd een lagere
+// dekkingsgraad (opacity) dan lokaal ontvangen schepen -- zie
+// AISHUB_OPACITEIT in bouwVaarIcon() hieronder. Bewust GEEN aparte kleur:
+// kleur is al druk bezet met betekenis (kleurVoorSchip() hierboven, drie
+// modi). Standaard AAN (zelfde localStorage-patroon als VAARKLEUR_KEY).
+const VAAR_AISHUB_KEY = 'weerVaarAishubZichtbaar';
+let aishubZichtbaar = true;
+try {
+  const opgeslagen = localStorage.getItem(VAAR_AISHUB_KEY);
+  if (opgeslagen === '0') aishubZichtbaar = false;
+} catch (_) {
+  /* prive-modus, gewoon bij de standaard (aan) blijven */
+}
+const AISHUB_OPACITEIT = 0.55; // vol dekkend voor lokaal, duidelijk getemperd voor AISHub-only
+
+function wisselVaarAishubZichtbaar() {
+  aishubZichtbaar = !aishubZichtbaar;
+  VAAR_AISHUB_KNOP_EL?.classList.toggle('actief', aishubZichtbaar);
+  try {
+    localStorage.setItem(VAAR_AISHUB_KEY, aishubZichtbaar ? '1' : '0');
+  } catch (_) {
+    /* prive-modus */
+  }
+  ververVaarradar(); // meteen bijwerken, niet wachten op de volgende 3s-poll
+}
+
+function bouwVaarIcon(koersGraden, kleur, bron) {
   const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
+  const dekking = bron === 'aishub' ? AISHUB_OPACITEIT : 1;
   return L.divIcon({
     className: '',
-    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg)"><svg viewBox="0 0 18 30" width="18" height="30"><path d="M9,0 L15,10 L15,24 Q15,28 11,28 L7,28 Q3,28 3,24 L3,10 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking}"><svg viewBox="0 0 18 30" width="18" height="30"><path d="M9,0 L15,10 L15,24 Q15,28 11,28 L7,28 Q3,28 3,24 L3,10 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
     iconSize: [18, 30],
     iconAnchor: [9, 15],
   });
@@ -5329,7 +5362,11 @@ async function ververVaarradar() {
     if (!vaarradarActief) return;
     if (!vaarLaag) vaarLaag = L.layerGroup().addTo(kaart);
     const gezien = new Set();
-    (data.schepen ?? []).forEach((s) => {
+    // AISHub-only schepen (bron: 'aishub', geen eigen ontvangst) blijven weg
+    // als de knop uitstaat -- lokaal ontvangen schepen (bron: 'lokaal')
+    // blijven altijd zichtbaar, ongeacht deze knop.
+    const zichtbareSchepen = (data.schepen ?? []).filter((s) => aishubZichtbaar || s.bron !== 'aishub');
+    zichtbareSchepen.forEach((s) => {
       gezien.add(s.mmsi);
       const kleur = kleurVoorSchip(s);
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
@@ -5349,20 +5386,24 @@ async function ververVaarradar() {
       // Het bolletje voor de naam herhaalt dezelfde kleur als het bootje op de
       // kaart -- puur zodat een popup meteen te koppelen is aan "welk bootje
       // was dat ook alweer" als er meerdere tegelijk openstaan.
-      const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}</div><div class="popup-sub">${escapeHtml(details)}</div>`;
+      // "via AISHub"-label alleen als deze positie NIET van onze eigen
+      // ontvangst komt -- zo blijft in de popup zelf ook zichtbaar waarom
+      // een bootje getemperd (opacity) getekend is, niet alleen op de kaart.
+      const bronLabel = s.bron === 'aishub' ? '<span class="popup-aishub-label">via AISHub</span>' : '';
+      const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}${bronLabel}</div><div class="popup-sub">${escapeHtml(details)}</div>`;
       let marker = vaarMarkers.get(s.mmsi);
       if (marker) {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
-        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur));
+        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron));
         if (basisHtml !== marker.basisPopupHtml) {
           marker.basisPopupHtml = basisHtml;
           marker.getPopup()?.setContent(scheepsPopupHtml(s.mmsi, basisHtml));
         }
         return;
       }
-      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur) });
+      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron) });
       marker.basisPopupHtml = basisHtml;
       marker.bindPopup(scheepsPopupHtml(s.mmsi, basisHtml));
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
@@ -5487,6 +5528,7 @@ function toggleVaarradar() {
   // kaart staan om te herkleuren -- zelfde display-toggle-patroon als
   // NAVTEX_RUW_KNOP_EL bij Zee-modus.
   if (VAAR_KLEUR_KNOP_EL) VAAR_KLEUR_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
+  if (VAAR_AISHUB_KNOP_EL) VAAR_AISHUB_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"

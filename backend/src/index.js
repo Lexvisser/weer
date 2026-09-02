@@ -47,6 +47,9 @@ const env = {
   // via VAARRADAR_LOKAAL_URL in .env als de service op een andere poort
   // draait. Leeglaten (VAARRADAR_LOKAAL_URL=) zet deze bron uit.
   vaarradarLokaalUrl: process.env.VAARRADAR_LOKAAL_URL === '' ? '' : (process.env.VAARRADAR_LOKAAL_URL ?? 'http://127.0.0.1:8100/geojson'),
+  // 2026-09-01, AISHub-lidmaatschap (zie sources/vaarradarAishub.js) -- eigen ontvangst
+  // (hierboven) blijft leidend, dit vult schepen aan die de lokale antenne mist.
+  aishubUsername: (process.env.AISHUB_USERNAME ?? '').trim(),
   // 2026-08-22, op verzoek van Lex — Web Push (zie sources/webpush.js) als
   // eigen, niet-storend PWA-alarmkanaal naast Pushover. De publieke sleutel
   // is (per ontwerp van VAPID) niet geheim — mag gewoon naar de frontend via

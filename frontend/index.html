@@ -184,6 +184,11 @@
            display-toggle-patroon als #toggleNavtexRuw bij Zee-modus
            hierboven), verborgen tot dan. -->
       <button id="vaarKleurModus" class="satelliet-toggle" style="display:none;" title="Kleur van de bootjes wisselen: per schip / per scheepstype / op snelheid">🎨<span class="knop-tekst"> Schip</span></button>
+      <!-- 2026-09-01: AISHub-aanvulling aan/uit -- alleen zichtbaar in Vaart-modus, zelfde
+           display-toggle-patroon als vaarKleurModus hierboven. Standaard AAN (zie
+           aishubZichtbaar in app.js), dit knopje is om het desgewenst uit te zetten en zo
+           alleen eigen ontvangst te zien. -->
+      <button id="vaarAishubToggle" class="satelliet-toggle actief" style="display:none;" title="AISHub-schepen (aanvulling naast eigen ontvangst) tonen/verbergen">🌐<span class="knop-tekst"> AISHub</span></button>
       </div>
       <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
            Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS

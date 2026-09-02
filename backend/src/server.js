@@ -46,6 +46,7 @@ import { fetchIssLive } from './sources/issLive.js';
 import { controleerIssAlarm } from './sources/celestrak.js';
 import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.js';
 import { startVaarradarLokaalFeed } from './sources/vaarradarLokaal.js';
+import { startVaarradarAishubFeed } from './sources/vaarradarAishub.js';
 import { haalScheepsfotoOp } from './sources/scheepsfoto.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
 import { fetchStormvloedkering } from './sources/stormvloedkering.js';
@@ -776,6 +777,7 @@ export function createApp(env) {
   // hieronder i.p.v. via /api/signals te lopen.
   let vaarradarFeed = { posities: new Map(), stop: () => {} };
   let vaarradarLokaalFeed = { posities: new Map(), stop: () => {} };
+  let vaarradarAishubFeed = { posities: new Map(), stop: () => {} };
 
   // 2026-08-24, op verzoek van Lex ("Kan het zijn dat na elke sync ukho even
   // niet getoond wordt tot de volgende ronde?"): elke bron begint na een
@@ -879,6 +881,7 @@ export function createApp(env) {
 
     vaarradarFeed = startVaarradarFeed(env);
     vaarradarLokaalFeed = startVaarradarLokaalFeed(env);
+    vaarradarAishubFeed = startVaarradarAishubFeed(env);
   }
 
   function stopPolling() {
@@ -886,6 +889,7 @@ export function createApp(env) {
     if (stopBlitzortung) stopBlitzortung();
     vaarradarFeed.stop();
     vaarradarLokaalFeed.stop();
+    vaarradarAishubFeed.stop();
   }
 
   function signalenMet(filterCategorie) {
@@ -1190,18 +1194,37 @@ export function createApp(env) {
         return sendJson(res, 400, { fout: 'lat en lon zijn verplicht', schepen: [] });
       }
       // 2026-08-31, op verzoek van Lex — eigen ontvangst (RTL-SDR + AIS-catcher,
-      // zie sources/vaarradarLokaal.js) krijgt voorrang zodra die posities heeft;
-      // aisstream.io (vaarradar.js) blijft als fallback draaien voor het geval
-      // lexdev-nw's eigen ontvangst een keer leeg/onbereikbaar is. Zie de
-      // EERLIJKE WAARSCHUWING in vaarradar.js voor waarom die zelf structureel
-      // leeg kan blijven.
-      const lokaalHeeftData = vaarradarLokaalFeed.posities.size > 0;
-      const bronPosities = lokaalHeeftData ? vaarradarLokaalFeed.posities : vaarradarFeed.posities;
+      // zie sources/vaarradarLokaal.js) krijgt voorrang per schip.
+      // 2026-09-01, uitgebreid met AISHub (sources/vaarradarAishub.js) —
+      // GEEN fallback zoals aisstream.io hieronder, maar een MERGE: elk
+      // schip krijgt een eigen bron-veld ('lokaal' of 'aishub'), en bij
+      // eenzelfde MMSI in allebei wint de lokale positie (verser, eigen
+      // ontvangst) — AISHub vult alleen schepen aan die lokaal niet gezien
+      // zijn. aisstream.io (vaarradar.js) blijft als laatste redmiddel
+      // draaien, alleen gebruikt als zowel lokaal als AISHub leeg zijn. Zie
+      // de EERLIJKE WAARSCHUWING in vaarradar.js voor waarom die zelf
+      // structureel leeg kan blijven.
+      const merged = new Map();
+      for (const p of vaarradarAishubFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'aishub' });
+      for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
+      const heeftLokaal = vaarradarLokaalFeed.posities.size > 0;
+      const heeftAishub = vaarradarAishubFeed.posities.size > 0;
+      const bronPosities = merged.size > 0 ? merged : vaarradarFeed.posities;
       const schepen = vaarradarBinnenStraal(bronPosities, lat, lon, straal);
+      let bronLabel;
+      if (merged.size > 0) {
+        bronLabel = heeftLokaal && heeftAishub
+          ? 'lokaal (RTL-SDR + AIS-catcher) + AISHub'
+          : heeftLokaal
+            ? 'lokaal (RTL-SDR + AIS-catcher)'
+            : 'AISHub';
+      } else {
+        bronLabel = 'aisstream.io';
+      }
       return sendJson(res, 200, {
         bijgewerkt: new Date().toISOString(),
         schepen,
-        bron: lokaalHeeftData ? 'lokaal (RTL-SDR + AIS-catcher)' : 'aisstream.io',
+        bron: bronLabel,
       });
     }
     // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met AIS

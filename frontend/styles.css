@@ -746,6 +746,10 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    Klein bolletje in dezelfde kleur als het scheepsicoon op de kaart, zodat
    een open popup meteen te koppelen is aan welk bootje het was. */
 .popup-scheepskleur { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; border:1px solid rgba(255,255,255,0.35); vertical-align:1px; }
+/* 2026-09-01: label in de scheepspopup voor AISHub-aanvulling (schepen die niet via de
+   eigen RTL-SDR-ontvangst binnenkwamen) -- zelfde signaal als de getemperde opacity van
+   het bootje zelf (zie AISHUB_OPACITEIT in app.js), nu ook leesbaar in de popup. */
+.popup-aishub-label { display:inline-block; margin-left:6px; padding:1px 6px; border-radius:8px; font-size:10px; font-family:'JetBrains Mono',monospace; background:rgba(255,255,255,0.12); color:rgba(244,246,251,0.75); vertical-align:1px; }
 /* 2026-08-24, op verzoek van Lex ("het icon waarop werd geklikt als grote
    kopie bij de tekst... dan zie je ook eindelijk eens goed hoe mooi die
    icons zijn") — een uitvergrote kopie van hetzelfde icoon als op de kaart-

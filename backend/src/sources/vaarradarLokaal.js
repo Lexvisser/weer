@@ -61,7 +61,7 @@ const BACKOFF_MAX_MS = 60000;
 // neutrale "onbekend"-kleur, geen crash. Check zelf even met een curl tegen
 // 127.0.0.1:8100/geojson of er 'shiptype' in de properties van een schip
 // zit, en welke waarde, om te zien of dit ooit meer dan "onbekend" toont.
-function categoriseerScheepstype(typeCode) {
+export function categoriseerScheepstype(typeCode) {
   if (typeof typeCode !== 'number' || typeCode <= 0) return null; // 0/ontbrekend: geen data, niet hetzelfde als "overig"
   if (typeCode === 30) return 'vissersboot';
   if (typeCode === 31 || typeCode === 32 || typeCode === 52) return 'sleepboot';
