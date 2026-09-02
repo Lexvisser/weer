@@ -796,6 +796,22 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    negatieve margin trekt 'm tot tegen de rand van .leaflet-popup-content
    i.p.v. de standaard 10px/12px marge daar ook rond de foto te laten zitten. */
 .popup-scheepsfoto { display:block; width:calc(100% + 24px); max-height:140px; object-fit:cover; margin:-10px -12px 6px -12px; border-radius:10px 10px 0 0; }
+/* 2026-09-02, op verzoek van Lex ("de kaart namaken van marine traffic --
+   begin met de nationaliteit met een vlaggetje boven de foto"): kop met
+   vlag + naam + scheepstype BOVEN de foto (zie scheepsPopupEl() in app.js).
+   De kop trekt zichzelf, net als de foto hierboven, tot tegen de popuprand;
+   de foto komt nu ónder de kop, dus geen negatieve bovenmarge/afronding meer. */
+.popup-scheepskop { margin:-10px -12px 0 -12px; padding:8px 12px 7px; border-bottom:1px solid rgba(255,255,255,0.1); }
+.popup-scheepskop-rij { display:flex; align-items:center; gap:7px; }
+.popup-scheepskop-naam { font-size:1.3em; font-weight:600; color:#fff; letter-spacing:0.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.popup-scheepskop-type { margin-top:2px; font-size:0.95em; color:rgba(244,246,251,0.7); }
+.popup-vlag { display:inline-flex; align-items:center; gap:4px; flex:none; }
+.popup-vlag img { width:22px; height:auto; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,0.25); display:block; }
+.popup-vlag-code { font-size:0.9em; color:rgba(244,246,251,0.7); }
+.popup-schip .popup-scheepsfoto { margin-top:0; border-radius:0; }
+.popup-schip .popup-sub:first-child { margin-top:6px; }
+.label-popup-inhoud .popup-scheepskop { margin:-16px -16px 0 -16px; padding:12px 16px 10px; }
+.label-popup-inhoud .popup-schip .popup-scheepsfoto { margin-top:0; }
 /* 2026-09-01, op verzoek van Lex ("de bootjes een kleurtje geven... tussen
    de boten differentieren met kleuren") -- zie kleurVoorMmsi() in app.js.
    Klein bolletje in dezelfde kleur als het scheepsicoon op de kaart, zodat
