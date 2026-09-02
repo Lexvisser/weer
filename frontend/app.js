@@ -5466,6 +5466,29 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil) {
   });
 }
 
+// 2026-09-02-bug-fix, op melding van Lex ("ik zie het korte label bij hover,
+// maar het knippert nog wel") -- ROOT CAUSE: bouwVaarIcon() werd via
+// setIcon() bij ELKE poll (3s) opnieuw aangeroepen, ook als er niets
+// zichtbaars veranderde (bijv. koers een fractie anders) -- setIcon()
+// vervangt Leaflet's DOM-element voor die marker VOLLEDIG, wat de hover
+// (en daarmee de open tooltip) elke keer abrupt afbrak. Fix: een simpele
+// sleutel (vorm/kleur/bron) bepaalt nu of het icoon ECHT opnieuw moet -- zie
+// vaarIconSleutel() en de aanroep in ververVaarradar() hieronder. Puur een
+// koerswijziging (het meest voorkomende geval bij een varend schip) update
+// nu alleen de rotatie van het BESTAANDE DOM-element (marker._icon is een
+// Leaflet-interne, maar in de praktijk stabiele referentie naar het
+// icoon-element), zonder het element zelf te vervangen -- dus geen
+// onderbroken hover meer.
+function vaarIconSleutel(kleur, bron, stil) {
+  return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}`;
+}
+
+function werkVaarIconRotatieBij(marker, koersGraden) {
+  const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
+  const pinEl = marker._icon?.querySelector?.('.vaar-pin');
+  if (pinEl) pinEl.style.transform = `rotate(${rotatie}deg)`;
+}
+
 // 2026-08-21, op verzoek van Lex ("ze verdwijnen nu periodiek of zo") — elke
 // poll (om de 3s) vuurt een nieuw /api/vliegradar-verzoek af zonder het
 // vorige te annuleren. Normaal komen die keurig op volgorde terug, maar
@@ -5671,8 +5694,22 @@ async function ververVaarradar() {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
-        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil));
-        marker.setTooltipContent(vaarTooltipHtml(s));
+        const iconSleutel = vaarIconSleutel(kleur, s.bron, stil);
+        if (marker.vaarIconSleutel !== iconSleutel) {
+          marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil));
+          marker.vaarIconSleutel = iconSleutel;
+        } else if (!stil) {
+          werkVaarIconRotatieBij(marker, s.koersGraden); // zelfde vorm/kleur, alleen de koers bijwerken -- geen DOM-vervanging
+        }
+        // Alleen bijwerken bij een echte wijziging -- zelfde soort onnodige-
+        // churn-preventie als bij het icoon hierboven (setTooltipContent is
+        // hier zelf onschuldiger dan setIcon, geen DOM-vervanging, maar geen
+        // reden om 'm elke 3s ongewijzigd opnieuw aan te roepen).
+        const tooltipHtml = vaarTooltipHtml(s);
+        if (marker.vaarTooltipHtml !== tooltipHtml) {
+          marker.setTooltipContent(tooltipHtml);
+          marker.vaarTooltipHtml = tooltipHtml;
+        }
         if (marker.vaarInLosLaag !== losLaag) {
           // Grens van een clustervrije zone overgevaren: van laag wisselen.
           (marker.vaarInLosLaag ? vaarLosLaag : vaarLaag).removeLayer(marker);
@@ -5692,9 +5729,11 @@ async function ververVaarradar() {
         return;
       }
       marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil) });
+      marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil);
       marker.basisPopupHtml = basisHtml;
       marker.bindPopup(scheepsPopupEl(marker, s.mmsi, basisHtml));
-      marker.bindTooltip(vaarTooltipHtml(s), { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
+      marker.vaarTooltipHtml = vaarTooltipHtml(s);
+      marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
       // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
       // deze popup daadwerkelijk OPENT, nooit vooraf voor alle zichtbare
