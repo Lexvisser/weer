@@ -6083,6 +6083,18 @@ function toggleVaarradar() {
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"
+    // 2026-09-02, op melding van Lex ("Deze kaart is ook nog eens zeer
+    // vaag" -- een haven-screenshot in Vaart-modus toonde een wazige
+    // beige/grijze waas over de hele kaart): de EMODnet-dieptelaag
+    // (zeeDiepteLaag, zie toggleZeeModus() hierboven) heeft maxNativeZoom
+    // 12 -- bij het inzoomen op een haven (ver voorbij zoom 12) rekt
+    // Leaflet die tegels dus fors op, met flinke wazigheid als gevolg. Dat
+    // viel eerder niet zo op tegen de kleurrijke OSM-kaart, maar springt
+    // direct in het oog bovenop de nieuwe effen donkere Stadia-tegels. De
+    // donkere kaart oogt zelf al als een zeekaart, dus deze laag hier
+    // specifiek uitzetten voor Vaart-modus (de losstaande Zee/NAVTEX-stand
+    // op de OSM-kaart houdt 'm gewoon, daar was hij nooit het probleem).
+    if (zeeDiepteLaag && kaart.hasLayer(zeeDiepteLaag)) kaart.removeLayer(zeeDiepteLaag);
     if (kaartVolgType) stopKaartVolgen(false); // zie toggleVliegradar
   } else {
     if (vaarLaag) {
