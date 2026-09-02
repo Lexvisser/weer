@@ -42,6 +42,7 @@
 // van categoriseerScheepstype() uit vaarradarLokaal.js i.p.v. een eigen kopie.
 
 import { categoriseerScheepstype } from './vaarradarLokaal.js';
+import { afstandKm } from '../normalize.js';
 
 const POLL_MS = 65 * 1000; // ruim boven AISHub's "niet vaker dan 1x/minuut"
 const VENSTER_MS = 15 * 60 * 1000; // iets ruimer dan vaarradarLokaal.js's 10 min -- AISHub's eigen
@@ -52,6 +53,19 @@ const BOX_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag
 // samen opgetrokken met de /api/vaarradar-grens in server.js en VAARRADAR_STRAAL_KM in app.js;
 // deze moet minstens even groot zijn als die twee, anders wordt AISHub's eigen aanvulling al
 // hier afgekapt voordat de route/kaart er zelfs aan toekomen.
+
+// 2026-09-02, HARDE LES: een volle 250km-box in een druk gebied (Rotterdam-aanloop +
+// Noordzee/Kanaal) leverde 9261-10000+ schepen op -- dat werd bij ELKE /api/vaarradar-
+// verzoek vanuit de kaart (elke 3s, zolang Vaart-modus openstaat) opnieuw doorgerekend
+// voor de dekkings-/straal-filters in server.js, en dat heeft vermoedelijk de Minisforum
+// zelf vastgezet (Tailscale liet nog wel tx zien maar geen rx meer terug -- consistent
+// met een dichtgeslibd systeem, niet met een netwerk-/stroomprobleem). MAX_AISHUB_SCHEPEN
+// hieronder is een harde bovengrens, ONGEACHT hoe druk het gebied is: na elke poll wordt,
+// als dat aantal overschreden is, gesorteerd op afstand tot de antenne en blijft alleen
+// het dichtstbijzijnde deel over -- de instelbare straal-knop in de kaart (app.js) bepaalt
+// verder nog steeds wat je daadwerkelijk TE ZIEN krijgt, dit is puur een geheugen-/CPU-
+// veiligheidsklep die nooit had mogen ontbreken.
+const MAX_AISHUB_SCHEPEN = 800;
 
 function bounding(homeLat, homeLon) {
   const latMargin = BOX_KM / 111; // 1 breedtegraad ~ 111km, overal op aarde
@@ -145,6 +159,14 @@ export function startVaarradarAishubFeed(env) {
         if (p) posities.set(p.mmsi, p);
       }
       opschonen();
+      if (posities.size > MAX_AISHUB_SCHEPEN) {
+        const gesorteerd = [...posities.values()].sort(
+          (a, b) => afstandKm(env.homeLat, env.homeLon, a.lat, a.lon) - afstandKm(env.homeLat, env.homeLon, b.lat, b.lon)
+        );
+        const teVeel = gesorteerd.length - MAX_AISHUB_SCHEPEN;
+        for (const p of gesorteerd.slice(MAX_AISHUB_SCHEPEN)) posities.delete(p.mmsi);
+        log(`${gesorteerd.length} schepen binnen, ${teVeel} verste afgekapt op MAX_AISHUB_SCHEPEN=${MAX_AISHUB_SCHEPEN} (geheugen-/CPU-veiligheidsklep).`);
+      }
       if (backoffMs) log('AISHub weer bereikbaar.');
       backoffMs = 0;
     } catch (err) {
