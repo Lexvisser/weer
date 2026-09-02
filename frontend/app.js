@@ -5431,7 +5431,7 @@ async function ververVaarradar() {
             [z.latmin, z.lonmin],
             [z.latmax, z.lonmax],
           ],
-          { color: '#7fd1ff', weight: 1, dashArray: '4 6', fill: false, opacity: 0.45, interactive: false }
+          { color: '#ff9f43', weight: 1.5, dashArray: '6 6', fill: false, opacity: 0.85, interactive: false }
         ).addTo(vaarLosLaag);
       }
     }
