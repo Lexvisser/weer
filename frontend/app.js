@@ -464,6 +464,10 @@ let THUIS = { homeLat: 52.0907, homeLon: 5.1214, homeLabel: '—' };
 // Echte Leaflet-kaart met donkere CARTO-tegels (gratis, geen sleutel nodig) —
 // vervangt de eerdere schematische plek-simulatie door een echte projectie.
 let kaart = null;
+// 2026-09-02: basiskaart-tegellaag + de donkere Stadia-variant die tijdens
+// Vaart/AIS-modus ervoor in de plaats komt (zie toggleVaarradar()).
+let basisKaartLaag = null;
+let donkereKaartLaag = null;
 let signaalLaag = null;
 let flitsenLaag = null; // losse laag voor individuele bliksemflitsen van een aangetikt onweercomplex
 let geselecteerdComplexId = null; // welk onweercomplex de flitsenlaag nu volgt, voor live meeverversen
@@ -748,10 +752,29 @@ function initMap() {
   // als vóór die poging, zodat browsers de eerder al goed werkende OSM-tegels
   // gewoon weer uit cache mogen halen i.p.v. alles opnieuw vers te moeten
   // ophalen.
-  L.tileLayer('/api/tegel/{z}/{x}/{y}.png?v=osm1', {
+  basisKaartLaag = L.tileLayer('/api/tegel/{z}/{x}/{y}.png?v=osm1', {
     attribution: '© OpenStreetMap-auteurs',
     maxZoom: 19,
   }).addTo(kaart);
+
+  // 2026-09-02, op verzoek van Lex ("Ik bedoel dit" -- twee MarineTraffic-
+  // screenshots): het bestaande donkere-modus-effect (CSS invert-filter over
+  // de gewone OSM-tegels hierboven, zie styles.css) blijft altijd de volle
+  // straatniveau-drukte van OSM tonen, alleen omgekleurd -- niet de vlakke,
+  // rustige donkere kaartSTIJL die MarineTraffic zelf gebruikt (Leaflet +
+  // Mapbox met een eigen donker ontwerp, te zien aan hun attributieregel).
+  // Stadia Maps (gratis tier, geen creditcard, zie backend/.env
+  // STADIAMAPS_API_KEY) is het alternatief dat Lex koos; stijl
+  // "Alidade Smooth Dark" via de backend-proxy /api/tegel-donker/ (zelfde
+  // cache-opzet als de OSM-proxy, zie server.js). Nog niet aan de kaart
+  // toegevoegd hier -- toggleVaarradar() wisselt ernaartoe zodra Vaart/AIS-
+  // modus aan gaat (en terug naar basisKaartLaag zodra hij weer uit gaat),
+  // zodat de rest van de app (incl. de losstaande Zee/NAVTEX-stand) gewoon
+  // de vertrouwde OSM-kaart + invert-filter blijft tonen.
+  donkereKaartLaag = L.tileLayer('/api/tegel-donker/{z}/{x}/{y}.png?v=stadia1', {
+    attribution: '© Stadia Maps, © OpenStreetMap-auteurs',
+    maxZoom: 20,
+  });
 
   L.marker([THUIS.homeLat, THUIS.homeLon], {
     icon: L.divIcon({ className: '', html: '<div class="home-pin"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }),
@@ -6040,6 +6063,23 @@ function toggleVaarradar() {
   // specifiek voor Vaart-modus, dus de donkere kaart blijft staan terwijl
   // AIS actief is, zonder de losstaande Zee/NAVTEX-stand te raken.
   kaart.getContainer().classList.toggle('vaar-modus-actief', vaarradarActief);
+  // 2026-09-02: echte donkere tegelstijl (Stadia "Alidade Smooth Dark", zie
+  // donkereKaartLaag hierboven) i.p.v. het oudere CSS-invert-filter-trucje —
+  // basiskaart wisselen i.p.v. met CSS overschilderen, zodat de kaart ook
+  // daadwerkelijk vlakker/rustiger oogt (minder straatdetail), niet alleen
+  // donkerder. Alleen tijdens Vaart/AIS-modus; de losstaande Zee/NAVTEX-stand
+  // (en de rest van de app) houdt gewoon de gebruikelijke OSM-kaart.
+  if (donkereKaartLaag) {
+    if (vaarradarActief) {
+      if (basisKaartLaag && kaart.hasLayer(basisKaartLaag)) kaart.removeLayer(basisKaartLaag);
+      if (!kaart.hasLayer(donkereKaartLaag)) kaart.addLayer(donkereKaartLaag);
+      donkereKaartLaag.bringToBack();
+    } else {
+      if (kaart.hasLayer(donkereKaartLaag)) kaart.removeLayer(donkereKaartLaag);
+      if (basisKaartLaag && !kaart.hasLayer(basisKaartLaag)) kaart.addLayer(basisKaartLaag);
+      basisKaartLaag?.bringToBack();
+    }
+  }
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"

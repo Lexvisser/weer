@@ -231,6 +231,27 @@ const TEGEL_MAX_Z = 19; // OSM's eigen standaardgrens
 // zooms bestaan upstream niet — de frontend rekt met maxNativeZoom op.
 const TEGEL_DIEPTE_BASIS_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator';
 const TEGEL_DIEPTE_MAX_Z = 12;
+// 2026-09-02, op verzoek van Lex ("Ik bedoel dit" — twee MarineTraffic-
+// screenshots van hun eigen, duidelijk vlakkere/donkerdere kaart, incl.
+// "Leaflet | (c) Mapbox (c) OpenStreetMap"-attributie): onze bestaande
+// donkere kaart is gewoon de standaard-OSM-tegel hierboven met een CSS-
+// invert-filter erover (zie styles.css) — dat blijft altijd de volle
+// straatniveau-drukte van OSM tonen, alleen omgekleurd. MarineTraffic
+// gebruikt zelf een eigen, DOOR-DE-TEGELPROVIDER gegeneraliseerde donkere
+// stijl (minder straatdetail, vlakkere vlakken) i.p.v. een kleurfilter.
+// Stadia Maps (client.stadiamaps.com) is het gratis-tier-alternatief voor
+// Mapbox dat Lex koos (geen creditcard nodig, 200.000 tegel-aanvragen/mnd)
+// — stijl "Alidade Smooth Dark" is qua vlakke/rustige look het dichtst bij
+// de screenshots. Vereist een API-key (STADIAMAPS_API_KEY in .env, zie
+// backend/src/index.js) die als querystring-parameter mee moet — anders dus
+// net iets anders dan de sleutelloze OSM/EMODnet-bronnen hierboven. Zelfde
+// proxy-vangnetten (schijfcache, in-flight-dedup, foutcache) als de andere
+// tegelbronnen, eigen pad /api/tegel-donker/. Alleen ingezet tijdens Vaart/
+// Zee-modus (zie de tegellaag-wissel in app.js) — de standaard OSM-laag
+// blijft ongewijzigd voor de rest van de app.
+const TEGEL_STADIA_BASIS_URL = 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark';
+const TEGEL_STADIA_MAX_Z = 20;
+const TEGEL_STADIA_API_KEY = (process.env.STADIAMAPS_API_KEY ?? '').trim();
 const TEGEL_USER_AGENT = 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)';
 
 // 2026-08-25, op melding van Lex ("scherm bleef vrij lang wit voordat de
@@ -347,10 +368,20 @@ function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
       // niet op schijf (of niet leesbaar) — gewoon door naar upstream
     }
 
+    // Stadia vereist geen API-key wanneer alsnog niet ingesteld (bv. tijdens
+    // ontwikkelen zonder .env) — dan meteen een nette fout i.p.v. een kale
+    // 401/403 van upstream door te geven.
+    if (bron === 'stadia' && !TEGEL_STADIA_API_KEY) {
+      return { status: 501, bron: 'geen-stadia-key' };
+    }
+
     try {
-      // Beide bronnen gebruiken de gebruikelijke XYZ-volgorde (z/x/y).
-      const basisUrl = bron === 'diepte' ? TEGEL_DIEPTE_BASIS_URL : TEGEL_BASIS_URL;
-      const upstream = await fetch(`${basisUrl}/${zNum}/${xNum}/${yNum}.png`, {
+      // Alle bronnen gebruiken de gebruikelijke XYZ-volgorde (z/x/y).
+      const basisUrl = bron === 'diepte' ? TEGEL_DIEPTE_BASIS_URL : bron === 'stadia' ? TEGEL_STADIA_BASIS_URL : TEGEL_BASIS_URL;
+      const upstreamUrl = bron === 'stadia'
+        ? `${basisUrl}/${zNum}/${xNum}/${yNum}.png?api_key=${TEGEL_STADIA_API_KEY}`
+        : `${basisUrl}/${zNum}/${xNum}/${yNum}.png`;
+      const upstream = await fetch(upstreamUrl, {
         headers: { 'User-Agent': TEGEL_USER_AGENT },
         signal: AbortSignal.timeout(TEGEL_FETCH_TIMEOUT_MS),
       });
@@ -383,7 +414,7 @@ async function serveTegel(req, res, z, x, y, bron = 'osm') {
   const zNum = Number(z);
   const xNum = Number(x);
   const yNum = Number(y);
-  const maxZ = bron === 'diepte' ? TEGEL_DIEPTE_MAX_Z : TEGEL_MAX_Z;
+  const maxZ = bron === 'diepte' ? TEGEL_DIEPTE_MAX_Z : bron === 'stadia' ? TEGEL_STADIA_MAX_Z : TEGEL_MAX_Z;
   if (!Number.isInteger(zNum) || !Number.isInteger(xNum) || !Number.isInteger(yNum) || zNum < 0 || zNum > maxZ) {
     res.writeHead(400).end('Ongeldige tegel-coördinaten');
     return;
@@ -1292,6 +1323,12 @@ export function createApp(env) {
     const tegelDiepteMatch = url.match(/^\/api\/tegel-diepte\/(\d+)\/(\d+)\/(\d+)\.png$/);
     if (tegelDiepteMatch) {
       return serveTegel(req, res, tegelDiepteMatch[1], tegelDiepteMatch[2], tegelDiepteMatch[3], 'diepte');
+    }
+    // 2026-09-02: Stadia Maps "Alidade Smooth Dark" — echte donkere tegelstijl
+    // i.p.v. het CSS-invert-filter over OSM, zie TEGEL_STADIA_BASIS_URL hierboven.
+    const tegelDonkerMatch = url.match(/^\/api\/tegel-donker\/(\d+)\/(\d+)\/(\d+)\.png$/);
+    if (tegelDonkerMatch) {
+      return serveTegel(req, res, tegelDonkerMatch[1], tegelDonkerMatch[2], tegelDonkerMatch[3], 'stadia');
     }
     const regenradarMatch = url.match(/^\/api\/regenradar\/(.+)$/);
     if (regenradarMatch) {
