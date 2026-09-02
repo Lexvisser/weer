@@ -78,7 +78,13 @@ const BOX_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag
 // .env, standaard 0 (= uit) -- Lex zei letterlijk "nu niet van belang, maar bouw het
 // maar voor als straks de antenne komt", dus pas aanzetten (op het dan opnieuw
 // gemeten bereik) als de VHF-antenne gemonteerd is.
-const MAX_AISHUB_SCHEPEN = 800;
+//
+// 2026-09-02 (later die dag): nadat de merge eindelijk werkte wil Lex de grens
+// "langzaam optrekken" -- eerst 800, nu 2000. Daarom instelbaar via AISHUB_MAX_SCHEPEN
+// in .env (standaard hieronder), zodat de volgende stap een .env-wijziging + restart
+// is i.p.v. een commit. Let bij elke stap op de journal-regel "... bewaard." en op
+// free -h / de responstijd van /api/vaarradar.
+const MAX_AISHUB_SCHEPEN_STANDAARD = 2000;
 
 function bounding(homeLat, homeLon) {
   const latMargin = BOX_KM / 111; // 1 breedtegraad ~ 111km, overal op aarde
@@ -131,6 +137,9 @@ export function startVaarradarAishubFeed(env) {
   }
 
   const dekkingKm = Number.isFinite(env.aishubLokaleDekkingKm) && env.aishubLokaleDekkingKm > 0 ? env.aishubLokaleDekkingKm : 0;
+  const MAX_AISHUB_SCHEPEN =
+    Number.isFinite(env.aishubMaxSchepen) && env.aishubMaxSchepen > 0 ? Math.floor(env.aishubMaxSchepen) : MAX_AISHUB_SCHEPEN_STANDAARD;
+  log(`max ${MAX_AISHUB_SCHEPEN} schepen bewaren, gap-filter ${dekkingKm > 0 ? dekkingKm + 'km' : 'uit'}, box ${BOX_KM}km.`);
   const { latmin, latmax, lonmin, lonmax } = bounding(env.homeLat, env.homeLon);
   const url =
     `https://data.aishub.net/ws.php?username=${encodeURIComponent(env.aishubUsername)}` +
