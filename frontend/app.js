@@ -5022,7 +5022,7 @@ const vaarMarkers = new Map(); // mmsi -> L.marker
 // (zie ververVaarradar). De rand wordt licht gestippeld meegetekend zodat je ziet
 // waar de box ligt en 'm hier makkelijk kunt bijstellen. Meerdere boxen mag.
 const VAAR_CLUSTERVRIJE_ZONES = [
-  { naam: 'Rotterdamse haven + Oude Maas t/m Dordrecht', latmin: 51.75, latmax: 52.02, lonmin: 3.9, lonmax: 4.75 },
+  { naam: 'Maasvlakte-aanloop t/m Hoek van Holland/Brielle', latmin: 51.85, latmax: 52.02, lonmin: 3.9, lonmax: 4.3 },
 ];
 let vaarLosLaag = null;
 function inClustervrijeZone(lat, lon) {
