@@ -5112,6 +5112,44 @@ let vaarLosLaag = null;
 function inClustervrijeZone(lat, lon) {
   return VAAR_CLUSTERVRIJE_ZONES.some((z) => lat >= z.latmin && lat <= z.latmax && lon >= z.lonmin && lon <= z.lonmax);
 }
+
+// 2026-09-02-bug-fix, op melding van Lex ("Olea boven Vlaardingen [knippert]"
+// / "maran wave net buitengaats niet") -- ROOT CAUSE: Vlaardingen ligt vrijwel
+// EXACT op lonmax:4.3 van de clustervrije zone hierboven. Een schip dat daar
+// stil ligt of langzaam vaart, schommelt met normale GPS/AIS-ruis net over en
+// weer over die grenslijn -- elke keer dat inClustervrijeZone() daardoor van
+// resultaat wisselt, haalt ververVaarradar() de marker uit de ene laag
+// (vaarLaag/vaarLosLaag) en stopt 'm in de andere, wat het bootje (en de
+// eraan gekoppelde open hover-tooltip) zichtbaar liet verdwijnen/verschijnen.
+// "maran wave" (ruim buitengaats, ver van elke zonerand) had dit probleem
+// niet -- precies wat je zou verwachten als het aan de rand ligt, niet aan
+// de zone an sich.
+// Fix: hysterese i.p.v. één harde grens. Een schip dat al in de losse zone
+// zit, moet er met een marge (~1km) UIT bewegen voor het wisselt; een schip
+// dat er nog niet in zit, moet er met diezelfde marge IN bewegen. Bij een
+// nieuw schip (nog geen marker) geldt gewoon de exacte grens.
+const VAAR_ZONE_HYSTERESE_GRADEN = 0.01; // ~1km
+function bepaalLosLaag(lat, lon, huidigeStatus) {
+  if (huidigeStatus === true) {
+    return VAAR_CLUSTERVRIJE_ZONES.some(
+      (z) =>
+        lat >= z.latmin - VAAR_ZONE_HYSTERESE_GRADEN &&
+        lat <= z.latmax + VAAR_ZONE_HYSTERESE_GRADEN &&
+        lon >= z.lonmin - VAAR_ZONE_HYSTERESE_GRADEN &&
+        lon <= z.lonmax + VAAR_ZONE_HYSTERESE_GRADEN
+    );
+  }
+  if (huidigeStatus === false) {
+    return VAAR_CLUSTERVRIJE_ZONES.some(
+      (z) =>
+        lat >= z.latmin + VAAR_ZONE_HYSTERESE_GRADEN &&
+        lat <= z.latmax - VAAR_ZONE_HYSTERESE_GRADEN &&
+        lon >= z.lonmin + VAAR_ZONE_HYSTERESE_GRADEN &&
+        lon <= z.lonmax - VAAR_ZONE_HYSTERESE_GRADEN
+    );
+  }
+  return inClustervrijeZone(lat, lon); // nieuw schip: nog geen vorige status, gewoon de exacte grens
+}
 const scheepsfotoUrls = new Map(); // mmsi -> url (string) of null (= geen foto)
 let radarPollTimer = null;
 // 2026-08-21, op verzoek van Lex ("zou kunnen [een zichtbare cirkel]") —
@@ -5688,8 +5726,8 @@ async function ververVaarradar() {
         : '';
       const diepgangHtml = s.diepgangM != null ? `<div class="popup-sub">Diepgang ${s.diepgangM.toFixed(1)} m</div>` : '';
       const basisHtml = `<div class="popup-titel"><span class="popup-scheepskleur" style="background:${kleur}"></span>⛴️ ${escapeHtml(naam)}${bronLabel}</div><div class="popup-sub">${escapeHtml(details)}</div>${bestemmingHtml}${diepgangHtml}`;
-      const losLaag = inClustervrijeZone(s.lat, s.lon); // true = vaarLosLaag, false = vaarLaag (cluster)
       let marker = vaarMarkers.get(s.mmsi);
+      const losLaag = bepaalLosLaag(s.lat, s.lon, marker?.vaarInLosLaag); // true = vaarLosLaag, false = vaarLaag (cluster) -- hysterese, zie bepaalLosLaag()
       if (marker) {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
         // blijft een open popup gewoon open (en de foto erin staan).

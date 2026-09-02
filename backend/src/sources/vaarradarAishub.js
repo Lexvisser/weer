@@ -41,7 +41,7 @@
 // M.1371-scheepstypecode als AIS-catcher's shiptype-veld — vandaar hergebruik
 // van categoriseerScheepstype() uit vaarradarLokaal.js i.p.v. een eigen kopie.
 
-import { categoriseerScheepstype, normaliseerEta } from './vaarradarLokaal.js';
+import { categoriseerScheepstype, normaliseerEta, vulOntbrekendeVeldenAan } from './vaarradarLokaal.js';
 import { afstandKm } from '../normalize.js';
 
 const POLL_MS = 65 * 1000; // ruim boven AISHub's "niet vaker dan 1x/minuut"
@@ -215,7 +215,11 @@ export function startVaarradarAishubFeed(env) {
           posities.delete(p.mmsi); // ook een eerder bewaarde positie van dit schip opruimen
           continue;
         }
-        posities.set(p.mmsi, p);
+        // 2026-09-02: zelfde sticky-statische-velden-fix als vaarradarLokaal.js
+        // (zie vulOntbrekendeVeldenAan() daar) -- voorkomt dat scheepscategorie/
+        // bestemming/etc. heen en weer springt tussen bekend en null als AISHub's
+        // eigen respons de statische data niet elke ronde meegeeft.
+        posities.set(p.mmsi, vulOntbrekendeVeldenAan(p, posities.get(p.mmsi)));
       }
       opschonen();
       let afgekapt = 0;

@@ -123,6 +123,38 @@ export function normaliseerEta(maand, dag, uur, minuut) {
   };
 }
 
+// 2026-09-02-bug-fix, op melding van Lex ("de labels knipperen ook" / "niet
+// alle schepen knipperen") -- ROOT CAUSE: scheepstype (msg 5, statische
+// data) wordt door AIS-catcher/AISHub maar zo eens in de paar minuten
+// uitgezonden. Zonder deze functie viel scheepscategorie (en daarmee de
+// kleur in 'type'-modus, en dus vaarIconSleutel() in app.js) bij elke poll
+// zonder een vers type-5-bericht terug naar null/grijs, en sprong bij de
+// eerstvolgende poll mét weer terug naar de echte kleur -- dat wisselende
+// icoon triggerde bij elke wissel een echte setIcon()-vervanging (zie
+// app.js), wat zowel het icoon als de eraan gekoppelde hover-tooltip liet
+// knipperen. Verklaart ook waarom niet ALLE schepen knipperden: alleen
+// schepen waarvan het type-5-bericht wisselend wel/niet in de meest recente
+// snapshot zat, niet schepen met stabiel bekende (of stabiel onbekende)
+// statische data.
+// Fix: bij het bijwerken van een bekend schip vullen ontbrekende STATISCHE
+// velden (naam/categorie/bestemming/diepgang/eta/callsign/imo) aan vanuit de
+// vorige bekende waarde i.p.v. meteen naar null te springen -- dynamische
+// velden (positie/koers/snelheid/status/tijdstip) komen altijd vers uit het
+// nieuwste bericht, die worden hier NIET overgenomen uit de vorige waarde.
+export function vulOntbrekendeVeldenAan(nieuw, vorige) {
+  if (!vorige) return nieuw;
+  return {
+    ...nieuw,
+    naam: nieuw.naam ?? vorige.naam,
+    scheepscategorie: nieuw.scheepscategorie ?? vorige.scheepscategorie,
+    bestemming: nieuw.bestemming ?? vorige.bestemming,
+    diepgangM: nieuw.diepgangM ?? vorige.diepgangM,
+    eta: nieuw.eta ?? vorige.eta,
+    callsign: nieuw.callsign ?? vorige.callsign,
+    imo: nieuw.imo ?? vorige.imo,
+  };
+}
+
 function vertaalFeature(feature) {
   const coords = feature?.geometry?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return null;
@@ -221,7 +253,7 @@ export function startVaarradarLokaalFeed(env) {
 
       for (const feature of features) {
         const p = vertaalFeature(feature);
-        if (p) posities.set(p.mmsi, p);
+        if (p) posities.set(p.mmsi, vulOntbrekendeVeldenAan(p, posities.get(p.mmsi)));
       }
       opschonen();
       if (backoffMs) log('lokale AIS-catcher weer bereikbaar.');
