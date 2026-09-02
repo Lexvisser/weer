@@ -5620,6 +5620,11 @@ try {
 } catch (_) {
   /* prive-modus, gewoon bij de standaard (aan) blijven */
 }
+// 2026-09-02-bug-fix, op melding van Lex ("de knop van AISHub is ook al blauw
+// als er nog een keer op geklikt moet worden"): index.html zet de knop
+// standaard op 'actief', maar de onthouden stand (localStorage) werd bij het
+// laden nooit op de knop teruggezet -- pas na een klik liep het weer gelijk.
+VAAR_AISHUB_KNOP_EL?.classList.toggle('actief', aishubZichtbaar);
 const AISHUB_OPACITEIT = 0.55; // vol dekkend voor lokaal, duidelijk getemperd voor AISHub-only
 
 function wisselVaarStraal() {
