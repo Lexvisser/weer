@@ -27,6 +27,7 @@
 // nabouwen voor iets dat alarmen moet afleveren. Eenmalig `npm install`
 // nodig in backend/ — zie package.json.
 import nodemailer from 'nodemailer';
+import { maakGemeldOpSchijf } from '../gemeldOpSchijf.js';
 
 let transporter = null;
 
@@ -48,7 +49,9 @@ function getTransporter() {
 // opnieuw een mail stuurt. Bewust een aparte Set van pushover.js — de twee
 // kanalen staan los van elkaar aan/uit, dus een mislukte/overgeslagen mail
 // mag de Pushover-dedup niet beïnvloeden en andersom.
-const gemeld = new Set();
+// 2026-09-02: overleeft nu herstarts (zie gemeldOpSchijf.js) — voorheen een
+// gewone in-memory Set, waardoor elke sync dezelfde watch opnieuw meldde.
+const gemeld = maakGemeldOpSchijf('mail');
 let waarschuwingGelogd = false;
 
 function ingeschakeld() {
@@ -226,7 +229,7 @@ function htmlMetTijdzonePillen(tekst) {
 export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebiedPolygon, to }) {
   if (!id) return;
   if (gemeld.has(id)) {
-    console.log(`[weer] mail: "${id}" al eerder gemeld sinds laatste herstart, overgeslagen (titel: ${titel}).`);
+    console.log(`[weer] mail: "${id}" al eerder gemeld (ook over herstarts heen), overgeslagen (titel: ${titel}).`);
     return;
   }
   if (!beschikbaar()) {

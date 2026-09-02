@@ -1,3 +1,4 @@
+import { maakGemeldOpSchijf } from '../gemeldOpSchijf.js';
 // pushover.js — stuurt push-alarmen via Pushover (pushover.net) voor de
 // paar signalen die letterlijk als telefoonalarm moeten aankomen, óók als de
 // app niet open staat en de telefoon op stil/niet-storen staat. Op verzoek
@@ -46,7 +47,9 @@ export function kaartTekst({ titel, categorie, detail }) {
 // in het ergste geval meldt een serverherstart een nog actief alarm één
 // keer opnieuw. Voor een alarm is dat de veilige kant om op te fouten
 // (liever een keer te veel dan te weinig).
-const gemeld = new Set();
+// 2026-09-02: overleeft nu herstarts (zie gemeldOpSchijf.js) — voorheen een
+// gewone in-memory Set, waardoor elke sync dezelfde watch opnieuw meldde.
+const gemeld = maakGemeldOpSchijf('pushover');
 let waarschuwingGelogd = false;
 
 // 2026-08-20: op verzoek van Lex ("zet Pushover maar even uit") — een losse
@@ -80,7 +83,7 @@ export async function stuurAlarm({ id, titel, bericht, url, prioriteit = 1 }) {
     // bleek dat onduidelijk: leek dan alsof er niks gebeurde, terwijl dit
     // gewoon de dedup deed waar-ie voor bedoeld is (zelfde alarm niet
     // opnieuw sturen zolang de service niet herstart is). Nu wel zichtbaar.
-    console.log(`[weer] pushover: "${id}" al eerder gemeld sinds laatste herstart, overgeslagen (titel: ${titel}).`);
+    console.log(`[weer] pushover: "${id}" al eerder gemeld (ook over herstarts heen), overgeslagen (titel: ${titel}).`);
     return;
   }
   if (!beschikbaar()) {
