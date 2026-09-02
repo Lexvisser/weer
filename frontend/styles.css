@@ -1694,4 +1694,4 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    in meldingstitels/popups in een eigen kleur, zodat die meteen te
    onderscheiden is van de Amerikaanse brontijd ervoor. Zie markeerNlTijd()
    in app.js. */
-.nl-tijd { color:#3ec6ff; }
+.nl-tijd { color:#3ec6ff; font-weight:normal; margin-top:2px; }

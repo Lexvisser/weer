@@ -229,9 +229,20 @@ function verrijkTekstMetNlTijd(tekst) {
 // "(2 sep 14:57 NL)" in een eigen span zetten, PAS bij het renderen (niet in
 // s.titel zelf, want die wordt ook als platte tekst gebruikt, bijv. in de
 // alarm-popup via textContent). Zie .nl-tijd in styles.css.
+// 2026-09-02-vervolg ("kan je ook de NL-tijden begin en eind een aparte
+// regel geven"): de "(.. NL)"-stukjes uit de titel halen en als eigen regel
+// eronder zetten -- "NL: 2 sep 14:57 – 3 sep 05:00" (bij één tijd alleen
+// die ene). De Amerikaanse brontekst blijft ongewijzigd staan.
 function markeerNlTijd(html) {
   if (typeof html !== 'string') return html;
-  return html.replace(/\((\d{1,2} [a-z]{3}\.? \d{2}:\d{2}) NL\)/g, '<span class="nl-tijd">($1 NL)</span>');
+  const tijden = [];
+  const zonder = html.replace(/\s*\((\d{1,2} [a-z]{3}\.? \d{2}:\d{2}) NL\)/g, (_, t) => {
+    tijden.push(t);
+    return '';
+  });
+  if (!tijden.length) return html;
+  const regel = tijden.length >= 2 ? `${tijden[0]} – ${tijden[tijden.length - 1]}` : tijden[0];
+  return `${zonder}<div class="nl-tijd">NL: ${regel}</div>`;
 }
 
 // Muteert s.titel (in place) voor elk signaal dat een NWS-achtige tijd
