@@ -1189,7 +1189,11 @@ export function createApp(env) {
       const params = new URL(req.url, 'http://localhost').searchParams;
       const lat = Number(params.get('lat'));
       const lon = Number(params.get('lon'));
-      const straal = Math.min(100, Math.max(1, Number(params.get('straal')) || 50));
+      // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag meer zien") -- was
+      // Math.min(100, ...), samen opgetrokken met VAARRADAR_STRAAL_KM in app.js en
+      // BOX_KM in vaarradarAishub.js. Alleen de vaarradar-grens, /api/vliegradar
+      // hierboven blijft op 100km.
+      const straal = Math.min(250, Math.max(1, Number(params.get('straal')) || 50));
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
         return sendJson(res, 400, { fout: 'lat en lon zijn verplicht', schepen: [] });
       }

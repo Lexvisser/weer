@@ -48,7 +48,10 @@ const VENSTER_MS = 15 * 60 * 1000; // iets ruimer dan vaarradarLokaal.js's 10 mi
 // vertraging (andere stations, netwerklatency) betekent dat "vers" hier sowieso wat rekkelijker is
 const BACKOFF_START_MS = 30 * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
-const BOX_KM = 100; // zelfde straal als het bestaande /api/vaarradar-maximum (straal wordt daar al gekapt op 100)
+const BOX_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag meer zien") --
+// samen opgetrokken met de /api/vaarradar-grens in server.js en VAARRADAR_STRAAL_KM in app.js;
+// deze moet minstens even groot zijn als die twee, anders wordt AISHub's eigen aanvulling al
+// hier afgekapt voordat de route/kaart er zelfs aan toekomen.
 
 function bounding(homeLat, homeLon) {
   const latMargin = BOX_KM / 111; // 1 breedtegraad ~ 111km, overal op aarde

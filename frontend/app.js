@@ -4974,7 +4974,10 @@ function toggleZeeModus() {
 // adsb.lol, niet gevoelig voor de straal/antwoordgrootte). Dus weer terug
 // naar 75.
 const VLIEGRADAR_STRAAL_KM = 75;
-const VAARRADAR_STRAAL_KM = 50;
+const VAARRADAR_STRAAL_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag
+// meer zien") -- was 50, dat was de eigenlijke bottleneck (ruim onder zelfs de oude
+// 100km-servergrens in server.js). Zie ook BOX_KM in vaarradarAishub.js, die moet
+// minstens even groot zijn anders wordt AISHub's aanvulling zelf al eerder afgekapt.
 // 2026-08-21: eerst 15s -> 5s, en op Lex' vervolgverzoek ("kan het nog
 // sneller") -> 3s. De servercache in backend/src/sources/vliegradar.js is
 // om dezelfde reden mee omlaag (zie CACHE_MS daar) zodat pollen sneller dan
