@@ -201,7 +201,24 @@
            vaarKleurModus hierboven, label toont het huidige aantal km (zie
            wisselVaarStraal()/zetVaarStraalKnopLabel() in app.js). -->
       <button id="vaarStraalKnop" class="satelliet-toggle" style="display:none;" title="Zoekstraal van de vaarradar wisselen: 50-250km in stappen van 25">📡<span class="knop-tekst"> 50km</span></button>
+      <!-- 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
+           "Ship Type"-paneel met aan/uit-vinkjes per scheepstype) -- opent/sluit
+           #vaarTypeFilterPaneel hieronder. Zelfde display-toggle-patroon als de
+           andere Vaart-only-knoppen hierboven, verborgen tot Vaart-modus aanstaat.
+           Paneelinhoud wordt dynamisch opgebouwd in bouwVaarTypeFilterPaneel()
+           (app.js) vanuit dezelfde SCHEEPSCATEGORIE_LABEL/KLEUR_PER_SCHEEPSCATEGORIE
+           die ook de kleurmodus 'type' gebruikt, dus geen dubbele lijst om
+           handmatig gelijk te houden. -->
+      <button id="vaarTypeFilterKnop" class="satelliet-toggle" style="display:none;" title="Welke scheepstypes tonen">🚦<span class="knop-tekst"> Types</span></button>
       </div>
+      <!-- 2026-09-02: het filterpaneel zelf, zie vaarTypeFilterKnop hierboven --
+           los van .radar-controls (dat is een horizontale knoppenbalk, dit is
+           een verticale lijst die eroverheen moet kunnen uitklappen), vandaar
+           een aparte positionering in styles.css i.p.v. gewoon meegroeien in
+           de knoppenbalk. Leeg tot bouwVaarTypeFilterPaneel() 'm vult; blijft
+           verborgen buiten Vaart-modus (toggleVaarradar() in app.js zet
+           display net als de knoppen hierboven). -->
+      <div id="vaarTypeFilterPaneel" class="vaar-type-filter-paneel verborgen"></div>
       <!-- 2026-08-22: Zoek ISS/Starlink zijn hier weggehaald op verzoek van
            Lex ("De starlink knop wil ik niet op de kaart eigenlijk de ISS
            knop ook niet. Die zouden gewoon vanaf hemel naar de kaart moeten

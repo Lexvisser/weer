@@ -76,6 +76,26 @@ export function categoriseerScheepstype(typeCode) {
   return 'overig'; // bekend type, maar geen van de bovenstaande (bagger/duik/militair/WIG/90-99 etc.)
 }
 
+// 2026-09-02, op verzoek van Lex (filterpaneel per scheepstype, net als
+// MarineTraffic's "Ship Type"-paneel -- zie sessie-overleg) -- naast de
+// shiptype-code hierboven bestaat er ook een heel ander soort AIS-zender:
+// "Aid to Navigation" (boeien/bakens/vuurtorens, AIS-berichttype 21). Die
+// zenden zelf meestal GEEN (zinnig) shiptype-veld uit, maar zijn wel te
+// herkennen aan hun MMSI: de ITU/IMO-conventie reserveert het bereik
+// 990000000-999999999 (MMSI begint met "99") specifiek voor dit soort vaste
+// navigatiehulpmiddelen. NIET live geverifieerd tegen een echt AtoN-baken
+// vanuit deze sessie (geen directe toegang tot de AIS-catcher-feed hiervandaan) --
+// dit is de gedocumenteerde MMSI-conventie, geen aanname op basis van shiptype.
+// Bij twijfel (mmsi buiten dat bereik) valt dit gewoon terug op de normale
+// scheepstype-categorisering hierboven.
+const ATON_MMSI_MIN = 990000000;
+const ATON_MMSI_MAX = 999999999;
+export function bepaalScheepscategorie(mmsi, typeCode) {
+  const m = Number(mmsi);
+  if (Number.isFinite(m) && m >= ATON_MMSI_MIN && m <= ATON_MMSI_MAX) return 'navigatiehulp';
+  return categoriseerScheepstype(typeCode);
+}
+
 // 2026-09-02: ERI/Inland-AIS-scheepstypecodes (4-cijferig, >=1000) -- tabel
 // overgenomen uit CESNI/ERI's publieke Annex-1-documentatie voor Inland AIS
 // (zie sessienotitie), NIET stuk voor stuk live geverifieerd tegen echte
@@ -191,15 +211,24 @@ function vertaalFeature(feature) {
   const status = typeof p.status === 'number' ? p.status : null;
   const callsign = String(p.callsign ?? '').trim() || null;
   const imo = typeof p.imo === 'number' && p.imo > 0 ? p.imo : null;
+  // 2026-09-02, op verzoek van Lex (hover-kaartje met landcode, zoals
+  // MarineTraffic's "NAAM [NL]") -- AIS-catcher decodeert het land zelf al
+  // uit de MMSI (MID-landprefix) en zet dat in het 'country'-veld van de
+  // geojson-feed (zie voorbeeld bovenaan dit bestand); geen eigen MID-tabel
+  // nodig. AISHub's eigen voorbeeldrespons (zie vaarradarAishub.js) heeft dit
+  // veld niet -- daar blijft 'land' dus altijd null, de frontend laat het
+  // '[..]'-label dan gewoon weg.
+  const land = String(p.country ?? '').trim() || null;
 
   return {
     mmsi,
     naam: String(p.shipname ?? '').trim() || null,
+    land,
     lat,
     lon,
     koersGraden,
     snelheidKn: typeof p.speed === 'number' ? p.speed : null,
-    scheepscategorie: categoriseerScheepstype(scheepstypeRuw),
+    scheepscategorie: bepaalScheepscategorie(mmsi, scheepstypeRuw),
     bestemming,
     diepgangM,
     eta,

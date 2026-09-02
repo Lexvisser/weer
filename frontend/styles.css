@@ -521,6 +521,19 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .radar-controls .satelliet-toggle { width:auto; border-radius:9px; padding:3px 8px; font-family:'JetBrains Mono',monospace; }
 .radar-controls .satelliet-toggle.actief { background:#3ec6ff; color:#05060a; }
 
+/* 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
+   "Ship Type"-paneel) -- #vaarTypeFilterPaneel (index.html), inhoud
+   opgebouwd door bouwVaarTypeFilterPaneel() in app.js. Los boven de kaart
+   uitgeklapt (position:absolute t.o.v. .map-wrap, niet t.o.v. .radar-controls
+   zelf -- die laatste kan twee regels worden op smalle schermen, zie
+   .radar-groep hierboven, en dan zou dit paneel meebewegen/verspringen).
+   Zelfde donkere kaart-stijl als .vaar-tooltip/.radar-controls. */
+.vaar-type-filter-paneel { position:absolute; right:10px; bottom:46px; z-index:1001; background:#141826; border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:8px 10px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#f4f6fb; box-shadow:0 4px 16px rgba(0,0,0,0.5); max-height:60vh; overflow-y:auto; min-width:170px; }
+.vaar-type-filter-item { display:flex; align-items:center; gap:7px; padding:4px 2px; cursor:pointer; }
+.vaar-type-filter-item input { margin:0; }
+.vaar-type-filter-kleur { width:9px; height:9px; border-radius:50%; flex:none; }
+.vaar-type-filter-alles { border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:2px; padding-bottom:6px; font-weight:bold; }
+
 /* 2026-08-21: de losstaande groot/klein-driehoekknop (.uitvergroot-driehoek)
    is vervallen op verzoek van Lex ("de kaart standaard groot altijd groot...
    het wisselen tussen klein en groot mag dus vervallen") — geen toggle meer
@@ -978,6 +991,40 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    de rest van de app (vgl. .leaflet-popup-content-wrapper hierboven). */
 .vaar-tooltip { background:#0e111c; color:#e8eaed; border:1px solid rgba(255,255,255,0.15); font-size:11px; padding:3px 7px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.45); }
 .vaar-tooltip.leaflet-tooltip-top::before { border-top-color:#0e111c; }
+
+/* 2026-09-02-herziening, op verzoek van Lex ("dit kaartje namaken", zie het
+   gedeelde MarineTraffic-hoverkaartje) -- meerdere regels (naam+land,
+   snelheid/koers, bestemming, "positie ontvangen") i.p.v. de oude
+   eenregelige "naam · X kn"-tooltip, dus wat meer binnenruimte en een vaste
+   regelafstand nodig dan de oorspronkelijke .vaar-tooltip hierboven. */
+.vaar-tooltip { padding:6px 9px; line-height:1.5; min-width:150px; }
+.vaar-tooltip div { white-space:nowrap; }
+.vaar-tooltip-land { opacity:0.75; font-weight:normal; }
+
+/* 2026-09-02, op verzoek van Lex ("dat rondje om het item als er een
+   mouseover is... namaken", zie het gedeelde MarineTraffic-screenshot) --
+   pulserende ring om het gehoverde/geselecteerde bootje. Kleur volgt het
+   bootje zelf via de --vaar-ring-kleur custom property (zie
+   zetVaarRingKleur() in app.js), i.p.v. een vaste kleur -- dan blijft de
+   ring passen bij welke kleurmodus (type/snelheid/schip) ook actief is.
+   position:relative op .leaflet-marker-icon zelf (Leaflet zet dat element
+   al op position:absolute, dus de ::after hieronder mag daar gewoon
+   overheen tekenen) en pointer-events:none zodat de ring zelf nooit de
+   hover/klik op het bootje blokkeert. */
+.leaflet-marker-icon.vaar-marker-actief { position:absolute; }
+.leaflet-marker-icon.vaar-marker-actief::after {
+  content:'';
+  position:absolute;
+  inset:-8px;
+  border-radius:50%;
+  border:2px solid var(--vaar-ring-kleur, #3ec6ff);
+  pointer-events:none;
+  animation: vaarRingPuls 1.4s ease-out infinite;
+}
+@keyframes vaarRingPuls {
+  0% { transform:scale(0.55); opacity:0.9; }
+  100% { transform:scale(1.7); opacity:0; }
+}
 
 .home-pin { width:14px; height:14px; border-radius:50%; background:rgba(62,198,255,0.9); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); box-shadow:0 0 0 5px rgba(62,198,255,0.25), 0 0 12px rgba(62,198,255,0.55), 0 2px 6px rgba(10,13,22,0.3); }
 

@@ -52,6 +52,8 @@ const TOGGLE_VAARRADAR_EL = document.getElementById('toggleVaarradar');
 const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
 const VAAR_AISHUB_KNOP_EL = document.getElementById('vaarAishubToggle');
 const VAAR_STRAAL_KNOP_EL = document.getElementById('vaarStraalKnop');
+const VAAR_TYPE_FILTER_KNOP_EL = document.getElementById('vaarTypeFilterKnop');
+const VAAR_TYPE_FILTER_PANEEL_EL = document.getElementById('vaarTypeFilterPaneel');
 // 2026-08-22: vervangt TOGGLE_ISS_KAART_EL/TOGGLE_STARLINK_EL (die knoppen
 // zijn weg, zie index.html) — één gedeelde Stop-knop voor kaartVolgType,
 // zie startKaartVolgen()/stopKaartVolgen() verderop.
@@ -794,6 +796,7 @@ function initMap() {
   VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
   VAAR_AISHUB_KNOP_EL?.addEventListener('click', wisselVaarAishubZichtbaar);
   VAAR_STRAAL_KNOP_EL?.addEventListener('click', wisselVaarStraal);
+  VAAR_TYPE_FILTER_KNOP_EL?.addEventListener('click', toggleVaarTypeFilterPaneel);
   zetVaarStraalKnopLabel(); // meteen bij opstarten het opgeslagen/standaard getal tonen
   zetVaarKleurKnopLabel();
   // Lex: "...waarna er een knop Stop zichtbaar is. Waarmee ISS/Starlink
@@ -5298,6 +5301,12 @@ const KLEUR_PER_SCHEEPSCATEGORIE = {
   passagiersschip: '#7b4cf0',
   hogesnelheid: '#ff6b6b',
   hulpdienst: '#4cf0e0',
+  // 2026-09-02, op verzoek van Lex (filterpaneel per scheepstype, zie
+  // bepaalScheepscategorie() in vaarradarLokaal.js) -- navigatiehulpmiddelen
+  // (boeien/bakens/vuurtorens) zijn geen "schip", dus een eigen kleur i.p.v.
+  // mee te liften op een van de bovenstaande vaartuig-categorieën. Wit/grijs
+  // gekozen, vergelijkbaar met hoe MarineTraffic deze toont (los ruitje).
+  navigatiehulp: '#c9cdd8',
   overig: KLEUR_SCHEEP_ONBEKEND,
 };
 const SCHEEPSCATEGORIE_LABEL = {
@@ -5309,12 +5318,104 @@ const SCHEEPSCATEGORIE_LABEL = {
   passagiersschip: 'Passagiersschip',
   hogesnelheid: 'Hogesnelheidsvaartuig',
   hulpdienst: 'Hulpvaartuig',
+  navigatiehulp: 'Navigatiehulpmiddel',
   // 'overig' bewust GEEN label -- "Overig" in de popup zegt niks nuttigs,
   // beter helemaal weglaten dan een loze regel tonen.
 };
 
 function kleurVoorScheepscategorie(categorie) {
   return KLEUR_PER_SCHEEPSCATEGORIE[categorie] ?? KLEUR_SCHEEP_ONBEKEND;
+}
+
+// 2026-09-02, op verzoek van Lex ("kunnen wij dit?" bij een MarineTraffic-
+// screenshot van hun "Ship Type"-filterpaneel, daarna "go") -- aan/uit-
+// vinkjes per scheepscategorie, zelfde categorieën als de kleurmodus 'type'
+// hierboven gebruikt (geen tweede lijst om los bij te houden). 'onbekend'
+// is een EXTRA, pseudo-categorie hier (geen echte waarde van
+// categoriseerScheepstype()) voor schepen zonder scheepstype-data (null) --
+// zonder deze rij zou je die schepen nooit kunnen uit-/aanvinken.
+// Opgeslagen als lijst VERBORGEN categorieën (niet zichtbaar) i.p.v. lijst
+// zichtbare -- dan betekent een lege/ontbrekende opslag automatisch "alles
+// aan", zelfde soort "standaard alles zichtbaar tenzij expliciet uitgevinkt"
+// als bij aishubZichtbaar hierboven.
+const VAAR_TYPE_FILTER_KEY = 'weerVaarVerborgenTypes';
+const VAAR_TYPE_FILTER_CATEGORIEEN = [...Object.keys(SCHEEPSCATEGORIE_LABEL), 'overig', 'onbekend'];
+const VAAR_TYPE_FILTER_LABEL = { ...SCHEEPSCATEGORIE_LABEL, overig: 'Overig', onbekend: 'Onbekend / geen data' };
+let vaarVerborgenCategorieen = new Set();
+try {
+  const opgeslagen = localStorage.getItem(VAAR_TYPE_FILTER_KEY);
+  if (opgeslagen) vaarVerborgenCategorieen = new Set(opgeslagen.split(',').filter((c) => VAAR_TYPE_FILTER_CATEGORIEEN.includes(c)));
+} catch (_) {
+  /* prive-modus, gewoon bij de standaard (niets verborgen) blijven */
+}
+
+function bewaarVaarTypeFilter() {
+  try {
+    localStorage.setItem(VAAR_TYPE_FILTER_KEY, [...vaarVerborgenCategorieen].join(','));
+  } catch (_) {
+    /* prive-modus */
+  }
+}
+
+// s.scheepscategorie is null zodra er geen scheepstype-data binnenkwam
+// (zie categoriseerScheepstype() in vaarradarLokaal.js) -- die schepen
+// vallen hier onder de pseudo-categorie 'onbekend', zie hierboven.
+function scheepsFilterCategorie(s) {
+  return s.scheepscategorie ?? 'onbekend';
+}
+
+// Bouwt het paneel eenmalig (leeg -> gevuld); latere aanroepen zijn een
+// no-op zodra er al rijen staan -- de vinkjes zelf onthouden hun eigen
+// staat via de change-listener hieronder, geen re-render per poll nodig
+// (en dus ook geen kans om een net aangeklikt vinkje weer te overschrijven).
+function bouwVaarTypeFilterPaneel() {
+  if (!VAAR_TYPE_FILTER_PANEEL_EL || VAAR_TYPE_FILTER_PANEEL_EL.childElementCount) return;
+
+  const allesRij = document.createElement('label');
+  allesRij.className = 'vaar-type-filter-item vaar-type-filter-alles';
+  const allesVink = document.createElement('input');
+  allesVink.type = 'checkbox';
+  allesVink.checked = vaarVerborgenCategorieen.size === 0;
+  allesVink.addEventListener('change', () => {
+    vaarVerborgenCategorieen = allesVink.checked ? new Set() : new Set(VAAR_TYPE_FILTER_CATEGORIEEN);
+    bewaarVaarTypeFilter();
+    VAAR_TYPE_FILTER_PANEEL_EL.querySelectorAll('input[data-categorie]').forEach((el) => {
+      el.checked = !vaarVerborgenCategorieen.has(el.dataset.categorie);
+    });
+    ververVaarradar();
+  });
+  allesRij.appendChild(allesVink);
+  allesRij.appendChild(document.createTextNode('Alle scheepstypes'));
+  VAAR_TYPE_FILTER_PANEEL_EL.appendChild(allesRij);
+
+  VAAR_TYPE_FILTER_CATEGORIEEN.forEach((categorie) => {
+    const rij = document.createElement('label');
+    rij.className = 'vaar-type-filter-item';
+    const vink = document.createElement('input');
+    vink.type = 'checkbox';
+    vink.dataset.categorie = categorie;
+    vink.checked = !vaarVerborgenCategorieen.has(categorie);
+    vink.addEventListener('change', () => {
+      if (vink.checked) vaarVerborgenCategorieen.delete(categorie);
+      else vaarVerborgenCategorieen.add(categorie);
+      bewaarVaarTypeFilter();
+      allesVink.checked = vaarVerborgenCategorieen.size === 0;
+      ververVaarradar();
+    });
+    const kleurbol = document.createElement('span');
+    kleurbol.className = 'vaar-type-filter-kleur';
+    kleurbol.style.background = kleurVoorScheepscategorie(categorie === 'onbekend' ? null : categorie);
+    rij.appendChild(vink);
+    rij.appendChild(kleurbol);
+    rij.appendChild(document.createTextNode(VAAR_TYPE_FILTER_LABEL[categorie] ?? categorie));
+    VAAR_TYPE_FILTER_PANEEL_EL.appendChild(rij);
+  });
+}
+
+function toggleVaarTypeFilterPaneel() {
+  if (!VAAR_TYPE_FILTER_PANEEL_EL) return;
+  bouwVaarTypeFilterPaneel();
+  VAAR_TYPE_FILTER_PANEEL_EL.classList.toggle('verborgen');
 }
 
 // Optie 3: kleur op snelheid -- een "warmte"-schaal (grijsblauw stilliggend
@@ -5383,12 +5484,39 @@ function etaTekst(eta) {
 // snelheid) -- bestemming/ETA/status/foto blijven voorbehouden aan de volle
 // klik-popup (zie scheepsPopupEl() hieronder), anders is er geen verschil
 // meer tussen hoveren en klikken.
+// 2026-09-02-herziening, op verzoek van Lex ("dit kaartje namaken" -- zie
+// het gedeelde MarineTraffic-hoverkaartje: naam [land], snelheid/koers,
+// bestemming, "positie ontvangen X geleden"). Land komt alleen van
+// vaarradarLokaal.js (AIS-catcher decodeert dat zelf uit de MMSI, zie
+// 'land' daar) -- AISHub's respons heeft dat veld niet, dan blijft het
+// "[..]"-label gewoon weg i.p.v. "[null]" te tonen. tijdMs komt via
+// vaarradarLokaal.js/vaarradarAishub.js/server.js ongewijzigd door naar de
+// frontend, dus geledenTekst() (elders in app.js, al gebruikt voor
+// "Bijgewerkt: X geleden") kan hier gewoon hergebruikt worden.
 function vaarTooltipHtml(s) {
   const naam = s.naam || `MMSI ${s.mmsi}`;
-  const snelheid = s.snelheidKn != null ? ` · ${Math.round(s.snelheidKn)} kn` : '';
-  return `<strong>${escapeHtml(naam)}</strong>${snelheid}`;
+  const landLabel = s.land ? ` <span class="vaar-tooltip-land">[${escapeHtml(s.land)}]</span>` : '';
+  const snelheid = s.snelheidKn != null ? Math.round(s.snelheidKn) : 0;
+  const koers = typeof s.koersGraden === 'number' ? Math.round(s.koersGraden) : 0;
+  const bestemmingRegel = s.bestemming
+    ? `<div>Bestemming: ${escapeHtml(s.bestemming)}</div>`
+    : '';
+  const positieRegel = s.tijdMs ? `<div>Positie ontvangen: ${geledenTekst(s.tijdMs)}</div>` : '';
+  return (
+    `<div><strong>${escapeHtml(naam)}</strong>${landLabel}</div>` +
+    `<div>${snelheid} kn / ${koers}°</div>` +
+    bestemmingRegel +
+    positieRegel
+  );
 }
 
+// 2026-09-02-CORRECTIE (zelfde sessie): eerste aanname was dat de vele rode
+// stipjes in het gedeelde MarineTraffic-screenshot stilliggende/geankerde
+// schepen waren -- Lex corrigeerde dit direct ("herstel dat zijn tankers"):
+// het was gewoon de tanker-kleur (categorie-gekleurde modus), geen aparte
+// stilliggend-regel. De stilliggend/varend-vorm (stip vs. driehoek, zie
+// bouwVaarIcon()) blijft wel gewoon bestaan -- alleen GEEN aparte vaste
+// kleuroverride hier.
 function kleurVoorSchip(s) {
   if (vaarKleurModus === 'type') return kleurVoorScheepscategorie(s.scheepscategorie);
   if (vaarKleurModus === 'snelheid') return kleurVoorSnelheid(s.snelheidKn);
@@ -5498,6 +5626,25 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil) {
 // onderbroken hover meer.
 function vaarIconSleutel(kleur, bron, stil) {
   return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}`;
+}
+
+// 2026-09-02, op verzoek van Lex ("dat rondje om het item als er een
+// mouseover is... namaken" -- zie het gedeelde MarineTraffic-screenshot met
+// een pulserend rondje om het geselecteerde/gehoverde schip). Ring-kleur
+// volgt de kleur van het bootje zelf (kleurVoorSchip()) via een CSS-custom-
+// property op marker._icon -- zie .vaar-marker-actief in styles.css.
+// "Actief" = aan het hoveren OF de popup staat open (zelfde ring voor beide,
+// net als het screenshot: dat rondje bleef ook staan na doorklikken). Losse
+// booleans i.p.v. alleen marker.isPopupOpen() checken, zodat mouseout tijdens
+// een open popup de ring niet per ongeluk uitzet.
+function zetVaarRingKleur(marker, kleur) {
+  marker._icon?.style?.setProperty('--vaar-ring-kleur', kleur);
+}
+function vaarRingBijwerken(marker) {
+  const el = marker._icon;
+  if (!el) return;
+  const actief = !!marker._vaarHover || marker.isPopupOpen();
+  el.classList.toggle('vaar-marker-actief', actief);
 }
 
 function werkVaarIconRotatieBij(marker, koersGraden) {
@@ -5657,11 +5804,17 @@ async function ververVaarradar() {
     // AISHub-only schepen (bron: 'aishub', geen eigen ontvangst) blijven weg
     // als de knop uitstaat -- lokaal ontvangen schepen (bron: 'lokaal')
     // blijven altijd zichtbaar, ongeacht deze knop.
-    const zichtbareSchepen = (data.schepen ?? []).filter((s) => aishubZichtbaar || s.bron !== 'aishub');
+    const zichtbareSchepen = (data.schepen ?? [])
+      .filter((s) => aishubZichtbaar || s.bron !== 'aishub')
+      // 2026-09-02: scheepstype-filterpaneel, zie bouwVaarTypeFilterPaneel() hierboven.
+      .filter((s) => !vaarVerborgenCategorieen.has(scheepsFilterCategorie(s)));
     zichtbareSchepen.forEach((s) => {
       gezien.add(s.mmsi);
       const kleur = kleurVoorSchip(s);
-      const stil = schipLigtStil(s);
+      // navigatiehulpmiddelen (boeien/bakens) bewegen per definitie nooit --
+      // altijd als stip tekenen, ongeacht status/snelheid (die velden zijn bij
+      // dit soort AIS-zenders vaak leeg/betekenisloos).
+      const stil = schipLigtStil(s) || s.scheepscategorie === 'navigatiehulp';
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
       const statusTekst = typeof s.status === 'number' ? NAVSTATUS_LABEL[s.status] ?? null : null;
       // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
@@ -5705,6 +5858,7 @@ async function ververVaarradar() {
         } else if (!stil) {
           werkVaarIconRotatieBij(marker, s.koersGraden); // zelfde vorm/kleur, alleen de koers bijwerken -- geen DOM-vervanging
         }
+        zetVaarRingKleur(marker, kleur);
         // Alleen bijwerken bij een echte wijziging -- zelfde soort onnodige-
         // churn-preventie als bij het icoon hierboven (setTooltipContent is
         // hier zelf onschuldiger dan setIcon, geen DOM-vervanging, maar geen
@@ -5730,6 +5884,10 @@ async function ververVaarradar() {
       marker.bindPopup(scheepsPopupEl(marker, s.mmsi, basisHtml));
       marker.vaarTooltipHtml = vaarTooltipHtml(s);
       marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
+      marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
+      marker.on('mouseout', () => { marker._vaarHover = false; vaarRingBijwerken(marker); });
+      marker.on('popupopen', () => vaarRingBijwerken(marker));
+      marker.on('popupclose', () => vaarRingBijwerken(marker));
       // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
       // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
       // deze popup daadwerkelijk OPENT, nooit vooraf voor alle zichtbare
@@ -5739,6 +5897,7 @@ async function ververVaarradar() {
       marker.on('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
       vaarLaag.addLayer(marker);
       vaarMarkers.set(s.mmsi, marker);
+      zetVaarRingKleur(marker, kleur);
     });
     // Bootjes die niet meer in de data zitten weghalen -- behalve als de
     // popup ervan nog openstaat (AIS-data heeft wel eens een gaatje; het is
@@ -5854,6 +6013,10 @@ function toggleVaarradar() {
   if (VAAR_KLEUR_KNOP_EL) VAAR_KLEUR_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
   if (VAAR_AISHUB_KNOP_EL) VAAR_AISHUB_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
   if (VAAR_STRAAL_KNOP_EL) VAAR_STRAAL_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
+  if (VAAR_TYPE_FILTER_KNOP_EL) VAAR_TYPE_FILTER_KNOP_EL.style.display = vaarradarActief ? '' : 'none';
+  // Paneel altijd dicht bij het uitzetten van Vaart-modus -- anders blijft het
+  // openstaan (leeg, want de knop erboven is dan ook weg) bij een volgende keer aanzetten.
+  if (!vaarradarActief) VAAR_TYPE_FILTER_PANEEL_EL?.classList.add('verborgen');
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
     if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"
