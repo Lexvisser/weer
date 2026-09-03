@@ -6867,6 +6867,18 @@ if (KAART_STIJL_KNOP_EL && KAART_STIJL_MENU_EL) {
   document.addEventListener('click', (e) => { if (!KAART_STIJL_MENU_EL.contains(e.target)) KAART_STIJL_MENU_EL.classList.add('verborgen'); });
 }
 
+// 2026-09-03, op verzoek van Lex: MarineTraffic openen op het huidige
+// kaartbeeld. Hun URL-schema: /en/ais/home/centerx:<lon>/centery:<lat>/zoom:<z>.
+// Nieuw tabblad (op de iPad = volledig scherm); een iframe weigert MT.
+function openMarineTraffic() {
+  if (!kaart) return;
+  const c = kaart.getCenter();
+  const z = Math.min(17, Math.max(2, Math.round(kaart.getZoom())));
+  const url = `https://www.marinetraffic.com/en/ais/home/centerx:${c.lng.toFixed(3)}/centery:${c.lat.toFixed(3)}/zoom:${z}`;
+  window.open(url, '_blank', 'noopener');
+}
+document.getElementById('vaarMarineTrafficKnop')?.addEventListener('click', openMarineTraffic);
+
 function toggleVaarradar() {
   vaarradarActief = !vaarradarActief;
   // 2026-09-02-herziening: #vaarMenuHandle is nu ZOWEL de aan/uit-knop als de

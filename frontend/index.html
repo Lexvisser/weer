@@ -151,6 +151,12 @@
         <!-- 2026-09-02, op verzoek van Lex ("maak de straal instelbaar van 50
              in stappen van 25 tot 250, voor noodgevallen, standaard 50"). -->
         <button id="vaarStraalKnop" class="vaar-menu-item" title="Zoekstraal van de vaarradar wisselen: 50-250km in stappen van 25">📡 <span class="knop-tekst">50km</span></button>
+        <!-- 2026-09-03, op verzoek van Lex ("een knop waarmee ik naar marine
+             traffic ga"): opent marinetraffic.com in een nieuw tabblad op
+             hetzelfde kaartmiddelpunt en dezelfde zoom (inbedden in de app
+             kan niet, MarineTraffic staat geen iframe toe). Zie
+             openMarineTraffic() in app.js. -->
+        <button id="vaarMarineTrafficKnop" class="vaar-menu-item" title="MarineTraffic openen op dit kaartbeeld (nieuw tabblad)">🌍 <span class="knop-tekst">MarineTraffic</span></button>
         <div class="vaar-menu-scheidslijn"></div>
         <!-- 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
              "Ship Type"-paneel) -- geen apart uitklap-knopje meer nodig zoals
