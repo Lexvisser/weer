@@ -133,7 +133,7 @@ export async function fetchPtwc() {
       // serverbrede schakelaar (Instellingen -> Alarmen -> telefoonalarm).
       // Warning/Threat = emergency-prioriteit 2, Advisory/Watch = 1. Bewust
       // niet geawait — het versturen mag de signalen-opbouw nooit vertragen.
-      if (telefoonAlarmAan('tsunami')) {
+      if (telefoonAlarmAan(klasse.categorie)) { // 2026-09-03: per categorie (tsunami / tsunami-watch)
         const alarmTitel = `🌊 ${klasse.label}`;
         const bericht = kaartTekst(signaal);
         stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: klasse.ernst === 'kritiek' ? 2 : 1 });

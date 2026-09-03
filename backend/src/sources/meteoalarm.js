@@ -52,6 +52,7 @@ import { makeSignal } from '../normalize.js';
 import { stuurAlarm, kaartTekst } from './pushover.js';
 import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
+import { telefoonAlarmAan } from '../alarmSchakelaars.js'; // 2026-09-03
 import { verversMedia } from '../mediaHistorie.js';
 import { metHistorie } from '../historie.js';
 
@@ -454,7 +455,7 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
       // samenstelling — op Lex' verzoek ("kaart is leidend") komt de tekst nu
       // overeen met de kaart-popup (titel + detail.subtitel), in plaats van
       // een net ietsje andere eigen tekst hier.
-      if (kleur === 'Rood' || kleur === 'Oranje') {
+      if ((kleur === 'Rood' || kleur === 'Oranje') && telefoonAlarmAan('weerwaarschuwing')) { // 2026-09-03: schakelbaar
         const titel = `Code ${kleur}`;
         const bericht = kaartTekst(signaal);
         stuurAlarm({ id: signaalId, titel, bericht, prioriteit: kleur === 'Rood' ? 2 : 1 });

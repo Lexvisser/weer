@@ -27,7 +27,13 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BESTAND = join(__dirname, '..', 'data', 'alarmSchakelaars.json');
 
-export const GELDIGE_SLEUTELS = new Set(['tsunami', 'ais-nood']); // 2026-09-03: ais-nood erbij, zie sources/aisNood.js
+// 2026-09-03, op verzoek van Lex ("gelijktrekken"): één telefoonalarm-
+// schakelaar per categorie, met dezelfde sleutels als de categorie-ids die
+// het scherm-alarm in app.js gebruikt (ALARM_RIJEN daar). Ontbrekend = AAN.
+export const GELDIGE_SLEUTELS = new Set([
+  'tornado', 'tornado-watch', 'tsunami', 'tsunami-watch', 'weerwaarschuwing',
+  'stormvloedkering-waarschuwing', 'stormvloedkering-gesloten', 'ais-nood',
+]);
 
 let schakelaars = {};
 try {

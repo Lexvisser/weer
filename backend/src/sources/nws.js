@@ -554,7 +554,8 @@ export async function fetchNws() {
   const liveIds = new Set(signalen.map((s) => s.id));
   for (const s of signalen) {
     if (s.categorie === 'tornado' || s.categorie === 'tornado-watch') {
-      if (magDoorAlarmeren(s, liveIds)) {
+      // 2026-09-03: telefoonalarm per categorie schakelbaar (alarmSchakelaars.js)
+      if (magDoorAlarmeren(s, liveIds) && telefoonAlarmAan(s.categorie)) {
         // 2026-08-20: de alarm-titel (het vetgedrukte deel op het lockscreen)
         // volgt nu ook het dreigingsniveau (zie tornadoDreigingsniveau
         // hierboven) — bij Tornado Emergency, het hoogste niveau, moet dát
@@ -610,7 +611,7 @@ export async function fetchNws() {
     // dezelfde serverbrede aan/uit-schakelaar (zie alarmSchakelaars.js,
     // in te stellen via Instellingen -> Alarmen). Warning = emergency-
     // prioriteit 2 (zelfde afweging als tornado warning), watch = 1.
-    if ((s.categorie === 'tsunami' || s.categorie === 'tsunami-watch') && telefoonAlarmAan('tsunami')) {
+    if ((s.categorie === 'tsunami' || s.categorie === 'tsunami-watch') && telefoonAlarmAan(s.categorie)) { // 2026-09-03: per categorie (tsunami / tsunami-watch)
       if (magDoorAlarmeren(s, liveIds)) {
         const titel = s.categorie === 'tsunami' ? '🌊 Tsunami Warning' : 'Tsunami Watch';
         const bericht = kaartTekst(s);

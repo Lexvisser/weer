@@ -9073,22 +9073,30 @@ const ALARM_CATEGORIEEN = new Set([...DOPPLER_CATEGORIEEN, 'weerwaarschuwing', '
 // categorie die hier ontbreekt kan sowieso nooit alarmeren (magAlarmeren()
 // checkt ook ALARM_CATEGORIEEN zelf), dus geen aparte "afgevinkt maar niet
 // in de UI"-toestand mogelijk.
-const ALARM_CATEGORIE_DEFINITIES = [
-  { id: 'tornado', label: 'Tornado Warning' },
-  { id: 'tornado-watch', label: 'Tornado Watch' },
-  { id: 'tornado-bevestigd', label: 'Tornado bevestigd' },
-  { id: 'severe-outlook', label: 'Severe Outlook' },
-  { id: 'tsunami', label: 'Tsunami Warning' },
-  { id: 'tsunami-watch', label: 'Tsunami Watch' },
-  { id: 'weerwaarschuwing', label: 'Weeralarm (oranje/rood)' },
-  // 2026-08-26, op verzoek van Lex — zie de uitgebreide toelichting bij
-  // magAlarmeren() hieronder. Losse toggle i.p.v. gewoon "navtex" (dat zou
-  // ELK navtex-bericht laten alarmeren, veel te druk); dit dekt alleen
-  // type-D berichten.
-  { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)' },
-  { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)' },
-  { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)' },
+// 2026-09-03, op verzoek van Lex ("gelijktrekken... één consistente lijst"):
+// één tabel met per categorie twee schakelaars. `scherm` = het rode
+// alarmscherm in de app (localStorage, per toestel); `telefoon` = de
+// Pushover/mail/webpush die de backend verstuurt (serverinstelling via
+// /api/alarm-schakelaars, geldt voor alle toestellen; sleutel = categorie-id,
+// zie GELDIGE_SLEUTELS in backend/src/alarmSchakelaars.js). false = die
+// kolom bestaat niet voor deze categorie (geen push-code resp. geen
+// schermalarm), dan staat er "—".
+const ALARM_RIJEN = [
+  { id: 'tornado', label: 'Tornado Warning', scherm: true, telefoon: true },
+  { id: 'tornado-watch', label: 'Tornado Watch', scherm: true, telefoon: true },
+  { id: 'tornado-bevestigd', label: 'Tornado bevestigd', scherm: true, telefoon: false },
+  { id: 'severe-outlook', label: 'Severe Outlook', scherm: true, telefoon: false },
+  { id: 'tsunami', label: 'Tsunami Warning', scherm: true, telefoon: true },
+  { id: 'tsunami-watch', label: 'Tsunami Watch', scherm: true, telefoon: true },
+  { id: 'weerwaarschuwing', label: 'Weeralarm (oranje/rood)', scherm: true, telefoon: true },
+  // Losse toggle i.p.v. gewoon "navtex" (dat zou ELK navtex-bericht laten
+  // alarmeren, veel te druk); dit dekt alleen type-D berichten. Zie magAlarmeren().
+  { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)', scherm: true, telefoon: false },
+  { id: 'stormvloedkering-waarschuwing', label: 'Kans op sluiting stormvloedkering', scherm: false, telefoon: true },
+  { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)', scherm: true, telefoon: true },
+  { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)', scherm: true, telefoon: true },
 ];
+const ALARM_CATEGORIE_DEFINITIES = ALARM_RIJEN.filter((r) => r.scherm);
 
 // Client-side voorkeur (per toestel/browser) — geen serverinstelling, dit is
 // puur "welk alarmscherm wil ík op déze telefoon zien". Ontbrekende sleutel
@@ -9141,44 +9149,69 @@ function renderAlarmInstellingen() {
 
   const uitleg = document.createElement('div');
   uitleg.className = 'instellingen-uitleg';
-  uitleg.textContent = 'Dit toont of verbergt het rode alarmscherm.';
+  uitleg.textContent = 'Scherm = het rode alarmscherm in de app, alleen op dit toestel. Telefoon = Pushover/mail/push door de server, ook met de app dicht, geldt voor alle toestellen.';
   ALARM_INSTELLINGEN_LIJST_EL.appendChild(uitleg);
 
-  ALARM_CATEGORIE_DEFINITIES.forEach((def) => {
-    const aan = alarmCategorieAan(def.id);
-    const rij = document.createElement('div');
-    rij.className = 'instelling-item';
-    const label = document.createElement('span');
-    label.textContent = def.label;
+  const kop = document.createElement('div');
+  kop.className = 'alarm-rij alarm-rij-kop';
+  kop.innerHTML = '<span>Categorie</span><span>Scherm</span><span>Telefoon</span>';
+  ALARM_INSTELLINGEN_LIJST_EL.appendChild(kop);
+
+  if (telefoonSchakelaars === null) haalTelefoonSchakelaars(); // eerste keer: serverstand ophalen, daarna opnieuw renderen
+
+  const maakKnop = (aan, onClick) => {
     const knop = document.createElement('button');
     knop.type = 'button';
     knop.className = `alarm-toggle${aan ? ' aan' : ''}`;
     knop.textContent = aan ? 'AAN' : 'UIT';
-    knop.addEventListener('click', () => {
-      zetAlarmCategorie(def.id, !aan);
-      renderAlarmInstellingen();
-    });
+    knop.addEventListener('click', onClick);
+    return knop;
+  };
+  const streepje = () => { const el = document.createElement('span'); el.className = 'alarm-nvt'; el.textContent = '—'; return el; };
+
+  ALARM_RIJEN.forEach((def) => {
+    const rij = document.createElement('div');
+    rij.className = 'alarm-rij';
+    const label = document.createElement('span');
+    label.className = 'alarm-rij-label';
+    label.textContent = def.label;
     rij.appendChild(label);
-    rij.appendChild(knop);
+
+    if (def.scherm) {
+      const aan = alarmCategorieAan(def.id);
+      rij.appendChild(maakKnop(aan, () => { zetAlarmCategorie(def.id, !aan); renderAlarmInstellingen(); }));
+    } else rij.appendChild(streepje());
+
+    if (!def.telefoon) rij.appendChild(streepje());
+    else if (telefoonSchakelaars === 'fout') {
+      rij.appendChild(maakKnop(false, () => { telefoonSchakelaars = null; renderAlarmInstellingen(); }));
+      rij.lastChild.textContent = 'OPNIEUW';
+      rij.lastChild.title = 'Server niet bereikbaar — opnieuw proberen';
+    } else if (telefoonSchakelaars === null) {
+      const el = document.createElement('span'); el.className = 'alarm-nvt'; el.textContent = '…'; rij.appendChild(el);
+    } else {
+      const aan = telefoonSchakelaars[def.id] !== false;
+      rij.appendChild(maakKnop(aan, async () => {
+        try {
+          const res = await fetch('/api/alarm-schakelaars', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sleutel: def.id, aan: !aan }),
+          }).then((r) => r.json());
+          telefoonSchakelaars = res.schakelaars ?? telefoonSchakelaars;
+        } catch (err) {
+          console.warn('[weer] telefoonalarm-schakelaar omzetten mislukt:', err);
+        }
+        renderAlarmInstellingen();
+      }));
+    }
     ALARM_INSTELLINGEN_LIJST_EL.appendChild(rij);
   });
-
-  renderTelefoonAlarmSchakelaars();
 }
 
-// 2026-08-27, op verzoek van Lex ("telefoonalarm graag, ook bij de
-// instellingen aan en uit te zetten") — anders dan de localStorage-toggles
-// hierboven (die alleen het rode alarmscherm op DIT toestel sturen) is dit
-// een SERVER-instelling: de telefoonalarmen (Pushover/mail/webpush) worden
-// door de backend verstuurd, ook zonder open app, dus de schakelaar leeft op
-// de server (zie backend alarmSchakelaars.js + /api/alarm-schakelaars) en
-// geldt vanzelf voor alle toestellen tegelijk. Labels/volgorde hier centraal,
-// zelfde opzet als ALARM_CATEGORIE_DEFINITIES.
-const TELEFOON_ALARM_DEFINITIES = [
-  { sleutel: 'tsunami', label: '🌊 Tsunami telefoonalarm (wereldwijd)' },
-  { sleutel: 'ais-nood', label: '🆘 AIS-noodsignaal telefoonalarm (binnen antennebereik/AISHub)' },
-];
-
+// Serverinstelling voor de Telefoon-kolom (zie ALARM_RIJEN): de backend
+// verstuurt de telefoonalarmen ook zonder open app, dus de schakelaar leeft
+// op de server (alarmSchakelaars.js + /api/alarm-schakelaars).
 let telefoonSchakelaars = null; // null = nog niet opgehaald; 'fout' = ophalen mislukt
 let telefoonSchakelaarsBezig = false; // tegen dubbele/oneindige fetch-lussen
 
@@ -9196,68 +9229,6 @@ async function haalTelefoonSchakelaars() {
   renderAlarmInstellingen();
 }
 
-function renderTelefoonAlarmSchakelaars() {
-  const kop = document.createElement('div');
-  kop.className = 'instellingen-uitleg';
-  kop.textContent = 'Telefoonalarm (Pushover/mail/push) — serverinstelling, geldt voor alle toestellen.';
-  ALARM_INSTELLINGEN_LIJST_EL.appendChild(kop);
-
-  if (telefoonSchakelaars === null || telefoonSchakelaars === 'fout') {
-    const rij = document.createElement('div');
-    rij.className = 'instelling-item';
-    if (telefoonSchakelaars === 'fout') {
-      // Ophalen mislukte — expliciet melden met een handmatige herkansing,
-      // geen kapotte toggles die stilletjes niets zouden doen.
-      const label = document.createElement('span');
-      label.textContent = 'Server niet bereikbaar';
-      const knop = document.createElement('button');
-      knop.type = 'button';
-      knop.className = 'alarm-toggle';
-      knop.textContent = 'OPNIEUW';
-      knop.addEventListener('click', () => {
-        telefoonSchakelaars = null;
-        renderAlarmInstellingen();
-      });
-      rij.appendChild(label);
-      rij.appendChild(knop);
-    } else {
-      // Eerste keer uitklappen: nog niet van de server gehaald — even doen
-      // en dan opnieuw renderen.
-      rij.textContent = 'Schakelaars ophalen…';
-      haalTelefoonSchakelaars();
-    }
-    ALARM_INSTELLINGEN_LIJST_EL.appendChild(rij);
-    return;
-  }
-
-  TELEFOON_ALARM_DEFINITIES.forEach((def) => {
-    const aan = telefoonSchakelaars[def.sleutel] !== false;
-    const rij = document.createElement('div');
-    rij.className = 'instelling-item';
-    const label = document.createElement('span');
-    label.textContent = def.label;
-    const knop = document.createElement('button');
-    knop.type = 'button';
-    knop.className = `alarm-toggle${aan ? ' aan' : ''}`;
-    knop.textContent = aan ? 'AAN' : 'UIT';
-    knop.addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/alarm-schakelaars', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sleutel: def.sleutel, aan: !aan }),
-        }).then((r) => r.json());
-        telefoonSchakelaars = res.schakelaars ?? telefoonSchakelaars;
-      } catch (err) {
-        console.warn('[weer] telefoonalarm-schakelaar omzetten mislukt:', err);
-      }
-      renderAlarmInstellingen();
-    });
-    rij.appendChild(label);
-    rij.appendChild(knop);
-    ALARM_INSTELLINGEN_LIJST_EL.appendChild(rij);
-  });
-}
 
 ALARM_SECTIE_KNOP_EL?.addEventListener('click', () => {
   alarmSectieUitgeklapt = !alarmSectieUitgeklapt;
