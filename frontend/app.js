@@ -9359,14 +9359,19 @@ function renderAlarmInstellingen() {
       const aan = telefoonSchakelaars[sleutel] !== false;
       return maakKnop(aan, async () => {
         try {
-          const res = await fetch('/api/alarm-schakelaars', {
+          const antwoord = await fetch('/api/alarm-schakelaars', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sleutel, aan: !aan }),
-          }).then((r) => r.json());
-          telefoonSchakelaars = res.schakelaars ?? telefoonSchakelaars;
+          });
+          const res = await antwoord.json();
+          // 2026-09-03: een 400 (bv. onbekende sleutel) werd stil geslikt en de
+          // knop leek dood -- nu zichtbaar melden i.p.v. alleen console.warn.
+          if (!antwoord.ok || !res.schakelaars) throw new Error(res.fout ?? `HTTP ${antwoord.status}`);
+          telefoonSchakelaars = res.schakelaars;
         } catch (err) {
           console.warn('[weer] alarm-schakelaar omzetten mislukt:', err);
+          alert(`Schakelaar omzetten mislukt: ${err.message ?? err}`);
         }
         renderAlarmInstellingen();
       });

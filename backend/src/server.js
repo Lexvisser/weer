@@ -1076,7 +1076,11 @@ export function createApp(env) {
     if (url === '/api/alarm-schakelaars' && req.method === 'POST') {
       try {
         const { sleutel, aan } = await readJsonBody(req);
-        if (!GELDIGE_SLEUTELS.has(sleutel)) return sendJson(res, 400, { fout: `onbekende schakelaar: ${sleutel}` });
+        // 2026-09-03-bug-fix (Lex: "mail en push niet aan/uit te zetten"): de
+        // Mail-kolom stuurt '<cat>/mail' (zie 88b28b4), maar deze check keek
+        // alleen naar de kale categorie -> 400 'onbekende schakelaar', en de
+        // knop leek dood. zetTelefoonAlarm() stripte '/mail' al wel.
+        if (!GELDIGE_SLEUTELS.has(String(sleutel).replace(/\/mail$/, ''))) return sendJson(res, 400, { fout: `onbekende schakelaar: ${sleutel}` });
         zetTelefoonAlarm(sleutel, Boolean(aan));
         console.log(`[weer] telefoonalarm-schakelaar '${sleutel}' -> ${aan ? 'AAN' : 'UIT'}`);
         return sendJson(res, 200, { schakelaars: alleSchakelaars() });
