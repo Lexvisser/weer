@@ -127,9 +127,11 @@ body {
 #map.kaartstijl-eigen .leaflet-tile-pane .leaflet-tile, #map.kaartstijl-eigen.zee-modus-actief .leaflet-tile-pane .leaflet-tile, #map.kaartstijl-eigen.zee-modus-actief.vaar-modus-actief .leaflet-tile-pane .leaflet-tile { filter: none; }
 .kaartstijl-wrap { position:relative; display:inline-flex; }
 .kaartstijl-menu { position:absolute; bottom:30px; left:0; min-width:220px; background:#141826; border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:6px; display:flex; flex-direction:column; gap:3px; box-shadow:0 4px 16px rgba(0,0,0,0.5); z-index:1100; }
-.kaartstijl-menu button { width:100%; text-align:left; border-radius:8px; padding:5px 8px; font-size:10.5px; height:auto; line-height:1.3; }
-.kaartstijl-menu button.actief { background:#3ec6ff; color:#05060a; }
-.kaartstijl-menu button small { display:block; opacity:0.65; font-size:9px; }
+/* Hogere specificiteit dan '.radar-controls button' (22px rondjes, verderop),
+   anders wint die en wordt het menu een stapel overlappende bolletjes. */
+.radar-controls .kaartstijl-menu button { width:100%; height:auto; border-radius:8px; text-align:left; padding:5px 8px; font-size:10.5px; line-height:1.3; white-space:nowrap; font-family:'JetBrains Mono',monospace; }
+.radar-controls .kaartstijl-menu button.actief { background:#3ec6ff; color:#05060a; }
+.radar-controls .kaartstijl-menu button small { display:block; opacity:0.65; font-size:9px; }
 .kaartstijl-menu .kaartstijl-kop { opacity:0.65; font-size:9.5px; padding:4px 8px 1px; }
 
 /* 2026-08-20, op verzoek van Lex ("los klikken op de kaart toggelt hele
