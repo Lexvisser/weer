@@ -82,8 +82,15 @@ export function zetTelefoonAlarm(sleutel, aan) {
 // Voor GET /api/alarm-schakelaars: altijd alle bekende sleutels teruggeven
 // (met hun effectieve waarde), ook als het bestand nog leeg is — dan hoeft
 // de frontend geen eigen defaults te kennen.
+// 2026-09-03-bug-fix (Lex: "push doet het, mail niet"): gaf per categorie
+// alleen de kale sleutel terug, met push-OF-mail als waarde -- de Mail-kolom
+// in de app las '<cat>/mail' en kreeg dus nooit iets, en de Push-kolom bleef
+// AAN zolang mail nog aanstond. Nu allebei apart, zoals de app ze leest.
 export function alleSchakelaars() {
   const uit = {};
-  for (const sleutel of GELDIGE_SLEUTELS) uit[sleutel] = telefoonAlarmAan(sleutel);
+  for (const sleutel of GELDIGE_SLEUTELS) {
+    uit[sleutel] = pushAlarmAan(sleutel);
+    uit[`${sleutel}/mail`] = mailAlarmAan(sleutel);
+  }
   return uit;
 }
