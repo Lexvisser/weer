@@ -195,6 +195,16 @@ export function normaliseerEta(maand, dag, uur, minuut) {
 // vorige bekende waarde i.p.v. meteen naar null te springen -- dynamische
 // velden (positie/koers/snelheid/status/tijdstip) komen altijd vers uit het
 // nieuwste bericht, die worden hier NIET overgenomen uit de vorige waarde.
+// 2026-09-03: AIS-afmetingen (A=boeg, B=hek, C=bakboord, D=stuurboord, vanaf
+// de antenne) -> { boeg, hek, bakboord, stuurboord } of null als er niets in
+// zit (alle 0 = niet ingevuld, komt veel voor bij kleine schepen/klasse B).
+export function afmetingenVan(boeg, hek, bakboord, stuurboord) {
+  const n = (x) => (typeof x === 'number' && x >= 0 ? x : 0);
+  const a = { boeg: n(boeg), hek: n(hek), bakboord: n(bakboord), stuurboord: n(stuurboord) };
+  if (a.boeg + a.hek < 5 || a.bakboord + a.stuurboord < 1) return null; // te klein/leeg om zinvol te tekenen
+  return a;
+}
+
 export function vulOntbrekendeVeldenAan(nieuw, vorige) {
   if (!vorige) return nieuw;
   return {
@@ -202,6 +212,7 @@ export function vulOntbrekendeVeldenAan(nieuw, vorige) {
     naam: nieuw.naam ?? vorige.naam,
     scheepscategorie: nieuw.scheepscategorie ?? vorige.scheepscategorie,
     scheepssubtype: nieuw.scheepssubtype ?? vorige.scheepssubtype,
+    afmetingen: nieuw.afmetingen ?? vorige.afmetingen,
     bestemming: nieuw.bestemming ?? vorige.bestemming,
     diepgangM: nieuw.diepgangM ?? vorige.diepgangM,
     eta: nieuw.eta ?? vorige.eta,
@@ -264,6 +275,12 @@ function vertaalFeature(feature) {
     koersGraden,
     // 2026-09-03: losse koers-over-grond, zie toelichting in vaarradarAishub.js.
     cogGraden: typeof p.cog === 'number' && p.cog < 360 ? p.cog : null,
+    // 2026-09-03 (Lex: MarineTraffic tekent bij inzoomen de echte scheepsvorm):
+    // ware koers los (heading 511 = onbekend) + afmetingen vanaf de GPS-antenne
+    // (AIS type 5/24: to_bow/to_stern/to_port/to_starboard, in meters).
+    // Zie tekenScheepsvorm() in app.js. null zodra alle vier 0/ontbrekend.
+    headingGraden: typeof p.heading === 'number' && p.heading < 511 ? p.heading : null,
+    afmetingen: afmetingenVan(p.to_bow, p.to_stern, p.to_port, p.to_starboard),
     snelheidKn: typeof p.speed === 'number' ? p.speed : null,
     scheepscategorie: bepaalScheepscategorie(mmsi, scheepstypeRuw),
     scheepssubtype: bepaalScheepssubtype(scheepstypeRuw),

@@ -6238,6 +6238,70 @@ function scheepsPopupEl(marker, mmsi, kopHtml, basisHtml) {
   return marker.popupWrapperEl;
 }
 
+// 2026-09-03, op verzoek van Lex ("MarineTraffic toont bij inzoomen een
+// [scheeps]icoon op schaal, kunnen wij dat ook?"): vanaf VAAR_ZOOM_SCHEEPSVORM
+// tekenen we per schip een polygoon op WARE GROOTTE -- de AIS-afmetingen zijn
+// vier afstanden vanaf de GPS-antenne (boeg/hek/bakboord/stuurboord, zie
+// afmetingenVan() in vaarradarLokaal.js), gedraaid naar de ware koers
+// (headingGraden; zonder heading geen vorm, COG zegt niets over waar een
+// stilliggend schip heen wijst). Vorm: rechthoek met een spitse boeg
+// (afknotting = min(15% lengte, breedte)). De vormen liggen in een eigen
+// layerGroup ONDER de markers; het stipje/driehoekje blijft voor klik/hover.
+// Meters -> graden via 111320 m per breedtegraad en cos(lat) voor lengte --
+// ruim goed genoeg op 20-400 m scheepslengte.
+const VAAR_ZOOM_SCHEEPSVORM = 15;
+let vaarVormLaag = null;
+const vaarVormen = new Map(); // mmsi -> L.polygon
+
+function scheepsvormPunten(lat, lon, headingGraden, a) {
+  const lengte = a.boeg + a.hek;
+  const breedte = a.bakboord + a.stuurboord;
+  const punt = Math.min(lengte * 0.15, breedte);
+  // schipsframe: x = stuurboord (+), y = vooruit (+), oorsprong = antenne
+  const lokaal = [
+    [-a.bakboord, -a.hek],
+    [a.stuurboord, -a.hek],
+    [a.stuurboord, a.boeg - punt],
+    [(a.stuurboord - a.bakboord) / 2, a.boeg],
+    [-a.bakboord, a.boeg - punt],
+  ];
+  const rad = (headingGraden * Math.PI) / 180;
+  const sin = Math.sin(rad), cos = Math.cos(rad);
+  const mPerGraadLat = 111320;
+  const mPerGraadLon = 111320 * Math.cos((lat * Math.PI) / 180);
+  return lokaal.map(([x, y]) => {
+    const oost = x * cos + y * sin; // heading 0 = noord: vooruit (y) wijst naar noorden
+    const noord = -x * sin + y * cos;
+    return [lat + noord / mPerGraadLat, lon + oost / mPerGraadLon];
+  });
+}
+
+function tekenScheepsvorm(s, kleur) {
+  if (!vaarVormLaag) return;
+  const zichtbaar = kaart.getZoom() >= VAAR_ZOOM_SCHEEPSVORM && s.afmetingen && typeof s.headingGraden === 'number';
+  let vorm = vaarVormen.get(s.mmsi);
+  if (!zichtbaar) {
+    if (vorm) { vaarVormLaag.removeLayer(vorm); vaarVormen.delete(s.mmsi); }
+    return;
+  }
+  const punten = scheepsvormPunten(s.lat, s.lon, s.headingGraden, s.afmetingen);
+  const opacity = s.bron === 'aishub' ? 0.45 : 0.65;
+  if (!vorm) {
+    vorm = L.polygon(punten, { color: kleur, weight: 1, opacity: 0.9, fillColor: kleur, fillOpacity: opacity, interactive: false, pane: 'overlayPane' });
+    vaarVormLaag.addLayer(vorm);
+    vaarVormen.set(s.mmsi, vorm);
+  } else {
+    vorm.setLatLngs(punten);
+    if (vorm.options.color !== kleur) vorm.setStyle({ color: kleur, fillColor: kleur, fillOpacity: opacity });
+  }
+}
+
+function verwijderScheepsvorm(mmsi) {
+  const vorm = vaarVormen.get(mmsi);
+  if (vorm && vaarVormLaag) vaarVormLaag.removeLayer(vorm);
+  vaarVormen.delete(mmsi);
+}
+
 // 2026-09-03, op verzoek van Lex ("op de iPhone moet dat anders: laat het
 // kaartje het hele scherm innemen met een sluitknop"): op smalle schermen
 // wordt het scheepskaartje niet als kleine Leaflet-popup getoond maar
@@ -6281,7 +6345,9 @@ async function ververVaarradar() {
     // Nog te ver uitgezoomd -- laag leeghouden i.p.v. duizenden onbruikbare
     // stipjes op te bouwen, en de dure aanvraag+JSON-parse overslaan.
     if (vaarLaag) vaarLaag.clearLayers();
+    if (vaarVormLaag) vaarVormLaag.clearLayers();
     vaarMarkers.clear();
+    vaarVormen.clear();
     return;
   }
   try {
@@ -6295,6 +6361,7 @@ async function ververVaarradar() {
     // zone-blok. Geen refreshClusters() meer nodig: een kale layerGroup toont een
     // in-place bijgewerkte marker (setLatLng/setIcon) gewoon meteen goed.
     if (!vaarLaag) {
+      vaarVormLaag = L.layerGroup().addTo(kaart); // eerst, zodat de vormen onder de markers liggen
       vaarLaag = L.layerGroup().addTo(kaart);
     }
     const gezien = new Set();
@@ -6308,6 +6375,7 @@ async function ververVaarradar() {
     zichtbareSchepen.forEach((s) => {
       gezien.add(s.mmsi);
       const kleur = kleurVoorSchip(s);
+      tekenScheepsvorm(s, kleur); // 2026-09-03: ware-grootte-omtrek vanaf zoom 15, zie tekenScheepsvorm()
       // navigatiehulpmiddelen (boeien/bakens) bewegen per definitie nooit --
       // altijd als stip tekenen, ongeacht status/snelheid (die velden zijn bij
       // dit soort AIS-zenders vaak leeg/betekenisloos).
@@ -6414,6 +6482,7 @@ async function ververVaarradar() {
       if (gezien.has(mmsi) || marker.isPopupOpen()) return;
       vaarLaag.removeLayer(marker);
       vaarMarkers.delete(mmsi);
+      verwijderScheepsvorm(mmsi);
     });
   } catch (err) {
     console.error('vaarradar ophalen mislukt', err);
@@ -6609,6 +6678,11 @@ function toggleVaarradar() {
       kaart.removeLayer(vaarLaag);
       vaarLaag = null;
     }
+    if (vaarVormLaag) {
+      kaart.removeLayer(vaarVormLaag);
+      vaarVormLaag = null;
+    }
+    vaarVormen.clear();
     vaarMarkers.clear(); // zie vaarMarkers hierboven; foto-urls mogen blijven
     if (zeeModusActief) toggleZeeModus(); // vaarradar "bezat" de zeemodus-activatie hierboven, dus ook weer uit
   }
