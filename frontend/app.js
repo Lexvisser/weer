@@ -5986,7 +5986,7 @@ function scheepsKaartHtml(s, statusTekst) {
   return `
     <div class="popup-schip-knoppen">
       <details class="popup-schip-details">
-        <summary class="popup-schip-knop popup-schip-knop-primair">Scheepsdetails</summary>
+        <summary class="popup-schip-knop popup-schip-knop-primair">Vessel</summary>
         <div class="popup-schip-detailblok">${detailRegels}</div>
       </details>
     </div>
@@ -6107,7 +6107,9 @@ async function ververVaarradar() {
       // naam + vlag + scheepstype in een eigen kop BOVEN de foto (zie
       // scheepsPopupEl()), de rest van de regels eronder zoals voorheen.
       const typeLabel = SCHEEPSCATEGORIE_LABEL[s.scheepscategorie] ?? 'Scheepstype onbekend';
-      const kopHtml = `<div class="popup-scheepskop-rij">${vlagHtml(landcodeVoorSchip(s))}<span class="popup-scheepskop-naam"><span class="popup-scheepskleur" style="background:${kleur}"></span>${escapeHtml(naam)}</span>${bronLabel}</div><div class="popup-scheepskop-type">${escapeHtml(typeLabel)}</div>`;
+      // 2026-09-03: vlag groot in de linkerbovenhoek, naam + type als twee
+      // regels rechts ervan (zie .popup-schip .popup-scheepskop-* in styles.css).
+      const kopHtml = `<div class="popup-scheepskop-rij">${vlagHtml(landcodeVoorSchip(s))}<div class="popup-scheepskop-tekst"><div class="popup-scheepskop-naam"><span class="popup-scheepskleur" style="background:${kleur}"></span>${escapeHtml(naam)}${bronLabel}</div><div class="popup-scheepskop-type">${escapeHtml(typeLabel)}</div></div></div>`;
       const basisHtml = scheepsKaartHtml(s, statusTekst);
       let marker = vaarMarkers.get(s.mmsi);
       if (marker) {
@@ -6144,7 +6146,10 @@ async function ververVaarradar() {
       marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil) });
       marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil);
       marker.basisPopupHtml = kopHtml + basisHtml;
-      marker.bindPopup(scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml));
+      // 2026-09-03, op verzoek van Lex ("maak de kaart wit"): eigen className
+      // op de Leaflet-popup zelf, zodat styles.css de wrapper/tip van alleen
+      // de scheepspopup licht kan maken (zie .popup-schip-wit daar).
+      marker.bindPopup(scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml), { className: 'popup-schip-wit' });
       marker.vaarTooltipHtml = vaarTooltipHtml(s);
       marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
       marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });

@@ -809,6 +809,16 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .popup-scheepskop-type { margin-top:2px; font-size:0.95em; color:rgba(244,246,251,0.7); }
 .popup-vlag { display:inline-flex; align-items:center; gap:4px; flex:none; }
 .popup-vlag img { width:22px; height:auto; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,0.25); display:block; }
+/* 2026-09-03, op verzoek van Lex ("de vlag iets groter en meer in de
+   linkerbovenhoek"): in de scheepskop staat de vlag als groot blok strak in
+   de hoek (kleinere linkermarge, geen landcode-tekst ernaast), met naam en
+   scheepstype als twee regels rechts ervan -- zoals MarineTraffic's kop. */
+.popup-schip .popup-scheepskop { padding-left:6px; }
+.popup-schip .popup-scheepskop-rij { align-items:flex-start; gap:9px; }
+.popup-schip .popup-scheepskop-rij .popup-vlag img { width:34px; }
+.popup-schip .popup-scheepskop-rij .popup-vlag .popup-vlag-code { display:none; }
+.popup-schip .popup-scheepskop-tekst { min-width:0; }
+.popup-schip .popup-scheepskop-type { margin-top:0; }
 .popup-vlag-code { font-size:0.9em; color:rgba(244,246,251,0.7); }
 .popup-schip .popup-scheepsfoto { margin-top:0; border-radius:0; }
 .popup-schip .popup-sub:first-child { margin-top:6px; }
@@ -829,19 +839,57 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    regel iets te laten opvallen tussen de neutrale .popup-sub-regels. */
 .popup-bestemming { color:#3ec6ff; font-size:10.5px; margin-top:3px; font-weight:600; }
 .popup-eta { color:#9199b5; font-weight:400; }
+/* 2026-09-03, op verzoek van Lex ("maak de kaart wit"): alleen de
+   scheepspopup licht, zoals MarineTraffic -- de className zit op de Leaflet-
+   popup zelf (zie bindPopup(..., { className: 'popup-schip-wit' }) in
+   app.js), dus wrapper en tip hier overschrijven; alle donker-getunede
+   kleuren van de scheepskop/het kaartje eronder krijgen hier een licht
+   tegenhanger. De rest van de app blijft donker. */
+.popup-schip-wit .leaflet-popup-content-wrapper { background:#fff; color:#1f2430; border-color:rgba(0,0,0,0.12); box-shadow:0 6px 24px rgba(0,0,0,0.35); }
+.popup-schip-wit .leaflet-popup-tip { background:#fff; }
+.popup-schip-wit .leaflet-popup-close-button { color:#6b7280; }
+.popup-schip-wit .popup-scheepskop { border-bottom-color:rgba(0,0,0,0.1); }
+.popup-schip-wit .popup-scheepskop-naam { color:#111827; }
+.popup-schip-wit .popup-scheepskop-type { color:#4b5563; }
+.popup-schip-wit .popup-vlag img { box-shadow:0 0 0 1px rgba(0,0,0,0.2); }
+.popup-schip-wit .popup-scheepskleur { border-color:rgba(0,0,0,0.25); }
+.popup-schip-wit .popup-aishub-label { background:rgba(0,0,0,0.08); color:#4b5563; }
+.popup-schip-wit .popup-sub { color:#4b5563; }
+.popup-schip-wit .popup-schip-knop { border-color:rgba(0,0,0,0.18); color:#1f2430; background:#f3f4f6; }
+.popup-schip-wit .popup-schip-knop-primair { background:#1b7fd4; border-color:#1b7fd4; color:#fff; }
+.popup-schip-wit .popup-schip-detailblok { border-color:rgba(0,0,0,0.14); }
+.popup-schip-wit .popup-schip-detailrij { color:#4b5563; }
+.popup-schip-wit .popup-schip-detailrij span:last-child { color:#111827; }
+.popup-schip-wit .popup-haven { color:#111827; }
+.popup-schip-wit .popup-haven-leeg { color:rgba(31,36,48,0.4); }
+.popup-schip-wit .popup-schip-reistijden { color:#4b5563; }
+.popup-schip-wit .popup-schip-reistijden b { color:#111827; }
+.popup-schip-wit .popup-schip-reislijn::before,
+.popup-schip-wit .popup-schip-reisstip { background:#1b7fd4; }
+.popup-schip-wit .popup-schip-reispijl { border-left-color:#1b7fd4; }
+.popup-schip-wit .popup-schip-cellen { border-color:rgba(0,0,0,0.1); }
+.popup-schip-wit .popup-schip-cel { border-right-color:rgba(0,0,0,0.1); }
+.popup-schip-wit .popup-schip-cellabel { color:#6b7280; }
+.popup-schip-wit .popup-schip-celwaarde { color:#111827; }
+.popup-schip-wit .popup-schip-voet { color:#4b5563; }
+.popup-schip-wit .popup-schip-voet b { color:#111827; }
 /* 2026-09-03, op verzoek van Lex: MarineTraffic-kaartje onder de foto (zie
    scheepsKaartHtml() in app.js) -- knoppenrij, reisblok met haven-codes en
    lijn+pijl, drie cellen (status / snelheid+koers / diepgang), voettekst.
    Donker gehouden (zelfde toon als de rest van de popup), alleen de
    "Scheepsdetails"-knop en de reislijn in het app-cyaan. */
-.popup-schip-knoppen { display:flex; gap:6px; margin:8px 0 6px; }
-.popup-schip-details { flex:1; }
+/* 2026-09-03, Lex: knop heet "Vessel", smal en rechts uitgelijnd (niet over
+   de hele breedte); het uitklapblok eronder blijft wel de volle breedte. */
+.popup-schip-knoppen { display:flex; justify-content:flex-end; margin:8px 0 6px; }
+.popup-schip-details { width:100%; display:flex; flex-direction:column; align-items:flex-end; }
+.popup-schip-details > summary { min-width:90px; }
+.popup-schip-detailblok { align-self:stretch; box-sizing:border-box; }
 .popup-schip-details > summary { list-style:none; }
 .popup-schip-details > summary::-webkit-details-marker { display:none; }
 .popup-schip-knop { display:block; text-align:center; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; user-select:none; border:1px solid rgba(255,255,255,0.18); color:#f4f6fb; background:rgba(255,255,255,0.08); }
 .popup-schip-knop-primair { background:#1b7fd4; border-color:#1b7fd4; color:#fff; }
 .popup-schip-knop-primair:hover { background:#2a8fe4; }
-.popup-schip-details[open] > .popup-schip-knop-primair { border-radius:6px 6px 0 0; }
+.popup-schip-details[open] > .popup-schip-knop-primair { border-radius:6px 6px 0 0; margin-bottom:-1px; }
 .popup-schip-detailblok { padding:6px 10px; border:1px solid rgba(255,255,255,0.14); border-top:0; border-radius:0 0 6px 6px; font-size:10.5px; }
 .popup-schip-detailrij { display:flex; justify-content:space-between; gap:10px; padding:2px 0; color:#9199b5; }
 .popup-schip-detailrij span:last-child { color:#f4f6fb; font-family:'JetBrains Mono',monospace; }
