@@ -6343,7 +6343,7 @@ async function ververVaarradar() {
       // 2026-09-03, op verzoek van Lex ("maak de kaart wit"): eigen className
       // op de Leaflet-popup zelf, zodat styles.css de wrapper/tip van alleen
       // de scheepspopup licht kan maken (zie .popup-schip-wit daar).
-      marker.bindPopup(scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml), { className: 'popup-schip-wit' });
+      marker.bindPopup(scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml), { className: 'popup-schip-wit', minWidth: 340, maxWidth: 380 }); // 2026-09-03: MarineTraffic-breedte (~385px)
       marker.vaarTooltipHtml = vaarTooltipHtml(s);
       marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
       marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
