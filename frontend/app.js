@@ -5870,16 +5870,32 @@ function wisselVaarBoeienZichtbaar() {
 // rond stipje i.p.v. de geroteerde scheepsromp, zelfde patroon als
 // MarineTraffic/VesselFinder: vorm zegt "vaart/ligt stil", kleur blijft
 // zeggen wat de actieve kleurmodus zegt (zie kleurVoorSchip()).
-function bouwVaarIcon(koersGraden, kleur, bron, stil) {
+// 2026-09-03, op verzoek van Lex ("de pijltjes die zij gebruiken variëren in
+// formaat, dat zou ik ook willen"): icoonschaal naar scheepslengte uit de
+// AIS-afmetingen (boeg+hek). Zonder afmetingen (klasse B, jachten) = klein,
+// wat in de praktijk ook klopt. Vier stappen, geen glijdende schaal -- dan
+// blijft vaarIconSleutel() stabiel en wordt het icoon niet bij elke poll
+// herbouwd (zie de flicker-fix bij ververVaarradar()).
+function vaarIconSchaal(afmetingen) {
+  const lengte = afmetingen ? afmetingen.boeg + afmetingen.hek : 0;
+  if (lengte >= 200) return 1.7; // zeeschepen/containerreuzen
+  if (lengte >= 100) return 1.35; // coasters, grote binnenvaart
+  if (lengte >= 40) return 1; // gewone binnenvaart, sleepboten
+  return 0.75; // klein/onbekend
+}
+
+function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1) {
   const dekking = bron === 'aishub' ? AISHUB_OPACITEIT : 1;
   if (stil) {
+    const d = Math.round(12 * schaal);
     return L.divIcon({
       className: '',
-      html: `<div class="vaar-stip" style="background:${kleur};opacity:${dekking}"></div>`,
-      iconSize: [12, 12],
-      iconAnchor: [6, 6],
+      html: `<div class="vaar-stip" style="background:${kleur};opacity:${dekking};width:${d}px;height:${d}px"></div>`,
+      iconSize: [d, d],
+      iconAnchor: [d / 2, d / 2],
     });
   }
+  const px = Math.round(16 * schaal);
   const rotatie = typeof koersGraden === 'number' ? koersGraden : 0;
   // 2026-09-02-herziening, op verzoek van Lex ("je moet eerst de icons omvormen
   // naar dat pijltje dat zij ook hebben, zodat het een mooi rondje wordt") --
@@ -5889,9 +5905,9 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil) {
   // geeft een centreerbare vorm waar een cirkelvormige ring omheen past.
   return L.divIcon({
     className: '',
-    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking}"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M8,0 L14,15 L8,11.5 L2,15 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.3" stroke-linejoin="round"/></svg></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking};width:${px}px;height:${px}px"><svg viewBox="0 0 16 16" width="${px}" height="${px}"><path d="M8,0 L14,15 L8,11.5 L2,15 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.3" stroke-linejoin="round"/></svg></div>`,
+    iconSize: [px, px],
+    iconAnchor: [px / 2, px / 2],
   });
 }
 
@@ -5908,8 +5924,8 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil) {
 // Leaflet-interne, maar in de praktijk stabiele referentie naar het
 // icoon-element), zonder het element zelf te vervangen -- dus geen
 // onderbroken hover meer.
-function vaarIconSleutel(kleur, bron, stil) {
-  return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}`;
+function vaarIconSleutel(kleur, bron, stil, schaal = 1) {
+  return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}|${schaal}`;
 }
 
 // 2026-09-02, op verzoek van Lex ("dat rondje om het item als er een
@@ -6425,9 +6441,10 @@ async function ververVaarradar() {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
-        const iconSleutel = vaarIconSleutel(kleur, s.bron, stil);
+        const schaal = vaarIconSchaal(s.afmetingen);
+        const iconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal);
         if (marker.vaarIconSleutel !== iconSleutel) {
-          marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil));
+          marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal));
           marker.vaarIconSleutel = iconSleutel;
         } else if (!stil) {
           werkVaarIconRotatieBij(marker, s.koersGraden); // zelfde vorm/kleur, alleen de koers bijwerken -- geen DOM-vervanging
@@ -6455,8 +6472,9 @@ async function ververVaarradar() {
         }
         return;
       }
-      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil) });
-      marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil);
+      const schaal = vaarIconSchaal(s.afmetingen);
+      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal) });
+      marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal);
       marker.basisPopupHtml = kopHtml + basisHtml;
       // 2026-09-03, op verzoek van Lex ("maak de kaart wit"): eigen className
       // op de Leaflet-popup zelf, zodat styles.css de wrapper/tip van alleen
