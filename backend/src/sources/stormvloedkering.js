@@ -190,10 +190,25 @@ async function bepaalVroegeWaarschuwing() {
 // (thumbnail verplicht, zie searxng.js), niet om zelf te bepalen OF er relevant
 // nieuws is. fetchSearxngNieuws() geeft ruwe titel/link/bron terug, geen
 // thumbnail-eis.
+// 2026-09-03-bug-fix, op melding van Lex (vals alarm "Stormvloedkering
+// gesloten" op 2 sept, met als bewijs het PZC-bericht "Twee rijstroken tunnel
+// tussen Hendrik-Ido-Ambacht en Alblasserdam dicht na ongeval"): de
+// zoekmachine geeft op 'Maeslantkering' ook artikelen terug waar de kering
+// hooguit zijdelings in voorkomt, en het oude patroon keek alleen of ergens
+// 'dicht' of 'gesloten' stond -- elke afgesloten tunnel of weg in de regio
+// werd zo een keringsluiting. Nu moet in DEZELFDE tekst (titel of
+// samenvatting) zowel de kering zelf genoemd worden als het sluiten, en
+// wordt een tekst die over een tunnel/weg/brug/rijstrook gaat overgeslagen.
+const KERING_PATROON = /(maeslant|hartel|stormvloed)kering/i;
+const GESLOTEN_PATROON = /\b(gesloten|dicht|sluit|sluiting)\b/i;
+const NIET_KERING_PATROON = /\b(tunnel|rijstro(o|e)k|snelweg|brug|spoor|afrit|oprit)\b/i;
+function tekstBevestigtSluiting(tekst) {
+  if (!tekst) return false;
+  return KERING_PATROON.test(tekst) && GESLOTEN_PATROON.test(tekst) && !NIET_KERING_PATROON.test(tekst);
+}
 async function zoekBevestiging(zoekterm) {
   const resultaten = await fetchSearxngNieuws(zoekterm, 5);
-  const GESLOTEN_PATROON = /gesloten|dicht\b/i;
-  return resultaten.find((r) => GESLOTEN_PATROON.test(r.titel) || GESLOTEN_PATROON.test(r.samenvatting ?? '')) ?? null;
+  return resultaten.find((r) => tekstBevestigtSluiting(r.titel) || tekstBevestigtSluiting(r.samenvatting)) ?? null;
 }
 
 async function bepaalBevestiging() {
