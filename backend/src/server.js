@@ -258,6 +258,30 @@ const TEGEL_STADIA_MAX_Z = 20;
 // ingelezen. Een constante hier was daardoor altijd leeg (501 geen-stadia-key
 // ondanks een correcte .env, 2026-09-02).
 const tegelStadiaApiKey = () => (process.env.STADIAMAPS_API_KEY ?? '').trim();
+// 2026-09-03, op verzoek van Lex ("maak maar een wisselknop waarmee de diverse
+// kaarten kunnen worden gekozen, waar we over kunnen beschikken"): extra
+// kaartstijlen achter dezelfde proxy (schijfcache, in-flight-dedup, foutcache),
+// pad /api/tegel-stijl/<stijl>/{z}/{x}/{y}.png. Alleen sleutelloze bronnen;
+// de bestaande osm/diepte/stadia-paden blijven zoals ze zijn. {s} = subdomein
+// (a/b/c, per tegel gewisseld), {r} leeg (geen retina-tegels: cache blijft
+// klein). Esri-bronnen: gratis voor niet-commercieel gebruik met attributie.
+const TEGEL_STIJLEN = {
+  'carto-dark': { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', maxZ: 20, s: 'abcd' },
+  'carto-voyager': { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', maxZ: 20, s: 'abcd' },
+  'carto-positron': { url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', maxZ: 20, s: 'abcd' },
+  opentopo: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', maxZ: 17, s: 'abc' },
+  cyclosm: { url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', maxZ: 20, s: 'abc' },
+  hot: { url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', maxZ: 20, s: 'abc' },
+  'esri-satelliet': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZ: 19 },
+  'esri-ocean': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', maxZ: 13 },
+  'esri-topo': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxZ: 19 },
+};
+function tegelStijlUrl(stijl, z, x, y) {
+  const def = TEGEL_STIJLEN[stijl];
+  if (!def) return null;
+  const sub = def.s ? def.s[(x + y) % def.s.length] : '';
+  return def.url.replace('{s}', sub).replace('{z}', z).replace('{x}', x).replace('{y}', y);
+}
 const TEGEL_USER_AGENT = 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)';
 
 // 2026-08-25, op melding van Lex ("scherm bleef vrij lang wit voordat de
@@ -384,9 +408,11 @@ function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
     try {
       // Alle bronnen gebruiken de gebruikelijke XYZ-volgorde (z/x/y).
       const basisUrl = bron === 'diepte' ? TEGEL_DIEPTE_BASIS_URL : bron === 'stadia' ? TEGEL_STADIA_BASIS_URL : TEGEL_BASIS_URL;
-      const upstreamUrl = bron === 'stadia'
-        ? `${basisUrl}/${zNum}/${xNum}/${yNum}.png?api_key=${tegelStadiaApiKey()}`
-        : `${basisUrl}/${zNum}/${xNum}/${yNum}.png`;
+      const upstreamUrl = TEGEL_STIJLEN[bron]
+        ? tegelStijlUrl(bron, zNum, xNum, yNum) // 2026-09-03: extra kaartstijlen, zie TEGEL_STIJLEN
+        : bron === 'stadia'
+          ? `${basisUrl}/${zNum}/${xNum}/${yNum}.png?api_key=${tegelStadiaApiKey()}`
+          : `${basisUrl}/${zNum}/${xNum}/${yNum}.png`;
       const upstream = await fetch(upstreamUrl, {
         headers: { 'User-Agent': TEGEL_USER_AGENT },
         signal: AbortSignal.timeout(TEGEL_FETCH_TIMEOUT_MS),
@@ -420,7 +446,7 @@ async function serveTegel(req, res, z, x, y, bron = 'osm') {
   const zNum = Number(z);
   const xNum = Number(x);
   const yNum = Number(y);
-  const maxZ = bron === 'diepte' ? TEGEL_DIEPTE_MAX_Z : bron === 'stadia' ? TEGEL_STADIA_MAX_Z : TEGEL_MAX_Z;
+  const maxZ = TEGEL_STIJLEN[bron] ? TEGEL_STIJLEN[bron].maxZ : bron === 'diepte' ? TEGEL_DIEPTE_MAX_Z : bron === 'stadia' ? TEGEL_STADIA_MAX_Z : TEGEL_MAX_Z;
   if (!Number.isInteger(zNum) || !Number.isInteger(xNum) || !Number.isInteger(yNum) || zNum < 0 || zNum > maxZ) {
     res.writeHead(400).end('Ongeldige tegel-coördinaten');
     return;
@@ -1364,6 +1390,12 @@ export function createApp(env) {
     const tegelDonkerMatch = url.match(/^\/api\/tegel-donker\/(\d+)\/(\d+)\/(\d+)\.png$/);
     if (tegelDonkerMatch) {
       return serveTegel(req, res, tegelDonkerMatch[1], tegelDonkerMatch[2], tegelDonkerMatch[3], 'stadia');
+    }
+    // 2026-09-03: kaartstijl-keuze (wisselknop in de app), zie TEGEL_STIJLEN.
+    const tegelStijlMatch = url.match(/^\/api\/tegel-stijl\/([a-z-]+)\/(\d+)\/(\d+)\/(\d+)\.png$/);
+    if (tegelStijlMatch) {
+      if (!TEGEL_STIJLEN[tegelStijlMatch[1]]) return sendJson(res, 404, { fout: `onbekende kaartstijl: ${tegelStijlMatch[1]}` });
+      return serveTegel(req, res, tegelStijlMatch[2], tegelStijlMatch[3], tegelStijlMatch[4], tegelStijlMatch[1]);
     }
     const regenradarMatch = url.match(/^\/api\/regenradar\/(.+)$/);
     if (regenradarMatch) {

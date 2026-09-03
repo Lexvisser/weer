@@ -203,6 +203,15 @@
       <button id="radarSpeel">▶</button>
       <span id="radarTijd">—</span>
       <button id="toggleSatelliet" class="satelliet-toggle">🛰️<span class="knop-tekst"> Satelliet</span></button>
+      <!-- 2026-09-03, op verzoek van Lex ("maak maar een wisselknop waarmee de
+           diverse kaarten kunnen worden gekozen"): kaartstijl-keuze
+           (ondergrond), incl. luchtfoto. Menu opgebouwd door bouwKaartStijlMenu()
+           in app.js; keuze in localStorage. "Standaard" = het oude gedrag
+           (OSM + invert-filter, Stadia-donker in Vaart-modus). -->
+      <span class="kaartstijl-wrap">
+        <button id="kaartStijlKnop" class="satelliet-toggle" title="Kaartondergrond kiezen">🗺️<span class="knop-tekst"> Kaart</span></button>
+        <div id="kaartStijlMenu" class="kaartstijl-menu verborgen"></div>
+      </span>
       <!-- 2026-08-30, op verzoek van Lex: de complete DWD-Bodenanalyse (de
            bron van de fronten-laag, Florida tot Rusland) schermvullend
            bekijken. Zie openDwdKaart() in app.js. -->

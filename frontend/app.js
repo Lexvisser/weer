@@ -806,6 +806,7 @@ function initMap() {
     attribution: '© Stadia Maps, © OpenStreetMap-auteurs',
     maxZoom: 20,
   });
+  pasKaartStijlToe(); // 2026-09-03: eventueel eerder gekozen kaartondergrond (localStorage), zie KAART_STIJLEN
 
   L.marker([THUIS.homeLat, THUIS.homeLon], {
     icon: L.divIcon({ className: '', html: '<div class="home-pin"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }),
@@ -6789,6 +6790,83 @@ function vaarMenuHandleKlik() {
   zetVaarMenuOpen(VAAR_MENU_INHOUD_EL?.classList.contains('verborgen'));
 }
 
+// 2026-09-03, op verzoek van Lex ("maak maar een wisselknop waarmee de diverse
+// kaarten kunnen worden gekozen, waar we over kunnen beschikken"): keuze van de
+// kaartondergrond. 'standaard' = het bestaande gedrag (OSM met invert-filter,
+// Stadia-donker in Vaart-modus); elke andere stijl vervangt de ondergrond in
+// ALLE standen (ook Vaart) en zet het kleurfilter uit (#map.kaartstijl-eigen,
+// styles.css). Tegels lopen via de proxy (/api/tegel-stijl/<id>/, zie
+// TEGEL_STIJLEN in server.js) behalve Stadia (/api/tegel-donker/). Keuze in
+// localStorage. maxNativeZoom: Leaflet rekt tegels op waar de bron ophoudt.
+const KAART_STIJLEN = [
+  { id: 'standaard', naam: 'Standaard', sub: 'OSM donker, Stadia in Vaart-modus' },
+  { id: 'stadia-dark', naam: 'Stadia donker', sub: 'vlak en rustig (Vaart-kaart)', url: '/api/tegel-donker/{z}/{x}/{y}.png?v=stadia1', attr: '© Stadia Maps, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'carto-dark', naam: 'CARTO Dark Matter', sub: 'donker, gratis', url: '/api/tegel-stijl/carto-dark/{z}/{x}/{y}.png', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'carto-voyager', naam: 'CARTO Voyager', sub: 'licht, rustig', url: '/api/tegel-stijl/carto-voyager/{z}/{x}/{y}.png', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'carto-positron', naam: 'CARTO Positron', sub: 'bijna wit', url: '/api/tegel-stijl/carto-positron/{z}/{x}/{y}.png', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'osm-licht', naam: 'OSM Standaard', sub: 'zonder kleurfilter', url: '/api/tegel/{z}/{x}/{y}.png?v=osm1', attr: '© OpenStreetMap-auteurs', maxNativeZoom: 19 },
+  { id: 'hot', naam: 'OSM Humanitarian', sub: 'licht, veel detail', url: '/api/tegel-stijl/hot/{z}/{x}/{y}.png', attr: '© OpenStreetMap-auteurs, HOT', maxNativeZoom: 20 },
+  { id: 'opentopo', naam: 'OpenTopoMap', sub: 'reliëf, tot zoom 17', url: '/api/tegel-stijl/opentopo/{z}/{x}/{y}.png', attr: '© OpenTopoMap, © OpenStreetMap-auteurs', maxNativeZoom: 17 },
+  { id: 'cyclosm', naam: 'CyclOSM', sub: 'fiets/topo', url: '/api/tegel-stijl/cyclosm/{z}/{x}/{y}.png', attr: '© CyclOSM, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'esri-topo', naam: 'Esri Topo', sub: 'topografisch', url: '/api/tegel-stijl/esri-topo/{z}/{x}/{y}.png', attr: '© Esri', maxNativeZoom: 19 },
+  { id: 'esri-ocean', naam: 'Esri Ocean', sub: 'zeekaart-achtig, tot zoom 13', url: '/api/tegel-stijl/esri-ocean/{z}/{x}/{y}.png', attr: '© Esri, GEBCO, NOAA', maxNativeZoom: 13 },
+  { id: 'esri-satelliet', naam: 'Satelliet / luchtfoto', sub: 'Esri World Imagery', url: '/api/tegel-stijl/esri-satelliet/{z}/{x}/{y}.png', attr: '© Esri, Maxar, Earthstar Geographics', maxNativeZoom: 19 },
+];
+const KAART_STIJL_OPSLAG = 'kaartstijl';
+let kaartStijlId = (() => { try { return localStorage.getItem(KAART_STIJL_OPSLAG) || 'standaard'; } catch { return 'standaard'; } })();
+if (!KAART_STIJLEN.some((k) => k.id === kaartStijlId)) kaartStijlId = 'standaard';
+let eigenKaartLaag = null;
+const KAART_STIJL_KNOP_EL = document.getElementById('kaartStijlKnop');
+const KAART_STIJL_MENU_EL = document.getElementById('kaartStijlMenu');
+
+function pasKaartStijlToe() {
+  if (!kaart) return;
+  const def = KAART_STIJLEN.find((k) => k.id === kaartStijlId) ?? KAART_STIJLEN[0];
+  if (eigenKaartLaag) { kaart.removeLayer(eigenKaartLaag); eigenKaartLaag = null; }
+  kaart.getContainer().classList.toggle('kaartstijl-eigen', def.id !== 'standaard');
+  if (def.id === 'standaard') {
+    // Terug naar het oude gedrag: OSM, of Stadia-donker als Vaart-modus aanstaat.
+    const wil = vaarradarActief && donkereKaartLaag ? donkereKaartLaag : basisKaartLaag;
+    const niet = wil === basisKaartLaag ? donkereKaartLaag : basisKaartLaag;
+    if (niet && kaart.hasLayer(niet)) kaart.removeLayer(niet);
+    if (wil && !kaart.hasLayer(wil)) kaart.addLayer(wil);
+    wil?.bringToBack();
+  } else {
+    if (basisKaartLaag && kaart.hasLayer(basisKaartLaag)) kaart.removeLayer(basisKaartLaag);
+    if (donkereKaartLaag && kaart.hasLayer(donkereKaartLaag)) kaart.removeLayer(donkereKaartLaag);
+    eigenKaartLaag = L.tileLayer(def.url, { attribution: def.attr, maxZoom: 20, maxNativeZoom: def.maxNativeZoom }).addTo(kaart);
+    eigenKaartLaag.bringToBack();
+  }
+  KAART_STIJL_KNOP_EL?.classList.toggle('actief', def.id !== 'standaard');
+  bouwKaartStijlMenu();
+}
+
+function kiesKaartStijl(id) {
+  kaartStijlId = id;
+  try { localStorage.setItem(KAART_STIJL_OPSLAG, id); } catch { /* prive-modus */ }
+  pasKaartStijlToe();
+  KAART_STIJL_MENU_EL?.classList.add('verborgen');
+}
+
+function bouwKaartStijlMenu() {
+  if (!KAART_STIJL_MENU_EL) return;
+  KAART_STIJL_MENU_EL.innerHTML = '<div class="kaartstijl-kop">Kaartondergrond</div>';
+  KAART_STIJLEN.forEach((def) => {
+    const knop = document.createElement('button');
+    knop.type = 'button';
+    knop.className = def.id === kaartStijlId ? 'actief' : '';
+    knop.innerHTML = `${escapeHtml(def.naam)}<small>${escapeHtml(def.sub)}</small>`;
+    knop.addEventListener('click', () => kiesKaartStijl(def.id));
+    KAART_STIJL_MENU_EL.appendChild(knop);
+  });
+}
+
+if (KAART_STIJL_KNOP_EL && KAART_STIJL_MENU_EL) {
+  bouwKaartStijlMenu();
+  KAART_STIJL_KNOP_EL.addEventListener('click', (e) => { e.stopPropagation(); KAART_STIJL_MENU_EL.classList.toggle('verborgen'); });
+  document.addEventListener('click', (e) => { if (!KAART_STIJL_MENU_EL.contains(e.target)) KAART_STIJL_MENU_EL.classList.add('verborgen'); });
+}
+
 function toggleVaarradar() {
   vaarradarActief = !vaarradarActief;
   // 2026-09-02-herziening: #vaarMenuHandle is nu ZOWEL de aan/uit-knop als de
@@ -6816,7 +6894,7 @@ function toggleVaarradar() {
   // daadwerkelijk vlakker/rustiger oogt (minder straatdetail), niet alleen
   // donkerder. Alleen tijdens Vaart/AIS-modus; de losstaande Zee/NAVTEX-stand
   // (en de rest van de app) houdt gewoon de gebruikelijke OSM-kaart.
-  if (donkereKaartLaag) {
+  if (donkereKaartLaag && kaartStijlId === 'standaard') { // 2026-09-03: bij een eigen gekozen stijl blijft die overal staan, zie pasKaartStijlToe()
     if (vaarradarActief) {
       if (basisKaartLaag && kaart.hasLayer(basisKaartLaag)) kaart.removeLayer(basisKaartLaag);
       if (!kaart.hasLayer(donkereKaartLaag)) kaart.addLayer(donkereKaartLaag);

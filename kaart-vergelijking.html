@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Kaartstijlen vergelijken</title>
+<!-- 2026-09-03, op verzoek van Lex ("kan je me een aantal andere openstreetmap
+     kaarten laten zien, misschien ook voor de Zee kaart"): losse vergelijkpagina,
+     staat bewust NIET in frontend/ en gaat niet mee met syncweer. Alle kaarten
+     lopen synchroon (pannen/zoomen in één = allemaal). Tegels komen rechtstreeks
+     van de aanbieders (alleen om te kijken; voor gebruik in de app gaan ze via
+     de tegelproxy in server.js). De Stadia-kaart loopt via de app op lexdev-nw. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  body { margin:0; background:#0a0d16; color:#f4f6fb; font-family: system-ui, sans-serif; }
+  header { padding:8px 12px; display:flex; gap:12px; align-items:center; font-size:14px; }
+  header select, header button { font-size:14px; padding:4px 8px; }
+  .grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; padding:0 6px 6px; }
+  .cel { position:relative; height: calc((100vh - 60px) / 3); min-height:240px; background:#111; }
+  .cel .map { position:absolute; inset:0; }
+  .cel .label { position:absolute; z-index:1000; left:8px; top:8px; background:rgba(0,0,0,0.7); padding:4px 8px; border-radius:6px; font-size:13px; }
+  .cel .label small { display:block; opacity:0.7; font-size:11px; }
+  .invert .leaflet-tile-pane .leaflet-tile { filter: invert(1) hue-rotate(200deg) brightness(0.95) contrast(0.9) saturate(1.4); }
+</style>
+</head>
+<body>
+<header>
+  <strong>Kaartstijlen</strong>
+  <label>Ga naar: <select id="plek">
+    <option value="maasmond">Maasmond (zoom 12)</option>
+    <option value="rotterdam">Rotterdam-haven (zoom 10)</option>
+    <option value="nl">Nederland (zoom 8)</option>
+    <option value="europa">Europa (zoom 6)</option>
+  </select></label>
+  <label><input type="checkbox" id="seamark"> OpenSeaMap-zeetekens over alle kaarten</label>
+  <span style="opacity:0.7">Pannen/zoomen in één kaart beweegt ze allemaal.</span>
+</header>
+<div class="grid" id="grid"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const STIJLEN = [
+  { naam: 'OSM Standaard (huidig, zonder filter)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap' },
+  { naam: 'OSM Standaard + ons invert-filter (huidige gewone kaart)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap', invert: true },
+  { naam: 'Stadia Alidade Smooth Dark (huidige Vaart-kaart)', url: 'http://lexdev-nw:4780/api/tegel-donker/{z}/{x}/{y}.png', attr: '© Stadia Maps © OpenStreetMap', sub: 'via de app-proxy' },
+  { naam: 'CARTO Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attr: '© CARTO © OpenStreetMap', sub: 'gratis, geen sleutel' },
+  { naam: 'CARTO Voyager', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr: '© CARTO © OpenStreetMap', sub: 'licht, rustig' },
+  { naam: 'CARTO Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', attr: '© CARTO © OpenStreetMap', sub: 'bijna wit' },
+  { naam: 'OpenTopoMap', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr: '© OpenTopoMap © OpenStreetMap', sub: 'reliëf, max zoom 17' },
+  { naam: 'CyclOSM', url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', attr: '© CyclOSM © OpenStreetMap' },
+  { naam: 'Esri World Imagery (satelliet)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri', sub: 'satelliet/luchtfoto' },
+  { naam: 'Esri Ocean Basemap (zeekaart-achtig)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', attr: '© Esri', sub: 'dieptes/bathymetrie, max zoom 13' },
+  { naam: 'Esri World Topo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attr: '© Esri' },
+  { naam: 'OSM Humanitarian (HOT)', url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', attr: '© OpenStreetMap, HOT' },
+];
+const PLEKKEN = { maasmond: [[51.965, 4.08], 12], rotterdam: [[51.92, 4.25], 10], nl: [[52.2, 5.3], 8], europa: [[51, 8], 6] };
+const grid = document.getElementById('grid');
+const kaarten = [];
+let bezig = false;
+STIJLEN.forEach((st, i) => {
+  const cel = document.createElement('div'); cel.className = 'cel' + (st.invert ? ' invert' : '');
+  cel.innerHTML = `<div class="label">${st.naam}${st.sub ? `<small>${st.sub}</small>` : ''}</div><div class="map" id="m${i}"></div>`;
+  grid.appendChild(cel);
+  const m = L.map(`m${i}`, { zoomControl: i === 0, attributionControl: true }).setView(...PLEKKEN.maasmond);
+  L.tileLayer(st.url, { attribution: st.attr, maxZoom: 19, subdomains: 'abcd' }).addTo(m);
+  m.seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, opacity: 0.9 });
+  m.on('move', () => { if (bezig) return; bezig = true; kaarten.forEach((o) => { if (o !== m) o.setView(m.getCenter(), m.getZoom(), { animate: false }); }); bezig = false; });
+  kaarten.push(m);
+});
+document.getElementById('plek').addEventListener('change', (e) => kaarten[0].setView(...PLEKKEN[e.target.value]));
+document.getElementById('seamark').addEventListener('change', (e) => kaarten.forEach((m) => e.target.checked ? m.seamark.addTo(m) : m.removeLayer(m.seamark)));
+</script>
+</body>
+</html>
