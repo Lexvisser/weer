@@ -5508,6 +5508,10 @@ function vaarZoekGaNaar(s) {
 }
 if (vaarZoekVeldEl) {
   vaarZoekVeldEl.addEventListener('input', vaarZoekUitvoeren);
+  // Zolang er in het zoekveld getypt wordt mag het menu niet vanzelf
+  // inklappen (de 3s-timer van zetVaarMenuOpen() -- pointerdown vangt een
+  // muisklik al af, dit vangt ook focus via toetsenbord/autofocus).
+  vaarZoekVeldEl.addEventListener('focus', () => annuleerVaarMenuAutoDicht());
   vaarZoekVeldEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { const eerste = vaarZoekResultatenEl?.querySelector('.vaar-zoek-treffer'); if (eerste) eerste.click(); }
     if (e.key === 'Escape') { vaarZoekVeldEl.value = ''; vaarZoekUitvoeren(); vaarZoekVeldEl.blur(); }
