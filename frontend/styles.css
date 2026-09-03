@@ -619,6 +619,8 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .vaar-zoek-treffer-naam .popup-scheepskleur { flex:none; }
 .vaar-zoek-treffer-sub { opacity:0.65; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .vaar-zoek-leeg { opacity:0.6; padding:2px 4px; font-size:10px; }
+.vaar-telling { opacity:0.75; font-size:10px; padding:0 2px; line-height:1.4; white-space:pre-line; }
+.vaar-telling:empty { display:none; }
 .vaar-menu-kop { opacity:0.7; padding:2px 2px 0; }
 
 /* 2026-08-21: de losstaande groot/klein-driehoekknop (.uitvergroot-driehoek)

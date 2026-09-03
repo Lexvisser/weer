@@ -739,6 +739,7 @@ function initMap() {
   // VAAR_MIN_ZOOM_VOOR_SCHEPEN hierboven) -- meteen reageren op een zoom-
   // wissel i.p.v. tot de eerstvolgende 3s-poll te wachten.
   kaart.on('zoomend', () => { if (vaarradarActief) ververVaarradar(); });
+  kaart.on('moveend', () => { if (vaarradarActief) werkVaarTellingBij(); }); // 2026-09-03: telling in het AIS-menu volgt het kaartbeeld
   // 2026-08-30, op verzoek van Lex ("in welk gridvak de cursor is"): vak
   // onder de muis oplichten + uitlezen. Op touch geen hover, dus daar telt
   // een tik op de kaart als 'cursor'. Zie toonGradenVak().
@@ -5500,6 +5501,36 @@ function vaarZoekUitvoeren() {
     vaarZoekResultatenEl.appendChild(knop);
   });
 }
+// 2026-09-03, op verzoek van Lex ("ik wil doorzoeken waarom er verborgen
+// worden. Dit is echt veel leger"): telling voor het huidige kaartbeeld in
+// het AIS-menu -- hoeveel schepen de laatste poll binnen het beeld heeft,
+// hoeveel daarvan getekend zijn, en hoeveel er wegblijven door het
+// scheepstype-filter of de AISHub-knop. Alles wat NIET in die telling zit
+// maar wel bij MarineTraffic staat, is dus een ontvangstverschil, geen
+// tekenverschil. Bijgewerkt na elke poll en na elke kaartbeweging.
+const vaarTellingEl = document.getElementById('vaarTelling');
+function werkVaarTellingBij() {
+  if (!vaarTellingEl || !kaart) return;
+  if (!vaarradarActief) { vaarTellingEl.textContent = ''; return; }
+  const grens = kaart.getBounds();
+  let inData = 0, getekend = 0, doorFilter = 0, doorAishub = 0, stapel = 0;
+  const posities = new Set();
+  laatsteVaarSchepen.forEach((s) => {
+    if (typeof s.lat !== 'number' || typeof s.lon !== 'number' || !grens.contains([s.lat, s.lon])) return;
+    inData++;
+    if (!aishubZichtbaar && s.bron === 'aishub') { doorAishub++; return; }
+    if (schipVerborgenDoorFilter(s)) { doorFilter++; return; }
+    getekend++;
+    const sleutel = `${s.lat.toFixed(4)},${s.lon.toFixed(4)}`; // ~10m: zelfde plek = over elkaar getekend
+    if (posities.has(sleutel)) stapel++; else posities.add(sleutel);
+  });
+  const regels = [`In beeld: ${getekend} van ${inData} getekend`];
+  if (doorFilter) regels.push(`${doorFilter} verborgen door typefilter`);
+  if (doorAishub) regels.push(`${doorAishub} verborgen (AISHub uit)`);
+  if (stapel) regels.push(`${stapel} op dezelfde plek als een ander`);
+  vaarTellingEl.textContent = regels.join('\n');
+}
+
 function vaarZoekGaNaar(s) {
   if (typeof s.lat !== 'number' || typeof s.lon !== 'number') return;
   kaart.setView([s.lat, s.lon], Math.max(kaart.getZoom(), 14), { animate: true });
@@ -6577,6 +6608,7 @@ async function ververVaarradar() {
       vaarMarkers.delete(mmsi);
       verwijderScheepsvorm(mmsi);
     });
+    werkVaarTellingBij(); // 2026-09-03: telling in het AIS-menu
   } catch (err) {
     console.error('vaarradar ophalen mislukt', err);
   }
