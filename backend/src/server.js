@@ -1305,7 +1305,16 @@ export function createApp(env) {
       return sendJson(res, 200, { url: fotoUrl });
     }
     if (url === '/api/status') {
-      return sendJson(res, 200, { bronnen: SOURCES.map((s) => states.get(s.id).toStatus()) });
+      // 2026-09-03: aantallen per vaarradar-bron erbij, om zonder journalctl
+      // te kunnen zien of aisstream.io (sinds 21-08 structureel stil, zie
+      // vaarradar.js) inmiddels weer iets levert.
+      const vaarradar = {
+        lokaal: vaarradarLokaalFeed.posities.size,
+        aishub: vaarradarAishubFeed.posities.size,
+        aisstream: vaarradarFeed.posities.size,
+        aisstreamSleutel: Boolean(env.aisstreamApiKey),
+      };
+      return sendJson(res, 200, { bronnen: SOURCES.map((s) => states.get(s.id).toStatus()), vaarradar });
     }
     // 2026-08-23, op verzoek van Lex ("Het lifeliner pollenprobleem... Ik wil
     // een rapport wanneer en hoeveel er wordt gepolled") — hetzelfde rapport
