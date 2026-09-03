@@ -51,6 +51,7 @@ import { readFileSync, existsSync, writeFileSync, statSync, openSync, readSync, 
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { makeSignal, afstandKm } from '../normalize.js';
+import { meldNavtexNood } from '../navtexNoodAlarm.js'; // 2026-09-03: telefoonalarm voor type-D-berichten
 
 // Standaard: zelfde thuismap als waar Lex' eigen tee-commando naartoe
 // schrijft (~/navtex_berichten.txt op lexdev-nw, waar de app-service ook
@@ -1692,7 +1693,7 @@ export async function fetchNavtexLokaal(env = {}) {
       `${metPlek.length} met positie (geen afstandsgrens), ${vervallen} vervallen/ingetrokken, ${nietVervallen.length} blijft over.`
   );
 
-  return nietVervallen.flatMap((b) => {
+  return meldNavtexNood(nietVervallen.flatMap((b) => {
     const typeOmschrijving = b.typeLetter ? TYPE_OMSCHRIJVING[b.typeLetter] ?? null : null;
     const stationNaam = b.station?.naam ?? `station ${leesStationEnType(b.code).stationId ?? '?'} (onbevestigd)`;
     const stationKleur = b.station?.kleur ?? STATION_KLEUR_ONBEKEND;
@@ -1843,5 +1844,5 @@ export async function fetchNavtexLokaal(env = {}) {
         },
       }),
     ];
-  });
+  }));
 }

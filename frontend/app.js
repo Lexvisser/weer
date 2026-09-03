@@ -9091,7 +9091,7 @@ const ALARM_RIJEN = [
   { id: 'weerwaarschuwing', label: 'Weeralarm (oranje/rood)', scherm: true, telefoon: true },
   // Losse toggle i.p.v. gewoon "navtex" (dat zou ELK navtex-bericht laten
   // alarmeren, veel te druk); dit dekt alleen type-D berichten. Zie magAlarmeren().
-  { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)', scherm: true, telefoon: false },
+  { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)', scherm: true, telefoon: true }, // telefoon sinds 2026-09-03, zie backend/src/navtexNoodAlarm.js
   { id: 'stormvloedkering-waarschuwing', label: 'Kans op sluiting stormvloedkering', scherm: false, telefoon: true },
   { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)', scherm: true, telefoon: true },
   { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)', scherm: true, telefoon: true },

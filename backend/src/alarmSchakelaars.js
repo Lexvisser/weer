@@ -32,7 +32,7 @@ const BESTAND = join(__dirname, '..', 'data', 'alarmSchakelaars.json');
 // het scherm-alarm in app.js gebruikt (ALARM_RIJEN daar). Ontbrekend = AAN.
 export const GELDIGE_SLEUTELS = new Set([
   'tornado', 'tornado-watch', 'tsunami', 'tsunami-watch', 'weerwaarschuwing',
-  'stormvloedkering-waarschuwing', 'stormvloedkering-gesloten', 'ais-nood',
+  'stormvloedkering-waarschuwing', 'stormvloedkering-gesloten', 'ais-nood', 'navtex-nood',
 ]);
 
 let schakelaars = {};

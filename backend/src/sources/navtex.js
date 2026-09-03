@@ -34,6 +34,7 @@
 import * as cheerio from 'cheerio';
 import https from 'node:https';
 import { makeSignal, afstandKm } from '../normalize.js';
+import { meldNavtexNood } from '../navtexNoodAlarm.js'; // 2026-09-03
 
 const NAVTEX_URL = 'https://navtex.lv/';
 
@@ -241,7 +242,7 @@ export async function fetchNavtex(env = {}) {
   }
   console.log(`[weer] navtex: ${binnenBereik.length} van de ${berichten.length} berichten binnen ${straalKm}km.`);
 
-  return binnenBereik.map((b) => {
+  return meldNavtexNood(binnenBereik.map((b) => {
     const typeOmschrijving = b.typeLetter ? TYPE_OMSCHRIJVING[b.typeLetter] ?? null : null;
     const stationNaam = b.station?.naam ?? `station ${b.code[0] ?? '?'}`;
     const id = `navtex-${b.code}-${b.datum ? b.datum.getTime() : hashTekst(b.body)}`;
@@ -262,7 +263,8 @@ export async function fetchNavtex(env = {}) {
         afstandTotJouKm: b.afstandTotJouKm,
         positieUitBericht: b.coords.length > 0,
         bronUrl: NAVTEX_URL,
+        noodbericht: b.typeLetter === 'D', // 2026-09-03: zelfde vlag als navtexLokaal.js (scherm- en telefoonalarm)
       },
     });
-  });
+  }));
 }
