@@ -5937,6 +5937,78 @@ async function haalEnToonScheepsfoto(marker, mmsi) {
   }
 }
 
+// 2026-09-03, op verzoek van Lex: het MarineTraffic-kaartje nabouwen met wat
+// we al hebben (schermafbeelding HAFNIA CATERINA als voorbeeld). Onder de
+// foto, van boven naar beneden:
+//   1. knoppenrij: "Scheepsdetails" -- native <details>/<summary>, zodat 'ie
+//      ook werkt in de schermvullende kopie (toonVolledigSchermPopup() kopieert
+//      alleen innerHTML, een click-listener zou daar verloren gaan) en de
+//      popup-klik-naar-volledig-scherm 'm al met rust laat (die slaat
+//      'summary' over). Toont MMSI/IMO/roepnaam -- meer hebben we (nog) niet;
+//      Lex: "kan nog leeg blijven".
+//   2. reisblok: vertrekhaven links (hebben we NIET -- AIS zendt alleen de
+//      bestemming uit, MarineTraffic haalt ATD uit z'n eigen havenhistorie),
+//      bestemming rechts met ETA, daaronder een lijn met pijl.
+//   3. drie cellen: navigatiestatus / snelheid+koers / diepgang.
+//   4. voettekst: "Ontvangen: X geleden (AIS-bron: ...)" + afstand.
+// Alles wat de bron niet meegeeft wordt als "—" getoond i.p.v. weggelaten,
+// zodat het kaartje altijd dezelfde vorm houdt.
+//
+// Bestemming: AIS-schepen zenden vaak een UN/LOCODE uit ("NLRTM", "NL RTM",
+// "NL IJM") -- die splitsen we in landvlag + code zoals MarineTraffic doet;
+// vrije tekst ("ROTTERDAM 7E PETROH") blijft gewoon staan.
+function havenHtml(tekst, leegLabel) {
+  const t = String(tekst ?? '').trim().toUpperCase();
+  if (!t) return `<span class="popup-haven popup-haven-leeg">${leegLabel}</span>`;
+  const m = t.match(/^([A-Z]{2})\s?([A-Z2-9]{3})$/);
+  if (m && MMSI_MID_LAND_CODES.has(m[1])) {
+    return `<span class="popup-haven">${vlagHtml(m[1])}<span class="popup-haven-code">${escapeHtml(m[2])}</span></span>`;
+  }
+  return `<span class="popup-haven popup-haven-tekst" title="${escapeHtml(t)}">${escapeHtml(t)}</span>`;
+}
+const MMSI_MID_LAND_CODES = new Set(Object.values(MMSI_MID_LAND));
+
+function scheepsKaartHtml(s, statusTekst) {
+  const bronTekst = s.bron === 'aishub' ? 'AISHub' : s.bron === 'lokaal' ? 'eigen ontvanger' : 'aisstream';
+  const koers = s.cogGraden ?? s.koersGraden;
+  const snelheidKoers = s.snelheidKn != null || koers != null
+    ? `${s.snelheidKn != null ? `${Math.round(s.snelheidKn * 10) / 10} kn` : '—'} / ${koers != null ? `${Math.round(koers)}°` : '—'}`
+    : '—';
+  const diepgang = s.diepgangM != null ? `${s.diepgangM.toFixed(1)} m` : '—';
+  const etaHtml = s.eta ? `<b>ETA:</b> ${etaTekst(s.eta)}` : '<b>ETA:</b> —';
+  const detailRegels = [
+    ['MMSI', s.mmsi],
+    ['IMO', s.imo],
+    ['Roepnaam', s.callsign],
+  ]
+    .map(([label, waarde]) => `<div class="popup-schip-detailrij"><span>${label}</span><span>${waarde != null && waarde !== '' ? escapeHtml(String(waarde)) : '—'}</span></div>`)
+    .join('');
+  return `
+    <div class="popup-schip-knoppen">
+      <details class="popup-schip-details">
+        <summary class="popup-schip-knop popup-schip-knop-primair">Scheepsdetails</summary>
+        <div class="popup-schip-detailblok">${detailRegels}</div>
+      </details>
+    </div>
+    <div class="popup-schip-reis">
+      <div class="popup-schip-havens">
+        ${havenHtml(null, 'Vertrek —')}
+        ${havenHtml(s.bestemming, 'Bestemming —')}
+      </div>
+      <div class="popup-schip-reistijden">
+        <span><b>Vertrek:</b> —</span>
+        <span>${etaHtml}</span>
+      </div>
+      <div class="popup-schip-reislijn"><span class="popup-schip-reisstip"></span><span class="popup-schip-reispijl"></span></div>
+    </div>
+    <div class="popup-schip-cellen">
+      <div class="popup-schip-cel"><span class="popup-schip-cellabel">Navigatie-status</span><span class="popup-schip-celwaarde">${escapeHtml(statusTekst ?? '—')}</span></div>
+      <div class="popup-schip-cel"><span class="popup-schip-cellabel">Snelheid / koers</span><span class="popup-schip-celwaarde">${escapeHtml(snelheidKoers)}</span></div>
+      <div class="popup-schip-cel"><span class="popup-schip-cellabel">Diepgang</span><span class="popup-schip-celwaarde">${escapeHtml(diepgang)}</span></div>
+    </div>
+    <div class="popup-schip-voet">Ontvangen: <b>${escapeHtml(geledenTekst(s.tijdMs))}</b> (AIS-bron: ${escapeHtml(bronTekst)}) · ${s.afstandKm} km van jou</div>`;
+}
+
 // Bouwt (eenmalig per marker) een wrapper-element met twee losse kinderen --
 // popupFotoEl en popupTekstEl -- en bindt/hergebruikt die vervolgens als
 // Leaflet-popupinhoud. Alleen popupTekstEl.innerHTML wordt hier bijgewerkt;
@@ -5963,7 +6035,12 @@ function scheepsPopupEl(marker, mmsi, kopHtml, basisHtml) {
     }
   }
   if (marker.popupKopEl.innerHTML !== kopHtml) marker.popupKopEl.innerHTML = kopHtml;
+  // 2026-09-03: de "Scheepsdetails"-uitklap (native <details>, zie
+  // scheepsKaartHtml()) niet dichtklappen bij elke 3s-tekstverversing van
+  // een varend schip -- open-stand onthouden en na de herbouw terugzetten.
+  const detailsStondOpen = !!marker.popupTekstEl.querySelector('details.popup-schip-details[open]');
   marker.popupTekstEl.innerHTML = basisHtml;
+  if (detailsStondOpen) marker.popupTekstEl.querySelector('details.popup-schip-details')?.setAttribute('open', '');
   return marker.popupWrapperEl;
 }
 
@@ -6012,14 +6089,6 @@ async function ververVaarradar() {
       // veld hier uberhaupt gevuld binnenkomt (zie categoriseerScheepstype()
       // in vaarradarLokaal.js): blijft dit label overal weg, dan is dat het
       // antwoord op die open vraag.
-      const details = [
-        s.snelheidKn != null ? `${Math.round(s.snelheidKn)} kn` : null,
-        `${s.afstandKm} km van jou`,
-        SCHEEPSCATEGORIE_LABEL[s.scheepscategorie] ?? null,
-        statusTekst,
-      ]
-        .filter(Boolean)
-        .join(' · ');
       // Het bolletje voor de naam herhaalt dezelfde kleur als het bootje op de
       // kaart -- puur zodat een popup meteen te koppelen is aan "welk bootje
       // was dat ook alweer" als er meerdere tegelijk openstaan.
@@ -6030,17 +6099,16 @@ async function ververVaarradar() {
       // 2026-09-02, op verzoek van Lex (bestemming/ETA erbij, net als
       // MarineTraffic/VesselFinder) -- alleen getoond als de bron het meegeeft
       // (niet elk schip zendt voyage-data uit, en niet elke bron decodeert 'm).
-      const bestemmingHtml = s.bestemming
-        ? `<div class="popup-bestemming">→ ${escapeHtml(s.bestemming)}${s.eta ? ` <span class="popup-eta">(ETA ${etaTekst(s.eta)})</span>` : ''}</div>`
-        : '';
-      const diepgangHtml = s.diepgangM != null ? `<div class="popup-sub">Diepgang ${s.diepgangM.toFixed(1)} m</div>` : '';
+      // 2026-09-03, op verzoek van Lex ("de andere alvast gerealiseerd zien
+      // met wat we hebben"): bestemming/ETA/diepgang zitten nu in het
+      // MarineTraffic-achtige kaartje van scheepsKaartHtml() hieronder.
       // 2026-09-02, op verzoek van Lex ("de kaart namaken van marine traffic
       // -- begin met de nationaliteit met een vlaggetje boven de foto"):
       // naam + vlag + scheepstype in een eigen kop BOVEN de foto (zie
       // scheepsPopupEl()), de rest van de regels eronder zoals voorheen.
       const typeLabel = SCHEEPSCATEGORIE_LABEL[s.scheepscategorie] ?? 'Scheepstype onbekend';
       const kopHtml = `<div class="popup-scheepskop-rij">${vlagHtml(landcodeVoorSchip(s))}<span class="popup-scheepskop-naam"><span class="popup-scheepskleur" style="background:${kleur}"></span>${escapeHtml(naam)}</span>${bronLabel}</div><div class="popup-scheepskop-type">${escapeHtml(typeLabel)}</div>`;
-      const basisHtml = `<div class="popup-sub">${escapeHtml(details)}</div>${bestemmingHtml}${diepgangHtml}`;
+      const basisHtml = scheepsKaartHtml(s, statusTekst);
       let marker = vaarMarkers.get(s.mmsi);
       if (marker) {
         // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan

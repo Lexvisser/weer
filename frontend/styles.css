@@ -829,6 +829,45 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    regel iets te laten opvallen tussen de neutrale .popup-sub-regels. */
 .popup-bestemming { color:#3ec6ff; font-size:10.5px; margin-top:3px; font-weight:600; }
 .popup-eta { color:#9199b5; font-weight:400; }
+/* 2026-09-03, op verzoek van Lex: MarineTraffic-kaartje onder de foto (zie
+   scheepsKaartHtml() in app.js) -- knoppenrij, reisblok met haven-codes en
+   lijn+pijl, drie cellen (status / snelheid+koers / diepgang), voettekst.
+   Donker gehouden (zelfde toon als de rest van de popup), alleen de
+   "Scheepsdetails"-knop en de reislijn in het app-cyaan. */
+.popup-schip-knoppen { display:flex; gap:6px; margin:8px 0 6px; }
+.popup-schip-details { flex:1; }
+.popup-schip-details > summary { list-style:none; }
+.popup-schip-details > summary::-webkit-details-marker { display:none; }
+.popup-schip-knop { display:block; text-align:center; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; user-select:none; border:1px solid rgba(255,255,255,0.18); color:#f4f6fb; background:rgba(255,255,255,0.08); }
+.popup-schip-knop-primair { background:#1b7fd4; border-color:#1b7fd4; color:#fff; }
+.popup-schip-knop-primair:hover { background:#2a8fe4; }
+.popup-schip-details[open] > .popup-schip-knop-primair { border-radius:6px 6px 0 0; }
+.popup-schip-detailblok { padding:6px 10px; border:1px solid rgba(255,255,255,0.14); border-top:0; border-radius:0 0 6px 6px; font-size:10.5px; }
+.popup-schip-detailrij { display:flex; justify-content:space-between; gap:10px; padding:2px 0; color:#9199b5; }
+.popup-schip-detailrij span:last-child { color:#f4f6fb; font-family:'JetBrains Mono',monospace; }
+.popup-schip-reis { margin:4px 0 2px; }
+.popup-schip-havens { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.popup-haven { display:inline-flex; align-items:center; gap:5px; font-size:1.25em; font-weight:600; color:#f4f6fb; min-width:0; }
+.popup-haven .popup-vlag-code { font-size:0.8em; }
+.popup-haven-code { letter-spacing:0.04em; }
+.popup-haven-tekst { font-size:0.95em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+.popup-haven-leeg { font-size:0.9em; font-weight:400; color:rgba(244,246,251,0.4); }
+.popup-schip-reistijden { display:flex; justify-content:space-between; gap:8px; margin-top:3px; font-size:10px; color:#9199b5; }
+.popup-schip-reistijden b { color:#f4f6fb; font-weight:600; }
+.popup-schip-reislijn { position:relative; height:14px; margin:6px 4px 0; }
+.popup-schip-reislijn::before { content:''; position:absolute; left:4px; right:8px; top:6px; height:2px; background:#3ec6ff; opacity:0.8; }
+.popup-schip-reisstip { position:absolute; left:0; top:2px; width:10px; height:10px; border-radius:50%; background:#3ec6ff; }
+.popup-schip-reispijl { position:absolute; right:0; top:1px; width:0; height:0; border-top:6px solid transparent; border-bottom:6px solid transparent; border-left:10px solid #3ec6ff; }
+.popup-schip-cellen { display:grid; grid-template-columns:1.2fr 1fr 0.8fr; margin:8px -12px 0; border-top:1px solid rgba(255,255,255,0.1); border-bottom:1px solid rgba(255,255,255,0.1); }
+.popup-schip-cel { padding:6px 8px; border-right:1px solid rgba(255,255,255,0.1); display:flex; flex-direction:column; gap:2px; min-width:0; }
+.popup-schip-cel:last-child { border-right:0; }
+.popup-schip-cellabel { font-size:9.5px; color:#9199b5; line-height:1.2; }
+.popup-schip-celwaarde { font-size:11px; font-weight:600; color:#f4f6fb; line-height:1.25; }
+.popup-schip-voet { margin:6px 0 0; font-size:10px; color:#9199b5; }
+.popup-schip-voet b { color:#f4f6fb; font-weight:600; }
+/* schermvullende kopie (toonVolledigSchermPopup) -- iets ruimer */
+.label-popup-inhoud .popup-schip-cellen { margin:10px -16px 0; }
+.label-popup-inhoud .popup-schip-knop { font-size:0.85em; padding:8px 12px; }
 /* 2026-08-24, op verzoek van Lex ("het icon waarop werd geklikt als grote
    kopie bij de tekst... dan zie je ook eindelijk eens goed hoe mooi die
    icons zijn") — een uitvergrote kopie van hetzelfde icoon als op de kaart-

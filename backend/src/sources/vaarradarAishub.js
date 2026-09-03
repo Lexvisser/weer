@@ -153,6 +153,10 @@ function vertaalVaartuig(v) {
     lat,
     lon,
     koersGraden,
+    // 2026-09-03: losse koers-over-grond voor de "Snelheid/koers"-cel in de
+    // scheepspopup (MarineTraffic-stijl, zie scheepsPopupEl() in app.js) --
+    // koersGraden hierboven is heading-met-cog-terugval voor het icoon.
+    cogGraden: typeof v.COG === 'number' && v.COG < 360 ? v.COG : null,
     snelheidKn: typeof v.SOG === 'number' ? v.SOG : null,
     scheepscategorie: bepaalScheepscategorie(mmsi, typeof v.TYPE === 'number' ? v.TYPE : null),
     bestemming,

@@ -227,6 +227,8 @@ function vertaalFeature(feature) {
     lat,
     lon,
     koersGraden,
+    // 2026-09-03: losse koers-over-grond, zie toelichting in vaarradarAishub.js.
+    cogGraden: typeof p.cog === 'number' && p.cog < 360 ? p.cog : null,
     snelheidKn: typeof p.speed === 'number' ? p.speed : null,
     scheepscategorie: bepaalScheepscategorie(mmsi, scheepstypeRuw),
     bestemming,
