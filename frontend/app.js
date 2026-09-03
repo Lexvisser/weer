@@ -5389,6 +5389,69 @@ const SCHEEPSCATEGORIE_LABEL = {
   // beter helemaal weglaten dan een loze regel tonen.
 };
 
+// 2026-09-03, op verzoek van Lex ("ja bouw maar" -- fijnmaziger filter zoals
+// MarineTraffic's subgroepen, maar alleen met wat AIS zelf hard maakt, zie
+// bepaalScheepssubtype() in vaarradarLokaal.js). Per categorie de subtypes
+// die in het filterpaneel als eigen rij verschijnen; elk subtype dat NIET in
+// de lijst van zijn categorie staat (of null is) valt onder de pseudo-rij
+// 'rest', zodat elke categorie altijd een sluitende verdeling heeft en een
+// schip nooit "tussen de rijen door" onfilterbaar wordt. Categorieën zonder
+// vermelding hebben geen subrijen.
+const LADING_SUBTYPES = ['lading-a', 'lading-b', 'lading-c', 'lading-d'];
+const VAAR_SUBTYPES_PER_CATEGORIE = {
+  tanker: [...LADING_SUBTYPES, 'binnenvaart', 'rest'],
+  vracht: [...LADING_SUBTYPES, 'binnenvaart', 'rest'],
+  passagiersschip: ['binnenvaart', 'rest'],
+  sleepboot: ['sleepboot', 'slepend', 'slepend-groot', 'binnenvaart', 'rest'],
+  hulpdienst: ['loods', 'sar', 'haventender', 'antivervuiling', 'wetshandhaving', 'medisch', 'binnenvaart', 'rest'],
+  plezierjacht: ['zeil', 'plezier', 'rest'],
+  overig: ['bagger', 'duik', 'militair', 'wig', 'binnenvaart', 'rest'],
+};
+const SCHEEPSSUBTYPE_LABEL = {
+  'lading-a': 'Gev. lading cat. A',
+  'lading-b': 'Gev. lading cat. B',
+  'lading-c': 'Gev. lading cat. C',
+  'lading-d': 'Gev. lading cat. D',
+  binnenvaart: 'Binnenvaart',
+  rest: 'Overig / onbekend',
+  sleepboot: 'Sleepboot',
+  slepend: 'Slepend',
+  'slepend-groot': 'Slepend, groot',
+  loods: 'Loodsboot',
+  sar: 'Search & Rescue',
+  haventender: 'Haventender',
+  antivervuiling: 'Antivervuiling',
+  wetshandhaving: 'Politie/handhaving',
+  medisch: 'Medisch transport',
+  bagger: 'Baggerschip',
+  duik: 'Duikvaartuig',
+  militair: 'Militair',
+  wig: 'Grondeffect (WIG)',
+  zeil: 'Zeilschip',
+  plezier: 'Motorjacht',
+};
+
+// Subtype-sleutel zoals het filterpaneel 'm kent (zie hierboven): het echte
+// subtype als de categorie die als rij heeft, anders 'rest'; null als de
+// categorie helemaal geen subrijen heeft.
+function scheepsFilterSubtype(s) {
+  const subs = VAAR_SUBTYPES_PER_CATEGORIE[scheepsFilterCategorie(s)];
+  if (!subs) return null;
+  return subs.includes(s.scheepssubtype) ? s.scheepssubtype : 'rest';
+}
+
+// Typeregel voor de scheepspopup: zo specifiek als AIS het toelaat.
+// "Loodsboot" i.p.v. "Hulpvaartuig", "Tanker · gevaarlijke lading cat. A",
+// "Vrachtschip (binnenvaart)" -- en gewoon de categorie als er niets fijners is.
+function scheepsTypeLabel(s) {
+  const cat = SCHEEPSCATEGORIE_LABEL[s.scheepscategorie] ?? null;
+  const sub = s.scheepssubtype;
+  if (!sub || sub === 'rest') return cat ?? 'Scheepstype onbekend';
+  if (sub === 'binnenvaart') return `${cat ?? 'Schip'} (binnenvaart)`;
+  if (sub.startsWith('lading-')) return `${cat ?? 'Schip'} · gevaarlijke lading cat. ${sub.slice(-1).toUpperCase()}`;
+  return SCHEEPSSUBTYPE_LABEL[sub] ?? cat ?? 'Scheepstype onbekend';
+}
+
 function kleurVoorScheepscategorie(categorie) {
   return KLEUR_PER_SCHEEPSCATEGORIE[categorie] ?? KLEUR_SCHEEP_ONBEKEND;
 }
@@ -5410,9 +5473,25 @@ const VAAR_TYPE_FILTER_LABEL = { ...SCHEEPSCATEGORIE_LABEL, overig: 'Overig', on
 let vaarVerborgenCategorieen = new Set();
 try {
   const opgeslagen = localStorage.getItem(VAAR_TYPE_FILTER_KEY);
-  if (opgeslagen) vaarVerborgenCategorieen = new Set(opgeslagen.split(',').filter((c) => VAAR_TYPE_FILTER_CATEGORIEEN.includes(c)));
+  // 2026-09-03: naast hele categorieën ('tanker') ook subrijen ('tanker/lading-a').
+  if (opgeslagen) vaarVerborgenCategorieen = new Set(opgeslagen.split(',').filter(isGeldigeVaarFilterSleutel));
 } catch (_) {
   /* prive-modus, gewoon bij de standaard (niets verborgen) blijven */
+}
+
+function isGeldigeVaarFilterSleutel(sleutel) {
+  const [cat, sub] = String(sleutel).split('/');
+  if (!VAAR_TYPE_FILTER_CATEGORIEEN.includes(cat)) return false;
+  return sub == null || (VAAR_SUBTYPES_PER_CATEGORIE[cat] ?? []).includes(sub);
+}
+
+// Een schip is verborgen als z'n hele categorie uitgevinkt is, óf de subrij
+// waar het in valt (zie scheepsFilterSubtype()).
+function schipVerborgenDoorFilter(s) {
+  const cat = scheepsFilterCategorie(s);
+  if (vaarVerborgenCategorieen.has(cat)) return true;
+  const sub = scheepsFilterSubtype(s);
+  return sub != null && vaarVerborgenCategorieen.has(`${cat}/${sub}`);
 }
 
 function bewaarVaarTypeFilter() {
@@ -5447,25 +5526,44 @@ function bouwVaarTypeFilterPaneel() {
     bewaarVaarTypeFilter();
     VAAR_TYPE_FILTER_PANEEL_EL.querySelectorAll('input[data-categorie]').forEach((el) => {
       el.checked = !vaarVerborgenCategorieen.has(el.dataset.categorie);
+      el.indeterminate = false;
     });
+    VAAR_TYPE_FILTER_PANEEL_EL.querySelectorAll('input[data-subtype]').forEach((el) => { el.checked = allesVink.checked; });
     ververVaarradar();
   });
   allesRij.appendChild(allesVink);
   allesRij.appendChild(document.createTextNode('Alle scheepstypes'));
   VAAR_TYPE_FILTER_PANEEL_EL.appendChild(allesRij);
 
+  // 2026-09-03: per categorie optioneel een uitklapbare set subrijen (zie
+  // VAAR_SUBTYPES_PER_CATEGORIE hierboven). Het categorie-vinkje staat op
+  // "indeterminate" zodra een deel van de subrijen uit staat, net als bij
+  // MarineTraffic. De uitklapstand wordt niet bewaard (standaard dicht).
+  const werkAllesVinkBij = () => { allesVink.checked = vaarVerborgenCategorieen.size === 0; };
   VAAR_TYPE_FILTER_CATEGORIEEN.forEach((categorie) => {
+    const subs = VAAR_SUBTYPES_PER_CATEGORIE[categorie] ?? [];
     const rij = document.createElement('label');
     rij.className = 'vaar-type-filter-item';
     const vink = document.createElement('input');
     vink.type = 'checkbox';
     vink.dataset.categorie = categorie;
-    vink.checked = !vaarVerborgenCategorieen.has(categorie);
+    const subVinken = [];
+    const werkCategorieVinkBij = () => {
+      const heel = vaarVerborgenCategorieen.has(categorie);
+      const deels = subs.some((sub) => vaarVerborgenCategorieen.has(`${categorie}/${sub}`));
+      vink.checked = !heel;
+      vink.indeterminate = !heel && deels;
+      subVinken.forEach((sv) => { sv.checked = !heel && !vaarVerborgenCategorieen.has(`${categorie}/${sv.dataset.subtype}`); });
+    };
     vink.addEventListener('change', () => {
-      if (vink.checked) vaarVerborgenCategorieen.delete(categorie);
-      else vaarVerborgenCategorieen.add(categorie);
+      // aanvinken zet de hele categorie incl. alle subrijen weer aan;
+      // uitvinken verbergt de hele categorie in één sleutel.
+      vaarVerborgenCategorieen.delete(categorie);
+      subs.forEach((sub) => vaarVerborgenCategorieen.delete(`${categorie}/${sub}`));
+      if (!vink.checked) vaarVerborgenCategorieen.add(categorie);
       bewaarVaarTypeFilter();
-      allesVink.checked = vaarVerborgenCategorieen.size === 0;
+      werkCategorieVinkBij();
+      werkAllesVinkBij();
       ververVaarradar();
     });
     const kleurbol = document.createElement('span');
@@ -5473,8 +5571,63 @@ function bouwVaarTypeFilterPaneel() {
     kleurbol.style.background = kleurVoorScheepscategorie(categorie === 'onbekend' ? null : categorie);
     rij.appendChild(vink);
     rij.appendChild(kleurbol);
-    rij.appendChild(document.createTextNode(VAAR_TYPE_FILTER_LABEL[categorie] ?? categorie));
+    const labelTekst = document.createElement('span');
+    labelTekst.className = 'vaar-type-filter-tekst';
+    labelTekst.textContent = VAAR_TYPE_FILTER_LABEL[categorie] ?? categorie;
+    rij.appendChild(labelTekst);
     VAAR_TYPE_FILTER_PANEEL_EL.appendChild(rij);
+    if (!subs.length) { werkCategorieVinkBij(); return; }
+
+    const uitklap = document.createElement('button');
+    uitklap.type = 'button';
+    uitklap.className = 'vaar-type-filter-uitklap';
+    uitklap.textContent = '▾';
+    uitklap.title = 'Subtypes tonen/verbergen';
+    rij.appendChild(uitklap);
+    const subLijst = document.createElement('div');
+    subLijst.className = 'vaar-type-filter-sublijst';
+    subLijst.hidden = true;
+    uitklap.addEventListener('click', (ev) => {
+      ev.preventDefault(); // anders schakelt de omliggende <label> ook het vinkje
+      subLijst.hidden = !subLijst.hidden;
+      uitklap.classList.toggle('open', !subLijst.hidden);
+    });
+    subs.forEach((sub) => {
+      const subRij = document.createElement('label');
+      subRij.className = 'vaar-type-filter-item vaar-type-filter-subitem';
+      const subVink = document.createElement('input');
+      subVink.type = 'checkbox';
+      subVink.dataset.subtype = sub;
+      subVink.addEventListener('change', () => {
+        const sleutel = `${categorie}/${sub}`;
+        if (subVink.checked) {
+          // een subrij aanzetten terwijl de hele categorie uit stond: de
+          // categorie-sleutel omzetten naar "alle ANDERE subrijen uit".
+          if (vaarVerborgenCategorieen.has(categorie)) {
+            vaarVerborgenCategorieen.delete(categorie);
+            subs.forEach((andere) => { if (andere !== sub) vaarVerborgenCategorieen.add(`${categorie}/${andere}`); });
+          }
+          vaarVerborgenCategorieen.delete(sleutel);
+        } else {
+          vaarVerborgenCategorieen.add(sleutel);
+          // alle subrijen uit == hele categorie uit: samenvouwen tot één sleutel
+          if (subs.every((andere) => vaarVerborgenCategorieen.has(`${categorie}/${andere}`))) {
+            subs.forEach((andere) => vaarVerborgenCategorieen.delete(`${categorie}/${andere}`));
+            vaarVerborgenCategorieen.add(categorie);
+          }
+        }
+        bewaarVaarTypeFilter();
+        werkCategorieVinkBij();
+        werkAllesVinkBij();
+        ververVaarradar();
+      });
+      subVinken.push(subVink);
+      subRij.appendChild(subVink);
+      subRij.appendChild(document.createTextNode(SCHEEPSSUBTYPE_LABEL[sub] ?? sub));
+      subLijst.appendChild(subRij);
+    });
+    VAAR_TYPE_FILTER_PANEEL_EL.appendChild(subLijst);
+    werkCategorieVinkBij();
   });
 }
 
@@ -6073,7 +6226,7 @@ async function ververVaarradar() {
     const zichtbareSchepen = (data.schepen ?? [])
       .filter((s) => aishubZichtbaar || s.bron !== 'aishub')
       // 2026-09-02: scheepstype-filterpaneel, zie bouwVaarTypeFilterPaneel() hierboven.
-      .filter((s) => !vaarVerborgenCategorieen.has(scheepsFilterCategorie(s)));
+      .filter((s) => !schipVerborgenDoorFilter(s));
     zichtbareSchepen.forEach((s) => {
       gezien.add(s.mmsi);
       const kleur = kleurVoorSchip(s);
@@ -6106,7 +6259,7 @@ async function ververVaarradar() {
       // -- begin met de nationaliteit met een vlaggetje boven de foto"):
       // naam + vlag + scheepstype in een eigen kop BOVEN de foto (zie
       // scheepsPopupEl()), de rest van de regels eronder zoals voorheen.
-      const typeLabel = SCHEEPSCATEGORIE_LABEL[s.scheepscategorie] ?? 'Scheepstype onbekend';
+      const typeLabel = scheepsTypeLabel(s); // 2026-09-03: subtype-bewust, zie scheepsTypeLabel()
       // 2026-09-03: vlag groot in de linkerbovenhoek, naam + type als twee
       // regels rechts ervan (zie .popup-schip .popup-scheepskop-* in styles.css).
       const kopHtml = `<div class="popup-scheepskop-rij">${vlagHtml(landcodeVoorSchip(s))}<div class="popup-scheepskop-tekst"><div class="popup-scheepskop-naam"><span class="popup-scheepskleur" style="background:${kleur}"></span>${escapeHtml(naam)}${bronLabel}</div><div class="popup-scheepskop-type">${escapeHtml(typeLabel)}</div></div></div>`;

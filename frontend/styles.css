@@ -553,6 +553,15 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .vaar-type-filter-item input { margin:0; }
 .vaar-type-filter-kleur { width:9px; height:9px; border-radius:50%; flex:none; }
 .vaar-type-filter-alles { border-bottom:1px solid rgba(255,255,255,0.12); margin-bottom:2px; padding-bottom:6px; font-weight:bold; }
+/* 2026-09-03: uitklapbare subrijen per categorie (zie VAAR_SUBTYPES_PER_CATEGORIE
+   in app.js) -- pijltje rechts in de categorierij, subrijen ingesprongen en
+   iets gedempt, zoals MarineTraffic's "Vessel filters". */
+.vaar-type-filter-tekst { flex:1; min-width:0; }
+.vaar-type-filter-uitklap { flex:none; width:18px; height:18px; padding:0; border:0; border-radius:4px; background:transparent; color:rgba(244,246,251,0.6); font-size:11px; cursor:pointer; transform:rotate(-90deg); transition:transform 0.15s ease; }
+.vaar-type-filter-uitklap:hover { background:rgba(255,255,255,0.1); color:#f4f6fb; }
+.vaar-type-filter-uitklap.open { transform:rotate(0deg); }
+.vaar-type-filter-sublijst { margin:0 0 2px 14px; padding-left:6px; border-left:1px solid rgba(255,255,255,0.12); }
+.vaar-type-filter-subitem { padding:3px 2px; color:rgba(244,246,251,0.8); font-size:10.5px; }
 
 /* 2026-09-02, op verzoek van Lex ("een verticaal menu voor AIS aan de
    rechterkant. Uitklappen =aan en daaronder alle opties") -- vervangt de

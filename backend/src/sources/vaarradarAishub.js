@@ -41,7 +41,7 @@
 // M.1371-scheepstypecode als AIS-catcher's shiptype-veld — vandaar hergebruik
 // van categoriseerScheepstype() uit vaarradarLokaal.js i.p.v. een eigen kopie.
 
-import { bepaalScheepscategorie, normaliseerEta, vulOntbrekendeVeldenAan } from './vaarradarLokaal.js';
+import { bepaalScheepscategorie, bepaalScheepssubtype, normaliseerEta, vulOntbrekendeVeldenAan } from './vaarradarLokaal.js';
 import { afstandKm } from '../normalize.js';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -159,6 +159,7 @@ function vertaalVaartuig(v) {
     cogGraden: typeof v.COG === 'number' && v.COG < 360 ? v.COG : null,
     snelheidKn: typeof v.SOG === 'number' ? v.SOG : null,
     scheepscategorie: bepaalScheepscategorie(mmsi, typeof v.TYPE === 'number' ? v.TYPE : null),
+    scheepssubtype: bepaalScheepssubtype(typeof v.TYPE === 'number' ? v.TYPE : null),
     bestemming,
     diepgangM,
     eta,

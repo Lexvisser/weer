@@ -68,12 +68,46 @@ export function categoriseerScheepstype(typeCode) {
   if (typeCode === 30) return 'vissersboot';
   if (typeCode === 31 || typeCode === 32 || typeCode === 52) return 'sleepboot';
   if (typeCode === 36 || typeCode === 37) return 'plezierjacht'; // zeilboot + motorjacht op één hoop, zelfde "leuke" kleur
-  if (typeCode === 50 || typeCode === 51 || typeCode === 55) return 'hulpdienst'; // loods/SAR/wetshandhaving
+  // 2026-09-03: 53 (haventender), 54 (antivervuiling) en 58 (medisch) erbij --
+  // vielen eerst in 'overig', horen naar hun aard bij de hulpdiensten.
+  if ([50, 51, 53, 54, 55, 58].includes(typeCode)) return 'hulpdienst'; // loods/SAR/tender/antivervuiling/wetshandhaving/medisch
   if (typeCode >= 40 && typeCode <= 49) return 'hogesnelheid';
   if (typeCode >= 60 && typeCode <= 69) return 'passagiersschip';
   if (typeCode >= 70 && typeCode <= 79) return 'vracht';
   if (typeCode >= 80 && typeCode <= 89) return 'tanker';
   return 'overig'; // bekend type, maar geen van de bovenstaande (bagger/duik/militair/WIG/90-99 etc.)
+}
+
+// 2026-09-03, op verzoek van Lex ("hoe komen zij aan al deze info... ja bouw
+// maar"): fijnmaziger SUBTYPE naast de grove categorie hierboven, uitsluitend
+// met wat de AIS-typecode zelf hard maakt (ITU-R M.1371, tabel 53). Wat
+// MarineTraffic daarbovenop toont (Oil/Chemical, Crew Boat, Cable Layer,
+// Icebreaker...) komt uit hun eigen scheepsdatabase en zit NIET in AIS --
+// dat wordt hier dus bewust niet "geraden". Regels:
+//   - 2e cijfer bij 4x/6x/7x/8x: 1-4 = gevaarlijke lading categorie A-D
+//     (X=1 A, 2 B, 3 C, 4 D), 0/5-9 = geen extra info.
+//   - 31 slepend, 32 slepend groot (sleep >200m of >25m breed), 52 sleepboot.
+//   - 50 loods, 51 SAR, 53 haventender, 54 antivervuiling, 55 wetshandhaving,
+//     58 medisch transport; 33 bagger, 34 duik, 35 militair, 36 zeil, 37
+//     plezier; 20-29 WIG (grondeffect-vaartuig).
+//   - ERI-codes (>=1000) = Inland AIS -> subtype 'binnenvaart' (zee vs.
+//     binnenvaart is op zichzelf al nuttig om te filteren).
+// null = geen fijner onderscheid bekend; de frontend toont dan de categorie.
+// Sleutels zijn stabiel (localStorage-filter in app.js), niet hernoemen.
+const LADINGCATEGORIE = { 1: 'lading-a', 2: 'lading-b', 3: 'lading-c', 4: 'lading-d' };
+const SUBTYPE_PER_CODE = {
+  31: 'slepend', 32: 'slepend-groot', 52: 'sleepboot',
+  50: 'loods', 51: 'sar', 53: 'haventender', 54: 'antivervuiling', 55: 'wetshandhaving', 58: 'medisch',
+  33: 'bagger', 34: 'duik', 35: 'militair', 36: 'zeil', 37: 'plezier',
+};
+export function bepaalScheepssubtype(typeCode) {
+  if (typeof typeCode !== 'number' || typeCode <= 0) return null;
+  if (typeCode >= 1000) return typeCode === 8000 ? null : 'binnenvaart';
+  if (SUBTYPE_PER_CODE[typeCode]) return SUBTYPE_PER_CODE[typeCode];
+  if (typeCode >= 20 && typeCode <= 29) return 'wig';
+  const tiental = Math.floor(typeCode / 10);
+  if ([4, 6, 7, 8].includes(tiental)) return LADINGCATEGORIE[typeCode % 10] ?? null;
+  return null;
 }
 
 // 2026-09-02, op verzoek van Lex (filterpaneel per scheepstype, net als
@@ -167,6 +201,7 @@ export function vulOntbrekendeVeldenAan(nieuw, vorige) {
     ...nieuw,
     naam: nieuw.naam ?? vorige.naam,
     scheepscategorie: nieuw.scheepscategorie ?? vorige.scheepscategorie,
+    scheepssubtype: nieuw.scheepssubtype ?? vorige.scheepssubtype,
     bestemming: nieuw.bestemming ?? vorige.bestemming,
     diepgangM: nieuw.diepgangM ?? vorige.diepgangM,
     eta: nieuw.eta ?? vorige.eta,
@@ -231,6 +266,7 @@ function vertaalFeature(feature) {
     cogGraden: typeof p.cog === 'number' && p.cog < 360 ? p.cog : null,
     snelheidKn: typeof p.speed === 'number' ? p.speed : null,
     scheepscategorie: bepaalScheepscategorie(mmsi, scheepstypeRuw),
+    scheepssubtype: bepaalScheepssubtype(scheepstypeRuw),
     bestemming,
     diepgangM,
     eta,
