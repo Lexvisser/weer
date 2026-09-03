@@ -6101,7 +6101,7 @@ async function haalEnToonScheepsfoto(marker, mmsi) {
     if (!data.url || !marker.popupFotoEl) return;
     marker.popupFotoEl.innerHTML = `<img class="popup-scheepsfoto" src="${escapeHtml(data.url)}" alt="" loading="lazy">`;
     marker.popupFotoUrl = data.url;
-    if (marker.isPopupOpen()) marker.getPopup()?.update();
+    if (marker.isPopupOpen() && schipSheetMarker !== marker) marker.getPopup()?.update(); // sheet: element leeft al live, update() zou 'm terugtrekken
   } catch (err) {
     console.error('scheepsfoto ophalen mislukt', err);
   }
@@ -6238,6 +6238,43 @@ function scheepsPopupEl(marker, mmsi, kopHtml, basisHtml) {
   return marker.popupWrapperEl;
 }
 
+// 2026-09-03, op verzoek van Lex ("op de iPhone moet dat anders: laat het
+// kaartje het hele scherm innemen met een sluitknop"): op smalle schermen
+// wordt het scheepskaartje niet als kleine Leaflet-popup getoond maar
+// schermvullend in #schipSheet (index.html). Het echte popup-element
+// (marker.popupWrapperEl) wordt daarheen VERPLAATST, niet gekopieerd: zo
+// blijven de 3s-tekstverversing (scheepsPopupEl schrijft in dezelfde
+// kind-elementen) en de foto-lading gewoon werken. Sluiten zet het element
+// terug en sluit ook de Leaflet-popup; Leaflet hangt het element bij een
+// volgende open zelf weer in z'n eigen container.
+const SCHIP_SHEET_EL = document.getElementById('schipSheet');
+const SCHIP_SHEET_INHOUD_EL = document.getElementById('schipSheetInhoud');
+const SCHIP_SHEET_SLUITEN_EL = document.getElementById('schipSheetSluiten');
+let schipSheetMarker = null;
+
+function isSmalScherm() {
+  return window.matchMedia('(max-width: 640px)').matches;
+}
+
+function toonSchipSheet(marker) {
+  if (!SCHIP_SHEET_EL || !marker.popupWrapperEl) return;
+  if (schipSheetMarker && schipSheetMarker !== marker) sluitSchipSheet(true);
+  schipSheetMarker = marker;
+  SCHIP_SHEET_INHOUD_EL.appendChild(marker.popupWrapperEl);
+  SCHIP_SHEET_INHOUD_EL.scrollTop = 0;
+  SCHIP_SHEET_EL.classList.remove('verborgen');
+}
+
+function sluitSchipSheet(ookPopupSluiten) {
+  const marker = schipSheetMarker;
+  schipSheetMarker = null;
+  SCHIP_SHEET_EL?.classList.add('verborgen');
+  if (marker?.popupWrapperEl?.parentNode === SCHIP_SHEET_INHOUD_EL) SCHIP_SHEET_INHOUD_EL.removeChild(marker.popupWrapperEl);
+  if (ookPopupSluiten && marker?.isPopupOpen()) marker.closePopup();
+}
+
+SCHIP_SHEET_SLUITEN_EL?.addEventListener('click', () => sluitSchipSheet(true));
+
 async function ververVaarradar() {
   if (!vaarradarActief || !kaart) return;
   if (kaart.getZoom() < VAAR_MIN_ZOOM_VOOR_SCHEPEN) {
@@ -6333,7 +6370,10 @@ async function ververVaarradar() {
           // hierboven bij haalEnToonScheepsfoto) -- geen setContent() met een
           // hele nieuwe string meer, dus de foto blijft met rust.
           scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml);
-          if (marker.isPopupOpen()) marker.getPopup()?.update();
+          // Leaflet's popup.update() hangt het inhoud-element terug in de
+          // eigen popup-container -- overslaan zolang de telefoon-sheet 'm
+          // heeft (zie toonSchipSheet()), daar is het element toch al live.
+          if (marker.isPopupOpen() && schipSheetMarker !== marker) marker.getPopup()?.update();
         }
         return;
       }
@@ -6357,6 +6397,11 @@ async function ververVaarradar() {
       // officiele API, dus zuinig zijn op het aantal opzoekingen).
       // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.
       marker.on('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
+      // 2026-09-03: op een smal scherm (telefoon) meteen schermvullend, zie
+      // toonSchipSheet() -- de Leaflet-popup blijft daaronder open (zo blijft
+      // de verversing lopen en blijft het bootje staan bij een datagat).
+      marker.on('popupopen', () => { if (isSmalScherm()) toonSchipSheet(marker); });
+      marker.on('popupclose', () => { if (schipSheetMarker === marker) sluitSchipSheet(false); });
       vaarLaag.addLayer(marker);
       vaarMarkers.set(s.mmsi, marker);
       zetVaarRingKleur(marker, kleur);

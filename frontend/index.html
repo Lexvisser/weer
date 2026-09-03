@@ -458,6 +458,16 @@
      woord) regelt de tekstgrootte nu voor de hele popup-inhoud ineens.
      Sluiten verbergt alleen deze overlay — Leaflet's eigen popup daaronder
      blijft gewoon open. -->
+<!-- 2026-09-03, op verzoek van Lex ("op de iPhone moet dat anders: laat het
+     kaartje het hele scherm innemen met een sluitknop"): schermvullend wit
+     scheepskaartje voor smalle schermen. De inhoud is het ECHTE popup-element
+     (marker.popupWrapperEl, hierheen verplaatst i.p.v. gekopieerd), zodat
+     de 3s-verversing en de foto-lading gewoon doorlopen -- zie
+     toonSchipSheet()/sluitSchipSheet() in app.js. -->
+<div class="schip-sheet popup-schip-wit verborgen" id="schipSheet">
+  <button id="schipSheetSluiten" class="schip-sheet-sluiten" aria-label="Sluiten">✕</button>
+  <div class="leaflet-popup-content schip-sheet-inhoud" id="schipSheetInhoud"></div>
+</div>
 <div class="label-popup-overlay verborgen" id="labelPopupOverlay">
   <div class="label-popup-balk">
     <div class="label-popup-tekstgrootte">
