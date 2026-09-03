@@ -5887,12 +5887,13 @@ function vaarIconSchaal(afmetingen) {
 function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1) {
   const dekking = bron === 'aishub' ? AISHUB_OPACITEIT : 1;
   if (stil) {
-    const d = Math.round(12 * schaal);
+    // 2026-09-03, Lex: stipjes (stilliggend) NIET meeschalen -- vaste 12px
+    // zoals voorheen; alleen de pijltjes volgen de scheepslengte.
     return L.divIcon({
       className: '',
-      html: `<div class="vaar-stip" style="background:${kleur};opacity:${dekking};width:${d}px;height:${d}px"></div>`,
-      iconSize: [d, d],
-      iconAnchor: [d / 2, d / 2],
+      html: `<div class="vaar-stip" style="background:${kleur};opacity:${dekking}"></div>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
     });
   }
   const px = Math.round(16 * schaal);
