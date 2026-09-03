@@ -100,7 +100,21 @@ const SUBTYPE_PER_CODE = {
   50: 'loods', 51: 'sar', 53: 'haventender', 54: 'antivervuiling', 55: 'wetshandhaving', 58: 'medisch',
   33: 'bagger', 34: 'duik', 35: 'militair', 36: 'zeil', 37: 'plezier',
 };
-export function bepaalScheepssubtype(typeCode) {
+// 2026-09-03, op melding van Lex (MarineTraffic toonde MMSI 111205510 als
+// "SAR Aircraft", wij als "schip, scheepstype onbekend"): SAR-vliegtuigen
+// (helikopters/kustwachtvliegtuigen) zenden AIS-berichttype 9 en hebben
+// per ITU-R M.585 een MMSI van de vorm 111MIDxxx (111000000-111999999).
+// Ze sturen geen shiptype-veld, dus dit gaat -- net als AtoN hierboven --
+// op MMSI. Categorie 'hulpdienst', subtype 'sar-vliegtuig'.
+const SAR_VLIEGTUIG_MMSI_MIN = 111000000;
+const SAR_VLIEGTUIG_MMSI_MAX = 111999999;
+export function isSarVliegtuigMmsi(mmsi) {
+  const m = Number(mmsi);
+  return Number.isFinite(m) && m >= SAR_VLIEGTUIG_MMSI_MIN && m <= SAR_VLIEGTUIG_MMSI_MAX;
+}
+
+export function bepaalScheepssubtype(typeCode, mmsi = null) {
+  if (isSarVliegtuigMmsi(mmsi)) return 'sar-vliegtuig';
   if (typeof typeCode !== 'number' || typeCode <= 0) return null;
   if (typeCode >= 1000) return typeCode === 8000 ? null : 'binnenvaart';
   if (SUBTYPE_PER_CODE[typeCode]) return SUBTYPE_PER_CODE[typeCode];
@@ -127,6 +141,7 @@ const ATON_MMSI_MAX = 999999999;
 export function bepaalScheepscategorie(mmsi, typeCode) {
   const m = Number(mmsi);
   if (Number.isFinite(m) && m >= ATON_MMSI_MIN && m <= ATON_MMSI_MAX) return 'navigatiehulp';
+  if (isSarVliegtuigMmsi(m)) return 'hulpdienst';
   return categoriseerScheepstype(typeCode);
 }
 
@@ -283,7 +298,7 @@ function vertaalFeature(feature) {
     afmetingen: afmetingenVan(p.to_bow, p.to_stern, p.to_port, p.to_starboard),
     snelheidKn: typeof p.speed === 'number' ? p.speed : null,
     scheepscategorie: bepaalScheepscategorie(mmsi, scheepstypeRuw),
-    scheepssubtype: bepaalScheepssubtype(scheepstypeRuw),
+    scheepssubtype: bepaalScheepssubtype(scheepstypeRuw, mmsi),
     bestemming,
     diepgangM,
     eta,

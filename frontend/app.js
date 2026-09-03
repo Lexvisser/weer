@@ -5407,7 +5407,7 @@ const VAAR_SUBTYPES_PER_CATEGORIE = {
   vracht: [...LADING_SUBTYPES, 'binnenvaart', 'rest'],
   passagiersschip: ['binnenvaart', 'rest'],
   sleepboot: ['sleepboot', 'slepend', 'slepend-groot', 'binnenvaart', 'rest'],
-  hulpdienst: ['loods', 'sar', 'haventender', 'antivervuiling', 'wetshandhaving', 'medisch', 'binnenvaart', 'rest'],
+  hulpdienst: ['loods', 'sar', 'sar-vliegtuig', 'haventender', 'antivervuiling', 'wetshandhaving', 'medisch', 'binnenvaart', 'rest'],
   plezierjacht: ['zeil', 'plezier', 'rest'],
   overig: ['bagger', 'duik', 'militair', 'wig', 'binnenvaart', 'rest'],
 };
@@ -5423,6 +5423,7 @@ const SCHEEPSSUBTYPE_LABEL = {
   'slepend-groot': 'Slepend, groot',
   loods: 'Loodsboot',
   sar: 'Search & Rescue',
+  'sar-vliegtuig': 'SAR-vliegtuig', // 2026-09-03: op MMSI 111MIDxxx (berichttype 9), zie isSarVliegtuigMmsi() backend
   haventender: 'Haventender',
   antivervuiling: 'Antivervuiling',
   wetshandhaving: 'Handhaving / overheid', // AIS 55 "law enforcement": ook Rijkswaterstaat, douane e.d.

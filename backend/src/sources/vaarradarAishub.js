@@ -161,7 +161,7 @@ function vertaalVaartuig(v) {
     afmetingen: afmetingenVan(v.A, v.B, v.C, v.D),
     snelheidKn: typeof v.SOG === 'number' ? v.SOG : null,
     scheepscategorie: bepaalScheepscategorie(mmsi, typeof v.TYPE === 'number' ? v.TYPE : null),
-    scheepssubtype: bepaalScheepssubtype(typeof v.TYPE === 'number' ? v.TYPE : null),
+    scheepssubtype: bepaalScheepssubtype(typeof v.TYPE === 'number' ? v.TYPE : null, mmsi),
     bestemming,
     diepgangM,
     eta,
