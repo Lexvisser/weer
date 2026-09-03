@@ -225,7 +225,7 @@ function vertaalFeature(feature) {
   // "onbeschikbaar" behandeld, mocht een andere/oudere AIS-catcher-versie
   // die ooit toch rauw doorgeven. Val dan terug op cog (course over ground).
   const koersGraden =
-    typeof p.heading === 'number' && p.heading < 511 ? p.heading : typeof p.cog === 'number' ? p.cog : null;
+    typeof p.heading === 'number' && p.heading < 511 ? p.heading : typeof p.cog === 'number' && p.cog < 360 ? p.cog : null; // 2026-09-03: 360 = "COG niet beschikbaar" (ITU-R M.1371)
 
   const tijdMs = typeof p.last_signal === 'number' ? p.last_signal * 1000 : Date.now();
 

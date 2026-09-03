@@ -5421,7 +5421,7 @@ const SCHEEPSSUBTYPE_LABEL = {
   sar: 'Search & Rescue',
   haventender: 'Haventender',
   antivervuiling: 'Antivervuiling',
-  wetshandhaving: 'Politie/handhaving',
+  wetshandhaving: 'Handhaving / overheid', // AIS 55 "law enforcement": ook Rijkswaterstaat, douane e.d.
   medisch: 'Medisch transport',
   bagger: 'Baggerschip',
   duik: 'Duikvaartuig',
@@ -6110,17 +6110,20 @@ async function haalEnToonScheepsfoto(marker, mmsi) {
 // Bestemming: AIS-schepen zenden vaak een UN/LOCODE uit ("NLRTM", "NL RTM",
 // "NL IJM") -- die splitsen we in landvlag + code zoals MarineTraffic doet;
 // vrije tekst ("ROTTERDAM 7E PETROH") blijft gewoon staan.
-function havenHtml(tekst, leegLabel, havenNaam) {
+// 2026-09-03-bug (Lex' screenshot RWS 81): bestemming "EEFDE" (sluis Eefde)
+// werd als Estland + FDE getoond. Vlag + code nu ALLEEN als de backend de
+// code daadwerkelijk in de UN/LOCODE-haventabel vond (s.bestemmingHaven, zie
+// reisvoortgang.js) -- anders gewoon de tekst zoals het schip 'm uitzendt.
+function havenHtml(tekst, leegLabel, haven) {
   const t = String(tekst ?? '').trim().toUpperCase();
   if (!t) return `<span class="popup-haven popup-haven-leeg">${leegLabel}</span>`;
-  const m = t.match(/^([A-Z]{2})\s?([A-Z2-9]{3})$/);
-  if (m && MMSI_MID_LAND_CODES.has(m[1])) {
-    const naamHtml = havenNaam ? `<span class="popup-haven-naam">${escapeHtml(havenNaam)}</span>` : '';
+  const m = haven?.code ? String(haven.code).match(/^([A-Z]{2}) ([A-Z2-9]{3})$/) : null;
+  if (m) {
+    const naamHtml = haven.naam ? `<span class="popup-haven-naam">${escapeHtml(haven.naam)}</span>` : '';
     return `<span class="popup-haven">${vlagHtml(m[1])}<span class="popup-haven-code">${escapeHtml(m[2])}${naamHtml}</span></span>`;
   }
   return `<span class="popup-haven popup-haven-tekst" title="${escapeHtml(t)}">${escapeHtml(t)}</span>`;
 }
-const MMSI_MID_LAND_CODES = new Set(Object.values(MMSI_MID_LAND));
 
 // 2026-09-03, op verzoek van Lex ("MarineTraffic gebruikt de pijl om te tonen
 // hoeveel van de reis is afgelegd"): de stip schuift mee met s.reisVoortgang
@@ -6162,7 +6165,7 @@ function scheepsKaartHtml(s, statusTekst) {
     <div class="popup-schip-reis">
       <div class="popup-schip-havens">
         ${havenHtml(null, 'Vertrek —')}
-        ${havenHtml(s.bestemming, 'Bestemming —', s.bestemmingHaven?.naam)}
+        ${havenHtml(s.bestemming, 'Bestemming —', s.bestemmingHaven)}
       </div>
       <div class="popup-schip-reistijden">
         <span><b>Vertrek:</b> —</span>

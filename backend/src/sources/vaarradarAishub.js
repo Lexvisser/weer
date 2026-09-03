@@ -122,7 +122,7 @@ function vertaalVaartuig(v) {
   if (mmsi == null || typeof lat !== 'number' || typeof lon !== 'number') return null;
 
   const koersGraden =
-    typeof v.HEADING === 'number' && v.HEADING < 511 ? v.HEADING : typeof v.COG === 'number' ? v.COG : null;
+    typeof v.HEADING === 'number' && v.HEADING < 511 ? v.HEADING : typeof v.COG === 'number' && v.COG < 360 ? v.COG : null; // 2026-09-03: 360 = "COG niet beschikbaar" (ITU-R M.1371)
 
   // TIME komt als "YYYY-MM-DD HH:MM:SS GMT" -- Node/V8 parsen dat formaat
   // prima (niet-standaard maar breed ondersteunde uitbreiding), maar val bij
