@@ -361,7 +361,11 @@ body {
    MarineTraffic (land ~rgb 48,58,70). Gemeten op een echte tegel via
    canvas-sampling; dit filter geeft land ~rgb 48,56,72. Terugdraaien =
    'filter: none' hier. */
-#map.zee-modus-actief.vaar-modus-actief .leaflet-tile-pane .leaflet-tile { filter: sepia(0.5) hue-rotate(175deg) saturate(2); }
+/* 2026-09-03, Lex: "de zee wat zwarter" -- contrast trekt de donkerste vlakken
+   (water, Stadia rgb 34) verder omlaag dan het land (rgb 51): gemeten water
+   ~rgb 12,21,31 en land ~rgb 34,47,61 (MarineTraffic: water ~28,33,42, land
+   ~48,58,70). Zonder contrast: water 32,38,47 / land 48,58,70. */
+#map.zee-modus-actief.vaar-modus-actief .leaflet-tile-pane .leaflet-tile { filter: sepia(0.5) hue-rotate(175deg) saturate(2) contrast(1.2) brightness(1.08); }
 
 /* 2026-08-27: gale-windvaan per zeegebied (zie verversWindvanen() in
    app.js) — rode wimpel (het internationale stormsein) met het Beaufort-
