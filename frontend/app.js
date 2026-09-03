@@ -5791,6 +5791,11 @@ function schipLigtStil(s) {
   return typeof s.snelheidKn === 'number' && s.snelheidKn <= 0.5;
 }
 function statusTekstVoorSchip(s) {
+  // 2026-09-03: een SAR-vliegtuig/helikopter (berichttype 9, zie
+  // isSarVliegtuigMmsi() backend) heeft geen navigatiestatus -- het veld
+  // bevat daar iets anders. "Varend, motor aan" slaat dan nergens op;
+  // MarineTraffic toont hier ook gewoon "SAR Aircraft".
+  if (s.scheepssubtype === 'sar-vliegtuig') return 'SAR-vliegtuig / helikopter';
   const tekst = typeof s.status === 'number' ? NAVSTATUS_LABEL[s.status] ?? null : null;
   if (tekst && statusTegenstrijdig(s)) return `${tekst} (vaart ${Math.round(s.snelheidKn * 10) / 10} kn)`;
   return tekst;
@@ -6518,7 +6523,7 @@ async function ververVaarradar() {
       // altijd als stip tekenen, ongeacht status/snelheid (die velden zijn bij
       // dit soort AIS-zenders vaak leeg/betekenisloos).
       const stil = schipLigtStil(s) || s.scheepscategorie === 'navigatiehulp';
-      const naam = s.naam || `schip (MMSI ${s.mmsi})`;
+      const naam = s.naam || (s.scheepssubtype === 'sar-vliegtuig' ? `SAR ${s.mmsi}` : `schip (MMSI ${s.mmsi})`); // 2026-09-03: geen 'schip' voor een helikopter
       const statusTekst = statusTekstVoorSchip(s); // 2026-09-03: met snelheid erbij als de status tegenspreekt
       // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
       // 'ie bekend is, ongeacht de actieve kleurmodus -- nuttige info op
