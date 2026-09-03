@@ -9091,7 +9091,7 @@ const ALARM_RIJEN = [
   { id: 'weerwaarschuwing', label: 'Weeralarm (oranje/rood)', scherm: true, telefoon: true },
   // Losse toggle i.p.v. gewoon "navtex" (dat zou ELK navtex-bericht laten
   // alarmeren, veel te druk); dit dekt alleen type-D berichten. Zie magAlarmeren().
-  { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)', scherm: true, telefoon: true }, // telefoon sinds 2026-09-03, zie backend/src/navtexNoodAlarm.js
+  { id: 'navtex-nood', label: 'NAVTEX noodbericht', scherm: true, telefoon: true }, // 2026-09-03, Lex: korter, past op één regel // telefoon sinds 2026-09-03, zie backend/src/navtexNoodAlarm.js
   { id: 'stormvloedkering-waarschuwing', label: 'Kans op sluiting stormvloedkering', scherm: false, telefoon: true },
   { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)', scherm: true, telefoon: true },
   { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)', scherm: true, telefoon: true },
@@ -9158,7 +9158,7 @@ function renderAlarmInstellingen() {
 
   const kop = document.createElement('div');
   kop.className = 'alarm-rij alarm-rij-kop';
-  kop.innerHTML = '<span>Categorie</span><span>Scherm</span><span>Push</span><span>Mail</span>';
+  kop.innerHTML = '<span>Categorie</span><span>Scherm</span><span>Mail</span><span>Push</span>'; // 2026-09-03, Lex: Push uiterst rechts
   ALARM_INSTELLINGEN_LIJST_EL.appendChild(kop);
 
   if (telefoonSchakelaars === null) haalTelefoonSchakelaars(); // eerste keer: serverstand ophalen, daarna opnieuw renderen
@@ -9211,8 +9211,8 @@ function renderAlarmInstellingen() {
         renderAlarmInstellingen();
       });
     };
-    rij.appendChild(serverKnop(def.id));
     rij.appendChild(serverKnop(`${def.id}/mail`));
+    rij.appendChild(serverKnop(def.id));
     ALARM_INSTELLINGEN_LIJST_EL.appendChild(rij);
   });
 }
