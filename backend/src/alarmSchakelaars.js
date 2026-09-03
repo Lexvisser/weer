@@ -56,12 +56,24 @@ function bewaar() {
   }
 }
 
+// 2026-09-03, Lex: "mail apart is wel beter te onthouden" -- per categorie
+// twee losse schakelaars: '<cat>' = browsermelding (webpush; Pushover lift
+// mee maar staat via .env uit), '<cat>/mail' = mail. Ontbrekend = AAN.
+// telefoonAlarmAan() = "minstens één kanaal aan" -- de bronnen gebruiken 'm
+// als buitenste guard en kiezen daarbinnen per kanaal met pushAlarmAan()/
+// mailAlarmAan().
+export function pushAlarmAan(sleutel) {
+  return schakelaars[sleutel] !== false;
+}
+export function mailAlarmAan(sleutel) {
+  return schakelaars[`${sleutel}/mail`] !== false;
+}
 export function telefoonAlarmAan(sleutel) {
-  return schakelaars[sleutel] !== false; // ontbrekend = AAN
+  return pushAlarmAan(sleutel) || mailAlarmAan(sleutel);
 }
 
 export function zetTelefoonAlarm(sleutel, aan) {
-  if (!GELDIGE_SLEUTELS.has(sleutel)) return false;
+  if (!GELDIGE_SLEUTELS.has(String(sleutel).replace(/\/mail$/, ''))) return false;
   schakelaars = { ...schakelaars, [sleutel]: Boolean(aan) };
   bewaar();
   return true;

@@ -11,7 +11,7 @@ import { verversMedia } from '../mediaHistorie.js';
 import { stuurAlarm, kaartTekst } from './pushover.js';
 import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
-import { telefoonAlarmAan } from '../alarmSchakelaars.js';
+import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js';
 
 const FEED_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH';
 
@@ -155,9 +155,9 @@ export async function fetchGdacs() {
       if (type === 'TS' && telefoonAlarmAan('tsunami')) {
         const alarmTitel = '🌊 Tsunami (GDACS)';
         const bericht = kaartTekst(signaal);
-        stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: p.alertlevel === 'Red' ? 2 : 1 });
-        stuurMailAlarm({ id, titel: alarmTitel, bericht, lat: signaal.lat, lon: signaal.lon });
-        stuurWebPushAlarm({ id, titel: alarmTitel, bericht, url: `/?signaal=${encodeURIComponent(id)}`, lat: signaal.lat, lon: signaal.lon });
+        if (pushAlarmAan('tsunami')) stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: p.alertlevel === 'Red' ? 2 : 1 });
+        if (mailAlarmAan('tsunami')) stuurMailAlarm({ id, titel: alarmTitel, bericht, lat: signaal.lat, lon: signaal.lon });
+        if (pushAlarmAan('tsunami')) stuurWebPushAlarm({ id, titel: alarmTitel, bericht, url: `/?signaal=${encodeURIComponent(id)}`, lat: signaal.lat, lon: signaal.lon });
       }
       return signaal;
     })

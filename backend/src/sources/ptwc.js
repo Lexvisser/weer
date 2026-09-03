@@ -31,7 +31,7 @@ import { makeSignal } from '../normalize.js';
 import { stuurAlarm, kaartTekst } from './pushover.js';
 import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
-import { telefoonAlarmAan } from '../alarmSchakelaars.js';
+import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js';
 
 const FEED_URL = 'https://www.tsunami.gov/events/xml/PHEBAtom.xml';
 
@@ -136,9 +136,9 @@ export async function fetchPtwc() {
       if (telefoonAlarmAan(klasse.categorie)) { // 2026-09-03: per categorie (tsunami / tsunami-watch)
         const alarmTitel = `🌊 ${klasse.label}`;
         const bericht = kaartTekst(signaal);
-        stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: klasse.ernst === 'kritiek' ? 2 : 1 });
-        stuurMailAlarm({ id, titel: alarmTitel, bericht, lat: signaal.lat, lon: signaal.lon });
-        stuurWebPushAlarm({ id, titel: alarmTitel, bericht, url: `/?signaal=${encodeURIComponent(id)}`, lat: signaal.lat, lon: signaal.lon });
+        if (pushAlarmAan(klasse.categorie)) stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: klasse.ernst === 'kritiek' ? 2 : 1 });
+        if (mailAlarmAan(klasse.categorie)) stuurMailAlarm({ id, titel: alarmTitel, bericht, lat: signaal.lat, lon: signaal.lon });
+        if (pushAlarmAan(klasse.categorie)) stuurWebPushAlarm({ id, titel: alarmTitel, bericht, url: `/?signaal=${encodeURIComponent(id)}`, lat: signaal.lat, lon: signaal.lon });
       }
     } catch (err) {
       // Eén kapotte entry mag de rest nooit meeslepen — zelfde patroon als

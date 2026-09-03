@@ -23,7 +23,7 @@ import { makeSignal, afstandKm } from '../normalize.js';
 import { stuurAlarm, kaartTekst } from './pushover.js';
 import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
-import { telefoonAlarmAan } from '../alarmSchakelaars.js';
+import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js';
 
 const NOOD_EMERGENCY_KM = 50;
 const VERGEET_NA_MS = 60 * 60 * 1000; // zender een uur niet meer gezien -> signaal weg
@@ -88,9 +88,9 @@ export function fetchAisNood({ posities, homeLat, homeLon }) {
     if (telefoonAlarmAan('ais-nood')) {
       const alarmTitel = `🆘 AIS-noodsignaal: ${naam}`;
       const bericht = kaartTekst(signaal);
-      stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: afstand <= NOOD_EMERGENCY_KM ? 2 : 1 });
-      stuurMailAlarm({ id, titel: alarmTitel, bericht, lat: signaal.lat, lon: signaal.lon });
-      stuurWebPushAlarm({ id, titel: alarmTitel, bericht, url: `/?signaal=${encodeURIComponent(id)}`, lat: signaal.lat, lon: signaal.lon });
+      if (pushAlarmAan('ais-nood')) stuurAlarm({ id, titel: alarmTitel, bericht, prioriteit: afstand <= NOOD_EMERGENCY_KM ? 2 : 1 });
+      if (mailAlarmAan('ais-nood')) stuurMailAlarm({ id, titel: alarmTitel, bericht, lat: signaal.lat, lon: signaal.lon });
+      if (pushAlarmAan('ais-nood')) stuurWebPushAlarm({ id, titel: alarmTitel, bericht, url: `/?signaal=${encodeURIComponent(id)}`, lat: signaal.lat, lon: signaal.lon });
     }
   }
   for (const [mmsi, w] of eersteWaarneming) if (nu - w.laatstMs > VERGEET_NA_MS) eersteWaarneming.delete(mmsi);

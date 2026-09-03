@@ -9151,12 +9151,14 @@ function renderAlarmInstellingen() {
   uitleg.className = 'instellingen-uitleg';
   // 2026-09-03: Lex gebruikt Pushover niet meer (PUSHOVER_INGESCHAKELD=0), dus
   // de kanalen zijn mail + browsermelding (webpush) -- kolom heet 'Melding'.
-  uitleg.textContent = 'Scherm = het rode alarmscherm in de app, alleen op dit toestel. Melding = mail + browsermelding door de server, ook met de app dicht; geldt voor alle toestellen. Browsermeldingen komen alleen aan op toestellen waar ze hieronder aanstaan.';
+  // 2026-09-03 (Lex: "mail apart is wel beter te onthouden"): Browser en Mail
+  // als twee losse serverschakelaars per categorie ('<cat>' en '<cat>/mail').
+  uitleg.textContent = 'Scherm = het rode alarmscherm in de app, alleen op dit toestel. Browser = browsermelding door de server, ook met de app dicht, op elk toestel waar ze hieronder aanstaan. Mail = e-mail door de server. Browser en Mail gelden voor alle toestellen.';
   ALARM_INSTELLINGEN_LIJST_EL.appendChild(uitleg);
 
   const kop = document.createElement('div');
   kop.className = 'alarm-rij alarm-rij-kop';
-  kop.innerHTML = '<span>Categorie</span><span>Scherm</span><span>Melding</span>';
+  kop.innerHTML = '<span>Categorie</span><span>Scherm</span><span>Browser</span><span>Mail</span>';
   ALARM_INSTELLINGEN_LIJST_EL.appendChild(kop);
 
   if (telefoonSchakelaars === null) haalTelefoonSchakelaars(); // eerste keer: serverstand ophalen, daarna opnieuw renderen
@@ -9184,29 +9186,33 @@ function renderAlarmInstellingen() {
       rij.appendChild(maakKnop(aan, () => { zetAlarmCategorie(def.id, !aan); renderAlarmInstellingen(); }));
     } else rij.appendChild(streepje());
 
-    if (!def.telefoon) rij.appendChild(streepje());
-    else if (telefoonSchakelaars === 'fout') {
-      rij.appendChild(maakKnop(false, () => { telefoonSchakelaars = null; renderAlarmInstellingen(); }));
-      rij.lastChild.textContent = 'OPNIEUW';
-      rij.lastChild.title = 'Server niet bereikbaar — opnieuw proberen';
-    } else if (telefoonSchakelaars === null) {
-      const el = document.createElement('span'); el.className = 'alarm-nvt'; el.textContent = '…'; rij.appendChild(el);
-    } else {
-      const aan = telefoonSchakelaars[def.id] !== false;
-      rij.appendChild(maakKnop(aan, async () => {
+    // Browser- en Mail-kolom: serverschakelaars '<id>' resp. '<id>/mail'.
+    const serverKnop = (sleutel) => {
+      if (!def.telefoon) return streepje();
+      if (telefoonSchakelaars === 'fout') {
+        const knop = maakKnop(false, () => { telefoonSchakelaars = null; renderAlarmInstellingen(); });
+        knop.textContent = 'OPNIEUW';
+        knop.title = 'Server niet bereikbaar — opnieuw proberen';
+        return knop;
+      }
+      if (telefoonSchakelaars === null) { const el = document.createElement('span'); el.className = 'alarm-nvt'; el.textContent = '…'; return el; }
+      const aan = telefoonSchakelaars[sleutel] !== false;
+      return maakKnop(aan, async () => {
         try {
           const res = await fetch('/api/alarm-schakelaars', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sleutel: def.id, aan: !aan }),
+            body: JSON.stringify({ sleutel, aan: !aan }),
           }).then((r) => r.json());
           telefoonSchakelaars = res.schakelaars ?? telefoonSchakelaars;
         } catch (err) {
-          console.warn('[weer] telefoonalarm-schakelaar omzetten mislukt:', err);
+          console.warn('[weer] alarm-schakelaar omzetten mislukt:', err);
         }
         renderAlarmInstellingen();
-      }));
-    }
+      });
+    };
+    rij.appendChild(serverKnop(def.id));
+    rij.appendChild(serverKnop(`${def.id}/mail`));
     ALARM_INSTELLINGEN_LIJST_EL.appendChild(rij);
   });
 }

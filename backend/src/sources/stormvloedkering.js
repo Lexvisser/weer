@@ -49,7 +49,7 @@ import { fetchSearxngNieuws } from './searxng.js';
 import { stuurAlarm, kaartTekst } from './pushover.js';
 import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
-import { telefoonAlarmAan } from '../alarmSchakelaars.js'; // 2026-09-03
+import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js'; // 2026-09-03
 
 // Algemene geografische kennis (zelfde soort aanpak als KANDIDATEN in
 // getij.js — expliciet gemarkeerd als approximatie, niet uit een officiële
@@ -243,9 +243,9 @@ export async function fetchStormvloedkering() {
     const titel = 'Kans op sluiting stormvloedkering';
     const bericht = kaartTekst(signaal);
     if (telefoonAlarmAan('stormvloedkering-waarschuwing')) { // 2026-09-03: schakelbaar
-      stuurAlarm({ id: signaalId, titel, bericht, prioriteit: 1 });
-      stuurMailAlarm({ id: signaalId, titel, bericht, lat: signaal.lat, lon: signaal.lon });
-      stuurWebPushAlarm({ id: signaalId, titel, bericht, url: `/?signaal=${encodeURIComponent(signaalId)}`, lat: signaal.lat, lon: signaal.lon });
+      if (pushAlarmAan('stormvloedkering-waarschuwing')) stuurAlarm({ id: signaalId, titel, bericht, prioriteit: 1 });
+      if (mailAlarmAan('stormvloedkering-waarschuwing')) stuurMailAlarm({ id: signaalId, titel, bericht, lat: signaal.lat, lon: signaal.lon });
+      if (pushAlarmAan('stormvloedkering-waarschuwing')) stuurWebPushAlarm({ id: signaalId, titel, bericht, url: `/?signaal=${encodeURIComponent(signaalId)}`, lat: signaal.lat, lon: signaal.lon });
     }
     signalen.push(signaal);
   }
@@ -269,9 +269,9 @@ export async function fetchStormvloedkering() {
     const titel = 'Stormvloedkering gesloten';
     const bericht = kaartTekst(signaal);
     if (telefoonAlarmAan('stormvloedkering-gesloten')) { // 2026-09-03: schakelbaar
-      stuurAlarm({ id: signaalId, titel, bericht, url: bevestiging.link, prioriteit: 2 });
-      stuurMailAlarm({ id: signaalId, titel, bericht, url: bevestiging.link, lat: signaal.lat, lon: signaal.lon });
-      stuurWebPushAlarm({ id: signaalId, titel, bericht, url: `/?signaal=${encodeURIComponent(signaalId)}`, lat: signaal.lat, lon: signaal.lon });
+      if (pushAlarmAan('stormvloedkering-gesloten')) stuurAlarm({ id: signaalId, titel, bericht, url: bevestiging.link, prioriteit: 2 });
+      if (mailAlarmAan('stormvloedkering-gesloten')) stuurMailAlarm({ id: signaalId, titel, bericht, url: bevestiging.link, lat: signaal.lat, lon: signaal.lon });
+      if (pushAlarmAan('stormvloedkering-gesloten')) stuurWebPushAlarm({ id: signaalId, titel, bericht, url: `/?signaal=${encodeURIComponent(signaalId)}`, lat: signaal.lat, lon: signaal.lon });
     }
     signalen.push(signaal);
   }

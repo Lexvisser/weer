@@ -52,7 +52,7 @@ import { makeSignal } from '../normalize.js';
 import { stuurAlarm, kaartTekst } from './pushover.js';
 import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
-import { telefoonAlarmAan } from '../alarmSchakelaars.js'; // 2026-09-03
+import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js'; // 2026-09-03
 import { verversMedia } from '../mediaHistorie.js';
 import { metHistorie } from '../historie.js';
 
@@ -458,13 +458,13 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
       if ((kleur === 'Rood' || kleur === 'Oranje') && telefoonAlarmAan('weerwaarschuwing')) { // 2026-09-03: schakelbaar
         const titel = `Code ${kleur}`;
         const bericht = kaartTekst(signaal);
-        stuurAlarm({ id: signaalId, titel, bericht, prioriteit: kleur === 'Rood' ? 2 : 1 });
+        if (pushAlarmAan('weerwaarschuwing')) stuurAlarm({ id: signaalId, titel, bericht, prioriteit: kleur === 'Rood' ? 2 : 1 });
         // 2026-08-20: mail-alarm (zie email.js) ernaast, zelfde tekst/trigger,
         // los aan/uit-schakelbaar en met een eigen dedup — zie nws.js voor
         // dezelfde toevoeging bij tornado warning/watch. lat/lon/
         // gebiedPolygon erbij op verzoek van Lex ("kaartje met de boundary
         // in de mail") — zie kaartUrlVoor() in email.js.
-        stuurMailAlarm({
+        if (mailAlarmAan('weerwaarschuwing')) stuurMailAlarm({
           id: signaalId,
           titel,
           bericht,
@@ -479,7 +479,7 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
         // url erbij (2026-08-22, derde toevoeging, na Lex' "klikken opent wel
         // de app maar niet de melding zelf") — /?signaal=<id> laat app.js bij
         // het laden de kaart op precies dit signaal centreren, zie verversen().
-        stuurWebPushAlarm({
+        if (pushAlarmAan('weerwaarschuwing')) stuurWebPushAlarm({
           id: signaalId,
           titel,
           bericht,

@@ -11,7 +11,7 @@
 import { stuurAlarm, kaartTekst } from './sources/pushover.js';
 import { stuurMailAlarm } from './sources/email.js';
 import { stuurWebPushAlarm } from './sources/webpush.js';
-import { telefoonAlarmAan } from './alarmSchakelaars.js';
+import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from './alarmSchakelaars.js';
 
 const NOOD_EMERGENCY_KM = 100;
 // Geen alarm voor een oud bericht dat bij (her)start voor het eerst langskomt
@@ -29,9 +29,9 @@ export function meldNavtexNood(signalen) {
     const bericht = kaartTekst(s);
     const afstand = s.detail.afstandTotJouKm;
     const prioriteit = typeof afstand === 'number' && afstand <= NOOD_EMERGENCY_KM ? 2 : 1;
-    stuurAlarm({ id: s.id, titel, bericht, prioriteit });
-    stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon });
-    stuurWebPushAlarm({ id: s.id, titel, bericht, url: `/?signaal=${encodeURIComponent(s.id)}`, lat: s.lat, lon: s.lon });
+    if (pushAlarmAan('navtex-nood')) stuurAlarm({ id: s.id, titel, bericht, prioriteit });
+    if (mailAlarmAan('navtex-nood')) stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon });
+    if (pushAlarmAan('navtex-nood')) stuurWebPushAlarm({ id: s.id, titel, bericht, url: `/?signaal=${encodeURIComponent(s.id)}`, lat: s.lat, lon: s.lon });
   }
   return signalen;
 }

@@ -22,7 +22,7 @@ import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
 import { metHistorie } from '../historie.js';
 import { verversMedia } from '../mediaHistorie.js';
-import { telefoonAlarmAan } from '../alarmSchakelaars.js';
+import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js';
 
 // 2026-08-19: Lex vroeg "hebben we al tsunami warnings?" — nog niet, terwijl
 // dit dezelfde api.weather.gov/alerts-infrastructuur is als tornado hierboven
@@ -570,14 +570,14 @@ export async function fetchNws() {
           ? '🌪️ Tornado Warning'
           : 'Tornado Watch';
         const bericht = kaartTekst(s);
-        stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tornado' ? 2 : 1 });
+        if (pushAlarmAan(s.categorie)) stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tornado' ? 2 : 1 });
         // 2026-08-20: lat/lon/gebiedPolygon erbij op verzoek van Lex ("kaartje
         // met de boundary in de mail") — zie kaartUrlVoor() in email.js.
         // 2026-09-03: gebiedPolygonTrail erbij -- de volledige keten-
         // geschiedenis (zie schuifDoor/registreerNieuweKeten hierboven),
         // zodat de mail bij een keten van meerdere heruitgaves het hele
         // opgeschoven/gegroeide gebied laat zien, niet alleen het huidige.
-        stuurMailAlarm({
+        if (mailAlarmAan(s.categorie)) stuurMailAlarm({
           id: s.id,
           titel,
           bericht,
@@ -593,7 +593,7 @@ export async function fetchNws() {
         // url erbij (2026-08-22, derde toevoeging, na Lex' "klikken opent wel
         // de app maar niet de melding zelf") — /?signaal=<id> laat app.js bij
         // het laden de kaart op precies dit signaal centreren, zie verversen().
-        stuurWebPushAlarm({
+        if (pushAlarmAan(s.categorie)) stuurWebPushAlarm({
           id: s.id,
           titel,
           bericht,
@@ -615,8 +615,8 @@ export async function fetchNws() {
       if (magDoorAlarmeren(s, liveIds)) {
         const titel = s.categorie === 'tsunami' ? '🌊 Tsunami Warning' : 'Tsunami Watch';
         const bericht = kaartTekst(s);
-        stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tsunami' ? 2 : 1 });
-        stuurMailAlarm({
+        if (pushAlarmAan(s.categorie)) stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tsunami' ? 2 : 1 });
+        if (mailAlarmAan(s.categorie)) stuurMailAlarm({
           id: s.id,
           titel,
           bericht,
@@ -625,7 +625,7 @@ export async function fetchNws() {
           gebiedPolygon: s.detail?.gebiedPolygon,
           gebiedPolygonTrail: actieveKetens.get(s.id)?.gebiedPolygons,
         });
-        stuurWebPushAlarm({
+        if (pushAlarmAan(s.categorie)) stuurWebPushAlarm({
           id: s.id,
           titel,
           bericht,
