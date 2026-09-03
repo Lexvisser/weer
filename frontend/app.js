@@ -6253,7 +6253,7 @@ function scheepsPopupEl(marker, mmsi, kopHtml, basisHtml) {
 // layerGroup ONDER de markers; het stipje/driehoekje blijft voor klik/hover.
 // Meters -> graden via 111320 m per breedtegraad en cos(lat) voor lengte --
 // ruim goed genoeg op 20-400 m scheepslengte.
-const VAAR_ZOOM_SCHEEPSVORM = 15;
+const VAAR_ZOOM_SCHEEPSVORM = 13; // 2026-09-03, Lex: "kan dat wat eerder afgaan?" -- was 15
 let vaarVormLaag = null;
 const vaarVormen = new Map(); // mmsi -> L.polygon
 
