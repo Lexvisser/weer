@@ -9149,12 +9149,14 @@ function renderAlarmInstellingen() {
 
   const uitleg = document.createElement('div');
   uitleg.className = 'instellingen-uitleg';
-  uitleg.textContent = 'Scherm = het rode alarmscherm in de app, alleen op dit toestel. Telefoon = Pushover/mail/push door de server, ook met de app dicht, geldt voor alle toestellen.';
+  // 2026-09-03: Lex gebruikt Pushover niet meer (PUSHOVER_INGESCHAKELD=0), dus
+  // de kanalen zijn mail + browsermelding (webpush) -- kolom heet 'Melding'.
+  uitleg.textContent = 'Scherm = het rode alarmscherm in de app, alleen op dit toestel. Melding = mail + browsermelding door de server, ook met de app dicht; geldt voor alle toestellen. Browsermeldingen komen alleen aan op toestellen waar ze hieronder aanstaan.';
   ALARM_INSTELLINGEN_LIJST_EL.appendChild(uitleg);
 
   const kop = document.createElement('div');
   kop.className = 'alarm-rij alarm-rij-kop';
-  kop.innerHTML = '<span>Categorie</span><span>Scherm</span><span>Telefoon</span>';
+  kop.innerHTML = '<span>Categorie</span><span>Scherm</span><span>Melding</span>';
   ALARM_INSTELLINGEN_LIJST_EL.appendChild(kop);
 
   if (telefoonSchakelaars === null) haalTelefoonSchakelaars(); // eerste keer: serverstand ophalen, daarna opnieuw renderen
@@ -9285,7 +9287,7 @@ async function huidigAbonnement() {
 async function verversMeldingenKnop() {
   if (!MELDINGEN_KNOP_EL) return;
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    MELDINGEN_KNOP_EL.querySelector('span').textContent = '🔔 Meldingen niet ondersteund';
+    MELDINGEN_KNOP_EL.querySelector('span').textContent = '🔔 Browsermeldingen niet ondersteund op dit toestel';
     MELDINGEN_KNOP_EL.disabled = true;
     return;
   }
@@ -9294,9 +9296,11 @@ async function verversMeldingenKnop() {
     // 2026-08-22, op verzoek van Lex ("een aan/uit-knop, per device") — de
     // knoptekst is nu de ACTIE die een tik uitvoert (niet de huidige status),
     // zodat "wat gebeurt er als ik hierop tik" altijd meteen duidelijk is.
+    // 2026-09-03: duidelijker naam -- dit gaat alleen over het webpush-kanaal
+    // op DIT toestel, niet over welke categorieën melden (dat is de tabel).
     MELDINGEN_KNOP_EL.querySelector('span').textContent = abonnement
-      ? '🔔 Meldingen uitzetten'
-      : '🔔 Meldingen aanzetten';
+      ? '🔔 Browsermeldingen op dit toestel: AAN (tik om uit te zetten)'
+      : '🔔 Browsermeldingen op dit toestel: UIT (tik om aan te zetten)';
   } catch {
     // stil laten — knop houdt gewoon de standaardtekst
   }
