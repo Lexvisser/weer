@@ -5016,7 +5016,15 @@ function toggleFronten() {
   }
 }
 
-function toggleZeeModus() {
+// 2026-09-03, op melding van Lex ("op de iPad werkt de zoomstand voor aanvang
+// van AIS niet"): toggleVaarradar() roept dit aan en zoomt direct erna naar
+// de Maasmond. De fitBounds hieronder is standaard GEANIMEERD; op de pc
+// is de zoomsprong zo groot dat Leaflet niet animeert en de Maasmond-zoom
+// gewoon wint, maar op de iPad (andere startzoom) animeert hij wel, en aan
+// het eind van die animatie zet Leaflet de kaart alsnog op het Noordzee-
+// beeld -- over de Maasmond-zoom heen. Vandaar 'zonderAnimatie' voor die
+// ene aanroep.
+function toggleZeeModus(zonderAnimatie = false) {
   zeeModusActief = !zeeModusActief;
   TOGGLE_ZEE_EL.classList.toggle('actief', zeeModusActief);
   kaart.getContainer().classList.toggle('zee-modus-actief', zeeModusActief);
@@ -5067,7 +5075,7 @@ function toggleZeeModus() {
     // hierboven, en blijft vanzelf kloppen als die polygonenset ooit wijzigt.
     // Geen dwingRegenradarZoomAf()-achtige zoomvloer nodig hier: dit is geen
     // regenradar-laag.
-    beweegKaartProgrammatisch(() => kaart.fitBounds(zeeGebiedenLaag.getBounds()));
+    beweegKaartProgrammatisch(() => kaart.fitBounds(zeeGebiedenLaag.getBounds(), zonderAnimatie === true ? { animate: false } : undefined));
     // Fire-and-forget: hoeft de rest van het aanzetten niet te blokkeren, de
     // popup-functie in bouwZeeGebiedenLaag() pakt toch altijd de nieuwste
     // stand op het moment dat iemand een gebied aantikt. De permanente
@@ -6821,7 +6829,7 @@ function toggleVaarradar() {
   }
   if (vaarradarActief) {
     if (vliegModusActief) toggleVliegradar(); // wederzijds uitsluitend, zie toggleVliegradar
-    if (!zeeModusActief) toggleZeeModus(); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart"
+    if (!zeeModusActief) toggleZeeModus(true); // Lex: "als voor boten wordt gekozen dan uiteraard meteen de zeekaart" -- zonder animatie, zie de toelichting bij toggleZeeModus()
     // 2026-09-02, op verzoek van Lex ("gelijk inzoomen op de maasmond zodra
     // ik kies voor AIS") -- toggleZeeModus() hierboven zoomt naar het hele
     // Noordzeegebied (fitBounds op de NAVTEX-gebieden); voor de vaarradar is
