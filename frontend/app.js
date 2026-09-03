@@ -5186,6 +5186,11 @@ let vaarLaag = null;
 // zodat 'ie bij elke update in de popup blijft staan en nooit twee keer
 // opgezocht wordt.
 const vaarMarkers = new Map(); // mmsi -> L.marker
+// 2026-09-03, op verzoek van Lex ("kan ik ook een vessel zoeken op onze
+// kaart"): alle schepen uit de laatste poll (ONgefilterd, dus ook wat het
+// type-filter of de AISHub-knop verbergt), zodat zoeken altijd de volledige
+// set doorzoekt. Gevuld in ververVaarradar(), gelezen door vaarZoekUitvoeren().
+let laatsteVaarSchepen = [];
 // 2026-09-02: de clustervrije-zone/hysterese-aanpak (opgebouwd op verzoek van
 // Lex, "is het mogelijk om een specifiek gebied vrij te houden van
 // clustering") is hier weer WEGGEHAALD, op Lex' eigen verzoek ("Alles wat
@@ -5455,6 +5460,58 @@ function scheepsTypeLabel(s) {
   if (sub === 'binnenvaart') return `${cat ?? 'Schip'} (binnenvaart)`;
   if (sub.startsWith('lading-')) return `${cat ?? 'Schip'} · gevaarlijke lading cat. ${sub.slice(-1).toUpperCase()}`;
   return SCHEEPSSUBTYPE_LABEL[sub] ?? cat ?? 'Scheepstype onbekend';
+}
+
+// 2026-09-03, op verzoek van Lex ("kan ik ook een vessel zoeken op onze
+// kaart. Dit ontbreekt", met MarineTraffic als voorbeeld): zoekveld in het
+// AIS-menu. Zoekt op deel van de naam (hoofdletterongevoelig) of op begin
+// van de MMSI, alleen binnen wat de laatste poll binnenbracht (dus binnen
+// de ingestelde zoekstraal -- geen wereldwijde zoektocht, daar hebben we
+// geen bron voor). Max 8 treffers, dichtstbijzijnde eerst. Klik = kaart
+// naar het schip + popup open; staat het schip verborgen door het
+// type-filter of de AISHub-knop, dan vliegt de kaart er wel heen maar is
+// er geen marker om te openen -- dat staat dan in de treffer vermeld.
+const vaarZoekVeldEl = document.getElementById('vaarZoekVeld');
+const vaarZoekResultatenEl = document.getElementById('vaarZoekResultaten');
+function vaarZoekUitvoeren() {
+  if (!vaarZoekVeldEl || !vaarZoekResultatenEl) return;
+  const q = vaarZoekVeldEl.value.trim().toLowerCase();
+  vaarZoekResultatenEl.innerHTML = '';
+  if (!q) { vaarZoekResultatenEl.classList.add('verborgen'); return; }
+  vaarZoekResultatenEl.classList.remove('verborgen');
+  const isMmsi = /^\d+$/.test(q);
+  const treffers = laatsteVaarSchepen
+    .filter((s) => (isMmsi ? String(s.mmsi).startsWith(q) : (s.naam || '').toLowerCase().includes(q)))
+    .map((s) => ({ s, km: typeof s.afstandKm === 'number' ? s.afstandKm : null })) // afstand komt uit de backend (vaarradar.js)
+    .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9))
+    .slice(0, 8);
+  if (!treffers.length) {
+    vaarZoekResultatenEl.innerHTML = `<div class="vaar-zoek-leeg">Geen schip gevonden binnen ${vaarradarStraalKm} km</div>`;
+    return;
+  }
+  treffers.forEach(({ s, km }) => {
+    const knop = document.createElement('button');
+    knop.type = 'button';
+    knop.className = 'vaar-zoek-treffer';
+    const verborgen = schipVerborgenDoorFilter(s) || (!aishubZichtbaar && s.bron === 'aishub');
+    const sub = [scheepsTypeLabel(s), km != null ? `${km < 10 ? km.toFixed(1) : Math.round(km)} km` : null, verborgen ? 'verborgen door filter' : null].filter(Boolean).join(' · ');
+    knop.innerHTML = `<div class="vaar-zoek-treffer-naam"><span class="popup-scheepskleur" style="background:${kleurVoorSchip(s)}"></span>${escapeHtml(s.naam || `MMSI ${s.mmsi}`)}</div><div class="vaar-zoek-treffer-sub">${escapeHtml(sub)}</div>`;
+    knop.addEventListener('click', () => vaarZoekGaNaar(s));
+    vaarZoekResultatenEl.appendChild(knop);
+  });
+}
+function vaarZoekGaNaar(s) {
+  if (typeof s.lat !== 'number' || typeof s.lon !== 'number') return;
+  kaart.setView([s.lat, s.lon], Math.max(kaart.getZoom(), 14), { animate: true });
+  const marker = vaarMarkers.get(s.mmsi);
+  if (marker) kaart.once('moveend', () => marker.openPopup());
+}
+if (vaarZoekVeldEl) {
+  vaarZoekVeldEl.addEventListener('input', vaarZoekUitvoeren);
+  vaarZoekVeldEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { const eerste = vaarZoekResultatenEl?.querySelector('.vaar-zoek-treffer'); if (eerste) eerste.click(); }
+    if (e.key === 'Escape') { vaarZoekVeldEl.value = ''; vaarZoekUitvoeren(); vaarZoekVeldEl.blur(); }
+  });
 }
 
 function kleurVoorScheepscategorie(categorie) {
@@ -6383,6 +6440,8 @@ async function ververVaarradar() {
     if (!vaarradarActief) return;
     const data = await fetch(`/api/vaarradar?lat=${lat}&lon=${lon}&straal=${vaarradarStraalKm}`).then((r) => r.json());
     if (!vaarradarActief) return;
+    laatsteVaarSchepen = data.schepen ?? []; // 2026-09-03: voor vaarZoekUitvoeren()
+    if (vaarZoekVeldEl && vaarZoekVeldEl.value.trim()) vaarZoekUitvoeren(); // treffers verversen (afstand/positie)
     // 2026-09-02: was L.markerClusterGroup (voor grote zoekstralen tot 250km met
     // duizenden bootjes, zie wisselVaarStraal() hierboven) -- nu terug naar een kale
     // L.layerGroup, zie de toelichting hierboven bij het weggehaalde clustervrije-

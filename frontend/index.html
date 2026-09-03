@@ -128,6 +128,13 @@
              AIS zelf gaat uit via deze knop. Zie vaarMenuHandleKlik() in app.js. -->
         <button id="vaarUitKnop" class="vaar-menu-item" title="Vaarradar/AIS uitzetten">⏻ <span class="knop-tekst">AIS uit</span></button>
         <div class="vaar-menu-scheidslijn"></div>
+        <!-- 2026-09-03, op verzoek van Lex ("kan ik ook een vessel zoeken op
+             onze kaart. Dit ontbreekt") -- zoekt op naam of MMSI in de
+             schepen van de laatste poll; klik op een treffer = kaart erheen
+             + popup open. Zie vaarZoek*() in app.js. -->
+        <input id="vaarZoekVeld" class="vaar-zoek-veld" type="search" placeholder="🔍 Naam of MMSI" autocomplete="off" spellcheck="false">
+        <div id="vaarZoekResultaten" class="vaar-zoek-resultaten verborgen"></div>
+        <div class="vaar-menu-scheidslijn"></div>
         <!-- 2026-09-01, op verzoek van Lex ("kunnen we nog wat leuks doen om
              tussen de boten te differentieren met de kleuren?") -- cyclet
              tussen drie kleurmodi (per schip / per scheepstype / op snelheid,

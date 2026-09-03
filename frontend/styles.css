@@ -609,6 +609,16 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .vaar-menu-item { display:flex; align-items:center; gap:6px; width:100%; text-align:left; background:#1c2030; border:none; border-radius:8px; padding:6px 8px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:11px; cursor:pointer; }
 .vaar-menu-item.actief { background:#3ec6ff; color:#05060a; }
 .vaar-menu-scheidslijn { border-top:1px solid rgba(255,255,255,0.12); margin:2px 0; }
+/* 2026-09-03: schip zoeken (naam/MMSI) in het AIS-menu, zie vaarZoek*() in app.js. */
+.vaar-zoek-veld { width:100%; box-sizing:border-box; background:#1c2030; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:6px 8px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:11px; outline:none; }
+.vaar-zoek-veld:focus { border-color:#3ec6ff; }
+.vaar-zoek-resultaten { display:flex; flex-direction:column; gap:2px; max-height:32vh; overflow-y:auto; }
+.vaar-zoek-treffer { display:flex; flex-direction:column; gap:1px; width:100%; text-align:left; background:#1c2030; border:none; border-radius:8px; padding:5px 8px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:11px; cursor:pointer; }
+.vaar-zoek-treffer:hover { background:#262b3d; }
+.vaar-zoek-treffer-naam { display:flex; align-items:center; gap:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vaar-zoek-treffer-naam .popup-scheepskleur { flex:none; }
+.vaar-zoek-treffer-sub { opacity:0.65; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vaar-zoek-leeg { opacity:0.6; padding:2px 4px; font-size:10px; }
 .vaar-menu-kop { opacity:0.7; padding:2px 2px 0; }
 
 /* 2026-08-21: de losstaande groot/klein-driehoekknop (.uitvergroot-driehoek)
