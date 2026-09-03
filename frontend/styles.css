@@ -355,7 +355,13 @@ body {
    tegels niet nog eens extra omgekleurd worden. Hogere specificiteit (twee
    klassen i.p.v. één) wint hier automatisch van de regel hierboven,
    ongeacht volgorde. */
-#map.zee-modus-actief.vaar-modus-actief .leaflet-tile-pane .leaflet-tile { filter: none; }
+/* 2026-09-03, op verzoek van Lex ("kleine poging, snel reversibel, om het met
+   CSS bij te kleuren" naar MarineTraffic's Mapbox-stijl): Stadia's neutrale
+   donkergrijs (~rgb 48-72) via sepia+hue-rotate naar het blauwgrijs van
+   MarineTraffic (land ~rgb 48,58,70). Gemeten op een echte tegel via
+   canvas-sampling; dit filter geeft land ~rgb 48,56,72. Terugdraaien =
+   'filter: none' hier. */
+#map.zee-modus-actief.vaar-modus-actief .leaflet-tile-pane .leaflet-tile { filter: sepia(0.5) hue-rotate(175deg) saturate(2); }
 
 /* 2026-08-27: gale-windvaan per zeegebied (zie verversWindvanen() in
    app.js) — rode wimpel (het internationale stormsein) met het Beaufort-
