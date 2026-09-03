@@ -6122,7 +6122,12 @@ function havenHtml(tekst, leegLabel, haven) {
     const naamHtml = haven.naam ? `<span class="popup-haven-naam">${escapeHtml(haven.naam)}</span>` : '';
     return `<span class="popup-haven">${vlagHtml(m[1])}<span class="popup-haven-code">${escapeHtml(m[2])}${naamHtml}</span></span>`;
   }
-  return `<span class="popup-haven popup-haven-tekst" title="${escapeHtml(t)}">${escapeHtml(t)}</span>`;
+  // 2026-09-03: vrije tekst waar de backend toch een haven bij vond (via de
+  // naam-index in havenNamen.js) -- herkende havennaam klein eronder, zodat
+  // je ziet waar de voortgang op gebaseerd is; gelijk aan de tekst zelf =
+  // niet herhalen.
+  const herkend = haven?.naam && haven.naam.toUpperCase() !== t ? `<span class="popup-haven-naam">→ ${escapeHtml(haven.naam)}</span>` : '';
+  return `<span class="popup-haven popup-haven-tekst" title="${escapeHtml(t)}">${escapeHtml(t)}${herkend}</span>`;
 }
 
 // 2026-09-03, op verzoek van Lex ("MarineTraffic gebruikt de pijl om te tonen

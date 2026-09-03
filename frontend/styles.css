@@ -909,7 +909,8 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .popup-haven { display:inline-flex; align-items:center; gap:5px; font-size:1.25em; font-weight:600; color:#f4f6fb; min-width:0; }
 .popup-haven .popup-vlag-code { font-size:0.8em; }
 .popup-haven-code { letter-spacing:0.04em; }
-.popup-haven-tekst { font-size:0.95em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+.popup-haven-tekst { font-size:0.95em; max-width:170px; display:inline-block; text-align:right; }
+.popup-haven-tekst .popup-haven-naam { white-space:nowrap; }
 .popup-haven-leeg { font-size:0.9em; font-weight:400; color:rgba(244,246,251,0.4); }
 .popup-schip-reistijden { display:flex; justify-content:space-between; gap:8px; margin-top:3px; font-size:10px; color:#9199b5; }
 .popup-schip-reistijden b { color:#f4f6fb; font-weight:600; }
