@@ -104,10 +104,47 @@ function afzenderAdres() {
 // 2026-08-22: geëxporteerd (was intern) — webpush.js hergebruikt 'm nu ook
 // voor de kaartafbeelding in de pushmelding zelf, i.p.v. dezelfde
 // polygon-tekenlogica te dupliceren.
-export function kaartUrlVoor({ lat, lon, gebiedPolygon }) {
+//
+// 2026-09-03, op verzoek van Lex ("die overlappende veranderende area's
+// zoals in de app") — optioneel `gebiedPolygonTrail`: de HELE reeks
+// gebieds-omtrekken van een keten (zie actieveKetens/gebiedPolygons in
+// nws.js), niet alleen het huidige gebied. Nu heruitgaves grotendeels
+// onderdrukt worden (zie nws.js, 2026-09-02/03), krijgt Lex bij de ene mail
+// die wél verstuurd wordt (het eerste alarm, of een escalatie) zo alsnog te
+// zien hoe het gewaarschuwde gebied is opgeschoven/gegroeid — elke omtrek
+// even doorschijnend rood, zodat overlappende stukken vanzelf donkerder
+// worden (precies zoals meerdere Leaflet-lagen dat in de app doen), met de
+// LAATSTE (huidige) omtrek iets dikker/opaquer zodat die er meteen uitspringt.
+// Puur additief: zonder gebiedPolygonTrail (webpush.js, of één gebied) blijft
+// het gedrag exact zoals voorheen.
+const TRAIL_MAX = 6; // begrenst URL-lengte -- meer dan 6 heruitgaves is zeldzaam, en de oudste zijn toch het minst relevant
+
+export function kaartUrlVoor({ lat, lon, gebiedPolygon, gebiedPolygonTrail }) {
   const apiKey = process.env.GEOAPIFY_API_KEY;
   if (!apiKey) return null;
   const basis = 'https://maps.geoapify.com/v1/staticmap?style=osm-carto&width=640&height=420';
+
+  const geldigeRingen = (trail) =>
+    (Array.isArray(trail) ? trail : [])
+      .map((polygon) => (Array.isArray(polygon) && polygon.length ? polygon[0] : null))
+      .filter((ring) => Array.isArray(ring) && ring.length >= 3);
+
+  const trailRingen = geldigeRingen(gebiedPolygonTrail);
+  if (trailRingen.length > 1) {
+    const gekozen = trailRingen.slice(-TRAIL_MAX);
+    const geometrieParams = gekozen
+      .map((ring, i) => {
+        const isLaatste = i === gekozen.length - 1;
+        const coords = ring.map(([latP, lonP]) => `${lonP},${latP}`).join(',');
+        const lineopacity = isLaatste ? 0.9 : 0.4;
+        const fillopacity = isLaatste ? 0.18 : 0.08;
+        const linewidth = isLaatste ? 3 : 2;
+        return `geometry=polygon:${coords};linewidth:${linewidth};linecolor:%23ff2e6d;fillcolor:%23ff2e6d;lineopacity:${lineopacity};fillopacity:${fillopacity}`;
+      })
+      .join('&');
+    return `${basis}&${geometrieParams}&apiKey=${apiKey}`;
+  }
+
   const eersteRing = Array.isArray(gebiedPolygon) && gebiedPolygon.length ? gebiedPolygon[0] : null;
   if (Array.isArray(eersteRing) && eersteRing.length >= 3) {
     const coords = eersteRing.map(([latP, lonP]) => `${lonP},${latP}`).join(',');
@@ -226,7 +263,7 @@ function htmlMetTijdzonePillen(tekst) {
   return uit + escapeHtmlMail(tekst.slice(vorige));
 }
 
-export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebiedPolygon, to }) {
+export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebiedPolygon, gebiedPolygonTrail, to }) {
   if (!id) return;
   if (gemeld.has(id)) {
     console.log(`[weer] mail: "${id}" al eerder gemeld (ook over herstarts heen), overgeslagen (titel: ${titel}).`);
@@ -256,7 +293,7 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   // hele alarm blokkeren — voor een tijd-kritieke waarschuwing onacceptabel
   // voor iets wat puur "aardig om te hebben" is.
   const attachments = [];
-  const kaartUrl = kaartUrlVoor({ lat, lon, gebiedPolygon });
+  const kaartUrl = kaartUrlVoor({ lat, lon, gebiedPolygon, gebiedPolygonTrail });
   if (kaartUrl) {
     try {
       const res = await fetch(kaartUrl);

@@ -188,7 +188,14 @@ function vindEnSchuifKeten(signaal, huidigeIds) {
   const schuifDoor = (oudId, keten, bron) => {
     actieveKetens.delete(oudId);
     const onderdrukken = niveau <= keten.niveau;
-    actieveKetens.set(signaal.id, { categorie: signaal.categorie, gebiedTokens: tokens, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now() });
+    // 2026-09-03, op verzoek van Lex ("die overlappende veranderende area's
+    // zoals in de app") -- de polygon-geschiedenis van de keten meenemen,
+    // niet alleen het huidige gebied, zodat de ene mail die uiteindelijk wél
+    // verstuurd wordt (zie fetchNws() hieronder) het hele spoor kan tonen.
+    // Begrensd op TRAIL_MAX (zie email.js) -- hier ruim gehouden, de
+    // uiteindelijke begrenzing gebeurt daar vlak vóór de kaart-URL.
+    const gebiedPolygons = [...(keten.gebiedPolygons ?? []), signaal.detail?.gebiedPolygon].filter(Boolean).slice(-12);
+    actieveKetens.set(signaal.id, { categorie: signaal.categorie, gebiedTokens: tokens, gebiedPolygons, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now() });
     console.log(
       onderdrukken
         ? `[weer] nws: heruitgave gekoppeld (${bron}) -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm onderdrukt (al eerder gealarmeerd voor deze doorlopende dreiging).`
@@ -217,6 +224,7 @@ function registreerNieuweKeten(signaal) {
   actieveKetens.set(signaal.id, {
     categorie: signaal.categorie,
     gebiedTokens: gebiedTokens(signaal.detail?.gebied),
+    gebiedPolygons: signaal.detail?.gebiedPolygon ? [signaal.detail.gebiedPolygon] : [],
     niveau: dreigingsNiveauRang(signaal),
     laatstGezien: Date.now(),
   });
@@ -564,7 +572,19 @@ export async function fetchNws() {
         stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tornado' ? 2 : 1 });
         // 2026-08-20: lat/lon/gebiedPolygon erbij op verzoek van Lex ("kaartje
         // met de boundary in de mail") — zie kaartUrlVoor() in email.js.
-        stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
+        // 2026-09-03: gebiedPolygonTrail erbij -- de volledige keten-
+        // geschiedenis (zie schuifDoor/registreerNieuweKeten hierboven),
+        // zodat de mail bij een keten van meerdere heruitgaves het hele
+        // opgeschoven/gegroeide gebied laat zien, niet alleen het huidige.
+        stuurMailAlarm({
+          id: s.id,
+          titel,
+          bericht,
+          lat: s.lat,
+          lon: s.lon,
+          gebiedPolygon: s.detail?.gebiedPolygon,
+          gebiedPolygonTrail: actieveKetens.get(s.id)?.gebiedPolygons,
+        });
         // 2026-08-22: derde, rustige (niet-herhalende) alarmkanaal naast
         // Pushover/mail hierboven — zie webpush.js voor de aanleiding.
         // lat/lon/gebiedPolygon erbij (2026-08-22, tweede toevoeging) zodat
@@ -595,7 +615,15 @@ export async function fetchNws() {
         const titel = s.categorie === 'tsunami' ? '🌊 Tsunami Warning' : 'Tsunami Watch';
         const bericht = kaartTekst(s);
         stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tsunami' ? 2 : 1 });
-        stuurMailAlarm({ id: s.id, titel, bericht, lat: s.lat, lon: s.lon, gebiedPolygon: s.detail?.gebiedPolygon });
+        stuurMailAlarm({
+          id: s.id,
+          titel,
+          bericht,
+          lat: s.lat,
+          lon: s.lon,
+          gebiedPolygon: s.detail?.gebiedPolygon,
+          gebiedPolygonTrail: actieveKetens.get(s.id)?.gebiedPolygons,
+        });
         stuurWebPushAlarm({
           id: s.id,
           titel,
