@@ -140,6 +140,21 @@ export const SOURCES = [
     note: 'Geen officiële API — reverse-engineered WebSocket-protocol, geen SLA. Clustert losse flitsen tot "onweercomplexen" met een naderend/actief/verwijderend-status i.p.v. losse puntflitsen te tonen. Protocol-decodering nog niet live bevestigd — check bij opstarten de console-log "voorbeeldrecord".',
   },
   {
+    // 2026-09-03, op verzoek van Lex — AIS-noodsignalen (status 14 / SART-,
+    // MOB- en EPIRB-MMSI's) uit de eigen ontvanger + AISHub, zie
+    // sources/aisNood.js. Geen eigen netwerkverkeer: leest de al-lopende
+    // vaarradar-feeds. staleAfterMs null: zonder noodsignaal is "leeg"
+    // gewoon de normale toestand, geen haperende bron.
+    id: 'aisNood',
+    categorie: 'ais-nood',
+    naam: 'AIS-noodsignaal (SART/MOB/EPIRB, status 14)',
+    tier: 'lokaal',
+    pollIntervalMs: 15 * 1000,
+    staleAfterMs: null,
+    implemented: true,
+    note: 'Detectie op AIS-navigatiestatus 14 ("AIS-SART actief") en MMSI-prefix 970/972/974; testmodus (status 15) wordt genegeerd. Alarm via Pushover (emergency binnen 50 km), mail en webpush; schakelaar ais-nood.',
+  },
+  {
     id: 'p2000',
     categorie: 'hulpdiensten',
     // 2026-08-19: was 'P2000 (Brandweer Berkel-Enschot RSS)' — Lex las dit

@@ -569,6 +569,9 @@ const EMOJI_PER_CATEGORIE = {
   // zodat het verschil ook op de kaart meteen duidelijk is.
   'stormvloedkering-waarschuwing': '🚧',
   'stormvloedkering-gesloten': '🔒',
+  // 2026-09-03, op verzoek van Lex — AIS-noodsignalen (SART/MOB/EPIRB, status 14),
+  // zie backend/src/sources/aisNood.js.
+  'ais-nood': '🆘',
 };
 
 // 2026-08-19, op verzoek van Lex ("Moet toch Weeralarm gaan heten op de
@@ -619,6 +622,7 @@ const NAAM_PER_CATEGORIE = {
   navtex: 'NAVTEX',
   'stormvloedkering-waarschuwing': 'Kans op sluiting stormvloedkering',
   'stormvloedkering-gesloten': 'Stormvloedkering gesloten',
+  'ais-nood': 'AIS-noodsignaal',
 };
 // Categorieën met rijkere popup-inhoud (plaatjes/tekstblokken, zie
 // popupExtraHtml) krijgen een bredere Leaflet-popup dan de standaard 240px.
@@ -9059,7 +9063,7 @@ function renderZonMaan(signalenPerCategorie) {
 // dat nog geen bevestigde gebeurtenis is; die krijgt wel gewoon een
 // Pushover/mail/webpush-melding (zie stormvloedkering.js), alleen niet dit
 // zwaarste kanaal.
-const ALARM_CATEGORIEEN = new Set([...DOPPLER_CATEGORIEEN, 'weerwaarschuwing', 'tsunami', 'tsunami-watch', 'stormvloedkering-gesloten']);
+const ALARM_CATEGORIEEN = new Set([...DOPPLER_CATEGORIEEN, 'weerwaarschuwing', 'tsunami', 'tsunami-watch', 'stormvloedkering-gesloten', 'ais-nood']); // 2026-09-03: ais-nood erbij
 
 // 2026-08-21, op verzoek van Lex ("ik wil een knop waarmee ik de alarmen
 // zelf kan aan- en uitzetten... voor elke categorie een aan/uit switch") —
@@ -9083,6 +9087,7 @@ const ALARM_CATEGORIE_DEFINITIES = [
   // type-D berichten.
   { id: 'navtex-nood', label: 'NAVTEX noodbericht (SAR/piraterij/tsunami)' },
   { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)' },
+  { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)' },
 ];
 
 // Client-side voorkeur (per toestel/browser) — geen serverinstelling, dit is
@@ -9171,6 +9176,7 @@ function renderAlarmInstellingen() {
 // zelfde opzet als ALARM_CATEGORIE_DEFINITIES.
 const TELEFOON_ALARM_DEFINITIES = [
   { sleutel: 'tsunami', label: '🌊 Tsunami telefoonalarm (wereldwijd)' },
+  { sleutel: 'ais-nood', label: '🆘 AIS-noodsignaal telefoonalarm (binnen antennebereik/AISHub)' },
 ];
 
 let telefoonSchakelaars = null; // null = nog niet opgehaald; 'fout' = ophalen mislukt

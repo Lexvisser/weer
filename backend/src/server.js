@@ -48,6 +48,7 @@ import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.j
 import { startVaarradarLokaalFeed } from './sources/vaarradarLokaal.js';
 import { startVaarradarAishubFeed } from './sources/vaarradarAishub.js';
 import { verrijkMetReisvoortgang, ruimReisvoortgangOp } from './reisvoortgang.js';
+import { fetchAisNood } from './sources/aisNood.js';
 import { haalScheepsfotoOp } from './sources/scheepsfoto.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
 import { fetchStormvloedkering } from './sources/stormvloedkering.js';
@@ -855,6 +856,16 @@ export function createApp(env) {
   }
 
   function startPolling() {
+    // 2026-09-03: AIS-noodsignalen lezen de al-lopende vaarradar-feeds (zie
+    // sources/aisNood.js) -- hier gekoppeld omdat die feeds closure-variabelen
+    // van deze functie zijn. Lokaal wint van AISHub bij dezelfde MMSI, net als
+    // in /api/vaarradar.
+    FETCHERS.aisNood = () => {
+      const merged = new Map();
+      for (const p of vaarradarAishubFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'aishub' });
+      for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
+      return fetchAisNood({ posities: merged.values(), homeLat: env.homeLat, homeLon: env.homeLon });
+    };
     for (const source of SOURCES) {
       if (source.id === 'blitzortung') continue; // streaming, geen timer-polling — zie hieronder
       if (!source.implemented || source.pollIntervalMs == null) continue;

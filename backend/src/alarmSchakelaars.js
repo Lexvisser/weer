@@ -27,7 +27,7 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BESTAND = join(__dirname, '..', 'data', 'alarmSchakelaars.json');
 
-export const GELDIGE_SLEUTELS = new Set(['tsunami']);
+export const GELDIGE_SLEUTELS = new Set(['tsunami', 'ais-nood']); // 2026-09-03: ais-nood erbij, zie sources/aisNood.js
 
 let schakelaars = {};
 try {

@@ -1454,6 +1454,7 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .melding-item.cat-overstroming { border-left-color:#f04cd9; }
 .melding-item.cat-weerwaarschuwing { border-left-color:#f04c92; }
 .melding-item.cat-hulpdiensten { border-left-color:#f04c6f; }
+.melding-item.cat-ais-nood { border-left-color:#ff1744; } /* 2026-09-03: AIS-noodsignaal, fel rood */
 /* 2026-08-19: tsunami/tsunami-watch toegevoegd (zie sources/nws.js) — het
    kleurenwiel hierboven was al vol met 14 gelijk verdeelde stappen, dus deze
    twee passen niet meer zuiver in dat schema zonder alle bestaande kleuren
