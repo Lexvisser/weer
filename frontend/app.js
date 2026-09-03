@@ -5969,16 +5969,30 @@ function wisselVaarBoeienZichtbaar() {
 // wat in de praktijk ook klopt. Vier stappen, geen glijdende schaal -- dan
 // blijft vaarIconSleutel() stabiel en wordt het icoon niet bij elke poll
 // herbouwd (zie de flicker-fix bij ververVaarradar()).
+// 2026-09-03, Lex: "sommige pijltjes wel erg klein geworden" (VB STINGRAY,
+// een sleper) -- ondergrens weer op de oude 16px (schaal 1), de rest schuift
+// mee omhoog zodat het verschil blijft.
 function vaarIconSchaal(afmetingen) {
   const lengte = afmetingen ? afmetingen.boeg + afmetingen.hek : 0;
-  if (lengte >= 200) return 1.7; // zeeschepen/containerreuzen
-  if (lengte >= 100) return 1.35; // coasters, grote binnenvaart
-  if (lengte >= 40) return 1; // gewone binnenvaart, sleepboten
-  return 0.75; // klein/onbekend
+  if (lengte >= 200) return 2; // zeeschepen/containerreuzen
+  if (lengte >= 100) return 1.6; // coasters, grote binnenvaart
+  if (lengte >= 40) return 1.3; // gewone binnenvaart, sleepboten
+  return 1; // klein/onbekend -- nooit kleiner dan de oude vaste 16px
 }
 
-function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1) {
-  const dekking = bron === 'aishub' ? AISHUB_OPACITEIT : 1;
+// 2026-09-03: oude posities vervaagd tonen i.p.v. weglaten (backend-venster
+// is nu 60 min, zie VENSTER_MS in vaarradarAishub.js/vaarradarLokaal.js).
+// Drie vaste stappen, geen glijdende schaal -- dan blijft vaarIconSleutel()
+// stabiel (zie de flicker-fix bij ververVaarradar()).
+function vaarVervaging(tijdMs) {
+  const minuten = Number.isFinite(tijdMs) ? (Date.now() - tijdMs) / 60000 : 0;
+  if (minuten < 10) return 1;
+  if (minuten < 30) return 0.6;
+  return 0.35;
+}
+
+function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1, vervaging = 1) {
+  const dekking = (bron === 'aishub' ? AISHUB_OPACITEIT : 1) * vervaging;
   if (stil) {
     // 2026-09-03, Lex: stipjes (stilliggend) NIET meeschalen -- vaste 12px
     // zoals voorheen; alleen de pijltjes volgen de scheepslengte.
@@ -6018,8 +6032,8 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1) {
 // Leaflet-interne, maar in de praktijk stabiele referentie naar het
 // icoon-element), zonder het element zelf te vervangen -- dus geen
 // onderbroken hover meer.
-function vaarIconSleutel(kleur, bron, stil, schaal = 1) {
-  return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}|${schaal}`;
+function vaarIconSleutel(kleur, bron, stil, schaal = 1, vervaging = 1) {
+  return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}|${schaal}|${vervaging}`;
 }
 
 // 2026-09-02, op verzoek van Lex ("dat rondje om het item als er een
@@ -6399,7 +6413,7 @@ function tekenScheepsvorm(s, kleur, marker) {
     return;
   }
   const punten = scheepsvormPunten(s.lat, s.lon, s.headingGraden, s.afmetingen);
-  const opacity = s.bron === 'aishub' ? 0.45 : 0.65;
+  const opacity = (s.bron === 'aishub' ? 0.45 : 0.65) * vaarVervaging(s.tijdMs); // 2026-09-03: oude posities vervaagd
   if (!vorm) {
     // 2026-09-03 (Lex: "ingezoomd niet meer klikbaar? ... oh, op de punt"):
     // de omtrek is zelf klikbaar/hoverbaar en geeft dat door aan de marker,
@@ -6412,7 +6426,7 @@ function tekenScheepsvorm(s, kleur, marker) {
     vaarVormen.set(s.mmsi, vorm);
   } else {
     vorm.setLatLngs(punten);
-    if (vorm.options.color !== kleur) vorm.setStyle({ color: kleur, fillColor: kleur, fillOpacity: opacity });
+    if (vorm.options.color !== kleur || vorm.options.fillOpacity !== opacity) vorm.setStyle({ color: kleur, fillColor: kleur, fillOpacity: opacity });
   }
 }
 
@@ -6538,9 +6552,10 @@ async function ververVaarradar() {
         // blijft een open popup gewoon open (en de foto erin staan).
         marker.setLatLng([s.lat, s.lon]);
         const schaal = vaarIconSchaal(s.afmetingen);
-        const iconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal);
+        const vervaging = vaarVervaging(s.tijdMs);
+        const iconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
         if (marker.vaarIconSleutel !== iconSleutel) {
-          marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal));
+          marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging));
           marker.vaarIconSleutel = iconSleutel;
         } else if (!stil) {
           werkVaarIconRotatieBij(marker, s.koersGraden); // zelfde vorm/kleur, alleen de koers bijwerken -- geen DOM-vervanging
@@ -6569,8 +6584,9 @@ async function ververVaarradar() {
         return;
       }
       const schaal = vaarIconSchaal(s.afmetingen);
-      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal) });
-      marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal);
+      const vervaging = vaarVervaging(s.tijdMs);
+      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging) });
+      marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
       marker.basisPopupHtml = kopHtml + basisHtml;
       // 2026-09-03, op verzoek van Lex ("maak de kaart wit"): eigen className
       // op de Leaflet-popup zelf, zodat styles.css de wrapper/tip van alleen

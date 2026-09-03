@@ -60,7 +60,12 @@ import { fileURLToPath } from 'node:url';
 const SNAPSHOT_PAD = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'aishub-snapshot.json');
 
 const POLL_MS = 65 * 1000; // ruim boven AISHub's "niet vaker dan 1x/minuut"
-const VENSTER_MS = 15 * 60 * 1000; // iets ruimer dan vaarradarLokaal.js's 10 min -- AISHub's eigen
+// 2026-09-03, op verzoek van Lex ("ja!" op het voorstel om oude posities
+// te blijven tonen zoals MarineTraffic/AISHub zelf): venster van 15 naar 60
+// min; de frontend vervaagt alles ouder dan 10 min (zie vaarVervaging() in
+// app.js) en de popup zegt al hoe oud de positie is. Aanleiding: VB COURAGE
+// stond op AISHub's kaart maar viel bij ons al na 15 min weg.
+const VENSTER_MS = 60 * 60 * 1000; // was 15 * 60 * 1000; // iets ruimer dan vaarradarLokaal.js's 10 min -- AISHub's eigen
 // vertraging (andere stations, netwerklatency) betekent dat "vers" hier sowieso wat rekkelijker is
 const BACKOFF_START_MS = 30 * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
@@ -191,7 +196,7 @@ export function startVaarradarAishubFeed(env) {
   const { latmin, latmax, lonmin, lonmax } = bounding(env.homeLat, env.homeLon);
   const url =
     `https://data.aishub.net/ws.php?username=${encodeURIComponent(env.aishubUsername)}` +
-    `&format=1&output=json&compress=0&interval=30` +
+    `&format=1&output=json&compress=0&interval=60` + // 2026-09-03: was 30, gelijk aan VENSTER_MS
     `&latmin=${latmin.toFixed(4)}&latmax=${latmax.toFixed(4)}&lonmin=${lonmin.toFixed(4)}&lonmax=${lonmax.toFixed(4)}`;
 
   let gestopt = false;
