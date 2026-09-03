@@ -5974,10 +5974,12 @@ function wisselVaarBoeienZichtbaar() {
 // mee omhoog zodat het verschil blijft.
 function vaarIconSchaal(afmetingen) {
   const lengte = afmetingen ? afmetingen.boeg + afmetingen.hek : 0;
-  if (lengte >= 200) return 2; // zeeschepen/containerreuzen
-  if (lengte >= 100) return 1.6; // coasters, grote binnenvaart
-  if (lengte >= 40) return 1.3; // gewone binnenvaart, sleepboten
-  return 1; // klein/onbekend -- nooit kleiner dan de oude vaste 16px
+  // 2026-09-03 (2e keer, "ik zie STINGRAY nog niet groter"): hele reeks een
+  // stap omhoog, kleinste = 20px (was 16px voor de schaling bestond).
+  if (lengte >= 200) return 2.2; // zeeschepen/containerreuzen (35px)
+  if (lengte >= 100) return 1.8; // coasters, grote binnenvaart (29px)
+  if (lengte >= 40) return 1.5; // gewone binnenvaart, sleepboten (24px)
+  return 1.25; // klein/onbekend (20px)
 }
 
 // 2026-09-03: oude posities vervaagd tonen i.p.v. weglaten (backend-venster
