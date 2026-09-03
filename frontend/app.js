@@ -739,7 +739,10 @@ function initMap() {
   // VAAR_MIN_ZOOM_VOOR_SCHEPEN hierboven) -- meteen reageren op een zoom-
   // wissel i.p.v. tot de eerstvolgende 3s-poll te wachten.
   kaart.on('zoomend', () => { if (vaarradarActief) ververVaarradar(); });
-  kaart.on('moveend', () => { if (vaarradarActief) werkVaarTellingBij(); }); // 2026-09-03: telling in het AIS-menu volgt het kaartbeeld
+  // 2026-09-03: bij pannen opnieuw tekenen uit de laatste data (geen fetch),
+  // zodat schepen die in beeld schuiven verschijnen -- zie tekenVaarSchepen().
+  // Telling zit daar al in.
+  kaart.on('moveend', () => { if (vaarradarActief) tekenVaarSchepen(laatsteVaarData); });
   // 2026-08-30, op verzoek van Lex ("in welk gridvak de cursor is"): vak
   // onder de muis oplichten + uitlezen. Op touch geen hover, dus daar telt
   // een tik op de kaart als 'cursor'. Zie toonGradenVak().
@@ -6498,143 +6501,162 @@ async function ververVaarradar() {
     if (!vaarradarActief) return;
     laatsteVaarSchepen = data.schepen ?? []; // 2026-09-03: voor vaarZoekUitvoeren()
     if (vaarZoekVeldEl && vaarZoekVeldEl.value.trim()) vaarZoekUitvoeren(); // treffers verversen (afstand/positie)
-    // 2026-09-02: was L.markerClusterGroup (voor grote zoekstralen tot 250km met
-    // duizenden bootjes, zie wisselVaarStraal() hierboven) -- nu terug naar een kale
-    // L.layerGroup, zie de toelichting hierboven bij het weggehaalde clustervrije-
-    // zone-blok. Geen refreshClusters() meer nodig: een kale layerGroup toont een
-    // in-place bijgewerkte marker (setLatLng/setIcon) gewoon meteen goed.
-    if (!vaarLaag) {
-      vaarVormLaag = L.layerGroup().addTo(kaart); // eerst, zodat de vormen onder de markers liggen
-      vaarLaag = L.layerGroup().addTo(kaart);
-    }
-    const gezien = new Set();
-    // AISHub-only schepen (bron: 'aishub', geen eigen ontvangst) blijven weg
-    // als de knop uitstaat -- lokaal ontvangen schepen (bron: 'lokaal')
-    // blijven altijd zichtbaar, ongeacht deze knop.
-    const zichtbareSchepen = (data.schepen ?? [])
-      .filter((s) => aishubZichtbaar || s.bron !== 'aishub')
-      // 2026-09-02: scheepstype-filterpaneel, zie bouwVaarTypeFilterPaneel() hierboven.
-      .filter((s) => !schipVerborgenDoorFilter(s));
-    zichtbareSchepen.forEach((s) => {
-      gezien.add(s.mmsi);
-      const kleur = kleurVoorSchip(s);
-      tekenScheepsvorm(s, kleur); // 2026-09-03: ware-grootte-omtrek vanaf zoom 15, zie tekenScheepsvorm()
-      // navigatiehulpmiddelen (boeien/bakens) bewegen per definitie nooit --
-      // altijd als stip tekenen, ongeacht status/snelheid (die velden zijn bij
-      // dit soort AIS-zenders vaak leeg/betekenisloos).
-      const stil = schipLigtStil(s) || s.scheepscategorie === 'navigatiehulp';
-      const naam = s.naam || (s.scheepssubtype === 'sar-vliegtuig' ? `SAR ${s.mmsi}` : `schip (MMSI ${s.mmsi})`); // 2026-09-03: geen 'schip' voor een helikopter
-      const statusTekst = statusTekstVoorSchip(s); // 2026-09-03: met snelheid erbij als de status tegenspreekt
-      // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
-      // 'ie bekend is, ongeacht de actieve kleurmodus -- nuttige info op
-      // zichzelf, en meteen de manier om te zien of AIS-catcher's shiptype-
-      // veld hier uberhaupt gevuld binnenkomt (zie categoriseerScheepstype()
-      // in vaarradarLokaal.js): blijft dit label overal weg, dan is dat het
-      // antwoord op die open vraag.
-      // Het bolletje voor de naam herhaalt dezelfde kleur als het bootje op de
-      // kaart -- puur zodat een popup meteen te koppelen is aan "welk bootje
-      // was dat ook alweer" als er meerdere tegelijk openstaan.
-      // "via AISHub"-label alleen als deze positie NIET van onze eigen
-      // ontvangst komt -- zo blijft in de popup zelf ook zichtbaar waarom
-      // een bootje getemperd (opacity) getekend is, niet alleen op de kaart.
-      const bronLabel = s.bron === 'aishub' ? '<span class="popup-aishub-label">via AISHub</span>' : '';
-      // 2026-09-02, op verzoek van Lex (bestemming/ETA erbij, net als
-      // MarineTraffic/VesselFinder) -- alleen getoond als de bron het meegeeft
-      // (niet elk schip zendt voyage-data uit, en niet elke bron decodeert 'm).
-      // 2026-09-03, op verzoek van Lex ("de andere alvast gerealiseerd zien
-      // met wat we hebben"): bestemming/ETA/diepgang zitten nu in het
-      // MarineTraffic-achtige kaartje van scheepsKaartHtml() hieronder.
-      // 2026-09-02, op verzoek van Lex ("de kaart namaken van marine traffic
-      // -- begin met de nationaliteit met een vlaggetje boven de foto"):
-      // naam + vlag + scheepstype in een eigen kop BOVEN de foto (zie
-      // scheepsPopupEl()), de rest van de regels eronder zoals voorheen.
-      const typeLabel = scheepsTypeLabel(s); // 2026-09-03: subtype-bewust, zie scheepsTypeLabel()
-      // 2026-09-03: vlag groot in de linkerbovenhoek, naam + type als twee
-      // regels rechts ervan (zie .popup-schip .popup-scheepskop-* in styles.css).
-      const kopHtml = `<div class="popup-scheepskop-rij">${vlagHtml(landcodeVoorSchip(s))}<div class="popup-scheepskop-tekst"><div class="popup-scheepskop-naam"><span class="popup-scheepskleur" style="background:${kleur}"></span>${escapeHtml(naam)}${bronLabel}</div><div class="popup-scheepskop-type">${escapeHtml(typeLabel)}</div></div></div>`;
-      const basisHtml = scheepsKaartHtml(s, statusTekst);
-      let marker = vaarMarkers.get(s.mmsi);
-      if (marker) {
-        // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
-        // blijft een open popup gewoon open (en de foto erin staan).
-        marker.setLatLng([s.lat, s.lon]);
-        const schaal = vaarIconSchaal(s.afmetingen);
-        const vervaging = vaarVervaging(s.tijdMs);
-        const iconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
-        if (marker.vaarIconSleutel !== iconSleutel) {
-          marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging));
-          marker.vaarIconSleutel = iconSleutel;
-        } else if (!stil) {
-          werkVaarIconRotatieBij(marker, s.koersGraden); // zelfde vorm/kleur, alleen de koers bijwerken -- geen DOM-vervanging
-        }
-        zetVaarRingKleur(marker, kleur);
-        // Alleen bijwerken bij een echte wijziging -- zelfde soort onnodige-
-        // churn-preventie als bij het icoon hierboven (setTooltipContent is
-        // hier zelf onschuldiger dan setIcon, geen DOM-vervanging, maar geen
-        // reden om 'm elke 3s ongewijzigd opnieuw aan te roepen).
-        const tooltipHtml = vaarTooltipHtml(s);
-        if (marker.vaarTooltipHtml !== tooltipHtml) {
-          marker.setTooltipContent(tooltipHtml);
-          marker.vaarTooltipHtml = tooltipHtml;
-        }
-        if (kopHtml + basisHtml !== marker.basisPopupHtml) {
-          marker.basisPopupHtml = kopHtml + basisHtml;
-          // Tekst-only bijwerken (zie scheepsPopupEl()/bug-fix-toelichting
-          // hierboven bij haalEnToonScheepsfoto) -- geen setContent() met een
-          // hele nieuwe string meer, dus de foto blijft met rust.
-          scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml);
-          // Leaflet's popup.update() hangt het inhoud-element terug in de
-          // eigen popup-container -- overslaan zolang de telefoon-sheet 'm
-          // heeft (zie toonSchipSheet()), daar is het element toch al live.
-          if (marker.isPopupOpen() && schipSheetMarker !== marker) marker.getPopup()?.update();
-        }
-        return;
-      }
-      const schaal = vaarIconSchaal(s.afmetingen);
-      const vervaging = vaarVervaging(s.tijdMs);
-      marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging) });
-      marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
-      marker.basisPopupHtml = kopHtml + basisHtml;
-      // 2026-09-03, op verzoek van Lex ("maak de kaart wit"): eigen className
-      // op de Leaflet-popup zelf, zodat styles.css de wrapper/tip van alleen
-      // de scheepspopup licht kan maken (zie .popup-schip-wit daar).
-      marker.bindPopup(scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml), { className: 'popup-schip-wit', minWidth: 340, maxWidth: 380 }); // 2026-09-03: MarineTraffic-breedte (~385px)
-      marker.vaarTooltipHtml = vaarTooltipHtml(s);
-      marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
-      marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
-      marker.on('mouseout', () => { marker._vaarHover = false; vaarRingBijwerken(marker); });
-      marker.on('popupopen', () => { marker._vaarPopupOpen = true; vaarRingBijwerken(marker); });
-      marker.on('popupclose', () => { marker._vaarPopupOpen = false; vaarRingBijwerken(marker); });
-      // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
-      // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
-      // deze popup daadwerkelijk OPENT, nooit vooraf voor alle zichtbare
-      // schepen -- zie scheepsfoto.js/server.js voor waarom (geen eigen
-      // officiele API, dus zuinig zijn op het aantal opzoekingen).
-      // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.
-      marker.on('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
-      // 2026-09-03: op een smal scherm (telefoon) meteen schermvullend, zie
-      // toonSchipSheet() -- de Leaflet-popup blijft daaronder open (zo blijft
-      // de verversing lopen en blijft het bootje staan bij een datagat).
-      marker.on('popupopen', () => { if (isSmalScherm()) toonSchipSheet(marker); });
-      marker.on('popupclose', () => { if (schipSheetMarker === marker) sluitSchipSheet(false); });
-      vaarLaag.addLayer(marker);
-      vaarMarkers.set(s.mmsi, marker);
-      zetVaarRingKleur(marker, kleur);
-    });
-    // Bootjes die niet meer in de data zitten weghalen -- behalve als de
-    // popup ervan nog openstaat (AIS-data heeft wel eens een gaatje; het is
-    // vervelender dat je popup onder je vingers verdwijnt dan dat een bootje
-    // een poll langer blijft staan).
-    vaarMarkers.forEach((marker, mmsi) => {
-      if (gezien.has(mmsi) || marker.isPopupOpen()) return;
-      vaarLaag.removeLayer(marker);
-      vaarMarkers.delete(mmsi);
-      verwijderScheepsvorm(mmsi);
-    });
-    werkVaarTellingBij(); // 2026-09-03: telling in het AIS-menu
+    tekenVaarSchepen(data);
   } catch (err) {
     console.error('vaarradar ophalen mislukt', err);
   }
+}
+
+// 2026-09-03, op melding van Lex ("het inzoomen gaat erg traag, tiles worden
+// ook een voor een opgebouwd"): met 250km straal zijn dat 5000+ DOM-markers
+// die Leaflet bij elke zoom/pan allemaal moet herpositioneren -- de
+// browser-hoofdthread zit dan vol en de tegels komen er een voor een
+// doorheen. Tekenwerk is daarom losgetrokken van het ophalen (deze functie)
+// en tekent ALLEEN wat in het kaartbeeld valt (plus 25% marge); wat buiten
+// beeld raakt wordt door de opruimlus onderaan weer weggehaald. Bij pannen
+// wordt zonder nieuwe fetch opnieuw getekend uit laatsteVaarData
+// (zie de moveend-handler bij de kaartinit).
+let laatsteVaarData = null;
+function tekenVaarSchepen(data) {
+  if (!vaarradarActief || !kaart || !data) return;
+  laatsteVaarData = data;
+  const beeldGrens = kaart.getBounds().pad(0.25);
+  // 2026-09-02: was L.markerClusterGroup (voor grote zoekstralen tot 250km met
+  // duizenden bootjes, zie wisselVaarStraal() hierboven) -- nu terug naar een kale
+  // L.layerGroup, zie de toelichting hierboven bij het weggehaalde clustervrije-
+  // zone-blok. Geen refreshClusters() meer nodig: een kale layerGroup toont een
+  // in-place bijgewerkte marker (setLatLng/setIcon) gewoon meteen goed.
+  if (!vaarLaag) {
+    vaarVormLaag = L.layerGroup().addTo(kaart); // eerst, zodat de vormen onder de markers liggen
+    vaarLaag = L.layerGroup().addTo(kaart);
+  }
+  const gezien = new Set();
+  // AISHub-only schepen (bron: 'aishub', geen eigen ontvangst) blijven weg
+  // als de knop uitstaat -- lokaal ontvangen schepen (bron: 'lokaal')
+  // blijven altijd zichtbaar, ongeacht deze knop.
+  const zichtbareSchepen = (data.schepen ?? [])
+    .filter((s) => aishubZichtbaar || s.bron !== 'aishub')
+    // 2026-09-02: scheepstype-filterpaneel, zie bouwVaarTypeFilterPaneel() hierboven.
+    .filter((s) => !schipVerborgenDoorFilter(s))
+    // 2026-09-03: alleen wat in beeld is (zie toelichting boven tekenVaarSchepen())
+    .filter((s) => typeof s.lat === 'number' && typeof s.lon === 'number' && beeldGrens.contains([s.lat, s.lon]));
+  zichtbareSchepen.forEach((s) => {
+    gezien.add(s.mmsi);
+    const kleur = kleurVoorSchip(s);
+    tekenScheepsvorm(s, kleur); // 2026-09-03: ware-grootte-omtrek vanaf zoom 15, zie tekenScheepsvorm()
+    // navigatiehulpmiddelen (boeien/bakens) bewegen per definitie nooit --
+    // altijd als stip tekenen, ongeacht status/snelheid (die velden zijn bij
+    // dit soort AIS-zenders vaak leeg/betekenisloos).
+    const stil = schipLigtStil(s) || s.scheepscategorie === 'navigatiehulp';
+    const naam = s.naam || (s.scheepssubtype === 'sar-vliegtuig' ? `SAR ${s.mmsi}` : `schip (MMSI ${s.mmsi})`); // 2026-09-03: geen 'schip' voor een helikopter
+    const statusTekst = statusTekstVoorSchip(s); // 2026-09-03: met snelheid erbij als de status tegenspreekt
+    // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
+    // 'ie bekend is, ongeacht de actieve kleurmodus -- nuttige info op
+    // zichzelf, en meteen de manier om te zien of AIS-catcher's shiptype-
+    // veld hier uberhaupt gevuld binnenkomt (zie categoriseerScheepstype()
+    // in vaarradarLokaal.js): blijft dit label overal weg, dan is dat het
+    // antwoord op die open vraag.
+    // Het bolletje voor de naam herhaalt dezelfde kleur als het bootje op de
+    // kaart -- puur zodat een popup meteen te koppelen is aan "welk bootje
+    // was dat ook alweer" als er meerdere tegelijk openstaan.
+    // "via AISHub"-label alleen als deze positie NIET van onze eigen
+    // ontvangst komt -- zo blijft in de popup zelf ook zichtbaar waarom
+    // een bootje getemperd (opacity) getekend is, niet alleen op de kaart.
+    const bronLabel = s.bron === 'aishub' ? '<span class="popup-aishub-label">via AISHub</span>' : '';
+    // 2026-09-02, op verzoek van Lex (bestemming/ETA erbij, net als
+    // MarineTraffic/VesselFinder) -- alleen getoond als de bron het meegeeft
+    // (niet elk schip zendt voyage-data uit, en niet elke bron decodeert 'm).
+    // 2026-09-03, op verzoek van Lex ("de andere alvast gerealiseerd zien
+    // met wat we hebben"): bestemming/ETA/diepgang zitten nu in het
+    // MarineTraffic-achtige kaartje van scheepsKaartHtml() hieronder.
+    // 2026-09-02, op verzoek van Lex ("de kaart namaken van marine traffic
+    // -- begin met de nationaliteit met een vlaggetje boven de foto"):
+    // naam + vlag + scheepstype in een eigen kop BOVEN de foto (zie
+    // scheepsPopupEl()), de rest van de regels eronder zoals voorheen.
+    const typeLabel = scheepsTypeLabel(s); // 2026-09-03: subtype-bewust, zie scheepsTypeLabel()
+    // 2026-09-03: vlag groot in de linkerbovenhoek, naam + type als twee
+    // regels rechts ervan (zie .popup-schip .popup-scheepskop-* in styles.css).
+    const kopHtml = `<div class="popup-scheepskop-rij">${vlagHtml(landcodeVoorSchip(s))}<div class="popup-scheepskop-tekst"><div class="popup-scheepskop-naam"><span class="popup-scheepskleur" style="background:${kleur}"></span>${escapeHtml(naam)}${bronLabel}</div><div class="popup-scheepskop-type">${escapeHtml(typeLabel)}</div></div></div>`;
+    const basisHtml = scheepsKaartHtml(s, statusTekst);
+    let marker = vaarMarkers.get(s.mmsi);
+    if (marker) {
+      // Bestaand bootje: alleen bijwerken, nooit opnieuw aanmaken -- dan
+      // blijft een open popup gewoon open (en de foto erin staan).
+      marker.setLatLng([s.lat, s.lon]);
+      const schaal = vaarIconSchaal(s.afmetingen);
+      const vervaging = vaarVervaging(s.tijdMs);
+      const iconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
+      if (marker.vaarIconSleutel !== iconSleutel) {
+        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging));
+        marker.vaarIconSleutel = iconSleutel;
+      } else if (!stil) {
+        werkVaarIconRotatieBij(marker, s.koersGraden); // zelfde vorm/kleur, alleen de koers bijwerken -- geen DOM-vervanging
+      }
+      zetVaarRingKleur(marker, kleur);
+      // Alleen bijwerken bij een echte wijziging -- zelfde soort onnodige-
+      // churn-preventie als bij het icoon hierboven (setTooltipContent is
+      // hier zelf onschuldiger dan setIcon, geen DOM-vervanging, maar geen
+      // reden om 'm elke 3s ongewijzigd opnieuw aan te roepen).
+      const tooltipHtml = vaarTooltipHtml(s);
+      if (marker.vaarTooltipHtml !== tooltipHtml) {
+        marker.setTooltipContent(tooltipHtml);
+        marker.vaarTooltipHtml = tooltipHtml;
+      }
+      if (kopHtml + basisHtml !== marker.basisPopupHtml) {
+        marker.basisPopupHtml = kopHtml + basisHtml;
+        // Tekst-only bijwerken (zie scheepsPopupEl()/bug-fix-toelichting
+        // hierboven bij haalEnToonScheepsfoto) -- geen setContent() met een
+        // hele nieuwe string meer, dus de foto blijft met rust.
+        scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml);
+        // Leaflet's popup.update() hangt het inhoud-element terug in de
+        // eigen popup-container -- overslaan zolang de telefoon-sheet 'm
+        // heeft (zie toonSchipSheet()), daar is het element toch al live.
+        if (marker.isPopupOpen() && schipSheetMarker !== marker) marker.getPopup()?.update();
+      }
+      return;
+    }
+    const schaal = vaarIconSchaal(s.afmetingen);
+    const vervaging = vaarVervaging(s.tijdMs);
+    marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging) });
+    marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
+    marker.basisPopupHtml = kopHtml + basisHtml;
+    // 2026-09-03, op verzoek van Lex ("maak de kaart wit"): eigen className
+    // op de Leaflet-popup zelf, zodat styles.css de wrapper/tip van alleen
+    // de scheepspopup licht kan maken (zie .popup-schip-wit daar).
+    marker.bindPopup(scheepsPopupEl(marker, s.mmsi, kopHtml, basisHtml), { className: 'popup-schip-wit', minWidth: 340, maxWidth: 380 }); // 2026-09-03: MarineTraffic-breedte (~385px)
+    marker.vaarTooltipHtml = vaarTooltipHtml(s);
+    marker.bindTooltip(marker.vaarTooltipHtml, { direction: 'top', offset: [0, -8], className: 'vaar-tooltip', sticky: false });
+    marker.on('mouseover', () => { marker._vaarHover = true; vaarRingBijwerken(marker); });
+    marker.on('mouseout', () => { marker._vaarHover = false; vaarRingBijwerken(marker); });
+    marker.on('popupopen', () => { marker._vaarPopupOpen = true; vaarRingBijwerken(marker); });
+    marker.on('popupclose', () => { marker._vaarPopupOpen = false; vaarRingBijwerken(marker); });
+    // 2026-09-01, op verzoek van Lex ("ik zag wel eens dat de schepen met
+    // AIS ook een fotootje hadden... ja leuk!") -- foto pas opzoeken zodra
+    // deze popup daadwerkelijk OPENT, nooit vooraf voor alle zichtbare
+    // schepen -- zie scheepsfoto.js/server.js voor waarom (geen eigen
+    // officiele API, dus zuinig zijn op het aantal opzoekingen).
+    // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.
+    marker.on('popupopen', () => haalEnToonScheepsfoto(marker, s.mmsi));
+    // 2026-09-03: op een smal scherm (telefoon) meteen schermvullend, zie
+    // toonSchipSheet() -- de Leaflet-popup blijft daaronder open (zo blijft
+    // de verversing lopen en blijft het bootje staan bij een datagat).
+    marker.on('popupopen', () => { if (isSmalScherm()) toonSchipSheet(marker); });
+    marker.on('popupclose', () => { if (schipSheetMarker === marker) sluitSchipSheet(false); });
+    vaarLaag.addLayer(marker);
+    vaarMarkers.set(s.mmsi, marker);
+    zetVaarRingKleur(marker, kleur);
+  });
+  // Bootjes die niet meer in de data zitten weghalen -- behalve als de
+  // popup ervan nog openstaat (AIS-data heeft wel eens een gaatje; het is
+  // vervelender dat je popup onder je vingers verdwijnt dan dat een bootje
+  // een poll langer blijft staan).
+  vaarMarkers.forEach((marker, mmsi) => {
+    if (gezien.has(mmsi) || marker.isPopupOpen()) return;
+    vaarLaag.removeLayer(marker);
+    vaarMarkers.delete(mmsi);
+    verwijderScheepsvorm(mmsi);
+  });
+  werkVaarTellingBij(); // 2026-09-03: telling in het AIS-menu
 }
 
 function zorgRadarPolling() {
