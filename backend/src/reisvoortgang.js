@@ -120,7 +120,10 @@ export function verrijkMetReisvoortgang(s, nu = Date.now()) {
   start.gezienMs = nu;
   if (afstand > start.startKm) start.startKm = afstand; // eerst nog van de haven af: verste punt wordt het startpunt
 
-  const aangekomen = (s.status === 5 || s.status === 1) && afstand <= AANGEKOMEN_KM;
+  // 2026-09-03: "afgemeerd" alleen geloven als het schip ook echt stilligt --
+  // sleepboten varen regelmatig rond met een vergeten status 5.
+  const ligtStil = typeof s.snelheidKn !== 'number' || s.snelheidKn <= 1;
+  const aangekomen = (s.status === 5 || s.status === 1) && ligtStil && afstand <= AANGEKOMEN_KM;
   if (aangekomen) s.reisVoortgang = 1;
   else if (start.startKm < MIN_START_KM) s.reisVoortgang = null;
   else s.reisVoortgang = Math.max(0, Math.min(1, 1 - afstand / start.startKm));

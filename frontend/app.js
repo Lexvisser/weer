@@ -5677,9 +5677,26 @@ const NAVSTATUS_LABEL = {
 // rond stilstand, dus bewust geen extra marge ingebouwd totdat dat wél
 // nodig blijkt.
 const NAVSTATUS_STILLIGGEND = new Set([1, 5, 6]);
+// 2026-09-03 (Lex: "hoe kan dit afgemeerd zijn met 7 knts"): de navigatie-
+// status is een handmatige instelling op de transponder die vaak niet wordt
+// omgezet (sleepboten!). Bij een tegenstrijdige status is de gemeten snelheid
+// leidend: boven STATUS_TEGENSTRIJDIG_KN wordt "afgemeerd/voor anker" niet
+// geloofd -- het schip wordt als varend getekend (driehoekje) en de popup
+// toont de status met de snelheid erbij (zie statusTekstVoorSchip()).
+const STATUS_TEGENSTRIJDIG_KN = 1;
+function statusTegenstrijdig(s) {
+  return typeof s.status === 'number' && NAVSTATUS_STILLIGGEND.has(s.status)
+    && typeof s.snelheidKn === 'number' && s.snelheidKn > STATUS_TEGENSTRIJDIG_KN;
+}
 function schipLigtStil(s) {
+  if (statusTegenstrijdig(s)) return false;
   if (typeof s.status === 'number') return NAVSTATUS_STILLIGGEND.has(s.status);
   return typeof s.snelheidKn === 'number' && s.snelheidKn <= 0.5;
+}
+function statusTekstVoorSchip(s) {
+  const tekst = typeof s.status === 'number' ? NAVSTATUS_LABEL[s.status] ?? null : null;
+  if (tekst && statusTegenstrijdig(s)) return `${tekst} (vaart ${Math.round(s.snelheidKn * 10) / 10} kn)`;
+  return tekst;
 }
 
 // ETA komt genormaliseerd binnen als { maand, dag, uur, minuut } (zie
@@ -6259,7 +6276,7 @@ async function ververVaarradar() {
       // dit soort AIS-zenders vaak leeg/betekenisloos).
       const stil = schipLigtStil(s) || s.scheepscategorie === 'navigatiehulp';
       const naam = s.naam || `schip (MMSI ${s.mmsi})`;
-      const statusTekst = typeof s.status === 'number' ? NAVSTATUS_LABEL[s.status] ?? null : null;
+      const statusTekst = statusTekstVoorSchip(s); // 2026-09-03: met snelheid erbij als de status tegenspreekt
       // Scheepscategorie-label (bv. "Vrachtschip") staat er ALTIJD bij als
       // 'ie bekend is, ongeacht de actieve kleurmodus -- nuttige info op
       // zichzelf, en meteen de manier om te zien of AIS-catcher's shiptype-
