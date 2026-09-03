@@ -79,6 +79,24 @@ const EVENT_TYPES = [
 // onderdrukt -- dat is precies het soort escalatie waar je wél opnieuw voor
 // gewaarschuwd wil worden, ongeacht dat het "dezelfde" keten is. Zie
 // dreigingsNiveauRang/vindEnSchuifKeten hieronder.
+//
+// 2026-09-03, op melding van Lex -- de 2026-09-02-versie hierboven bleek
+// toch nog 4 losse mails door te laten (Buffalo NY 6:28PM/6:47PM EDT en
+// Detroit/Pontiac MI 7:19PM/7:35PM EDT, allebei paren met hetzelfde/
+// overlappend gebied). Root cause: de gebied-heuristiek koppelde alleen als
+// het OUDE id al uit de live-feed verdwenen was ("if (huidigeIds.has(oudId))
+// continue") -- maar NWS laat het oude product bij een heruitgave kennelijk
+// gewoon vanzelf aflopen i.p.v. het meteen te annuleren, dus oud én nieuw
+// stonden een tijd naast elkaar in de live-feed. Daardoor werd de heruitgave
+// nooit als zodanig herkend.
+// Fix: NWS' eigen CAP `references`-veld gebruiken als PRIMAIR, autoritatief
+// signaal (zie referentieIdsUit/vindEnSchuifKeten hieronder) -- dat veld
+// zegt letterlijk welk vorig alert-id deze update vervangt, dus geen gok
+// nodig, en werkt ook als het oude id nog live is. De gebied-heuristiek van
+// 2026-09-02 blijft staan als fallback voor als references een keer
+// ontbreekt, met de bestaande "oud id moet verdwenen zijn"-eis (die is voor
+// de heuristiek WEL nodig, anders koppelt-ie te makkelijk twee toevallig-
+// overlappende maar echt verschillende tornado's aan elkaar).
 const KETEN_TTL_MS = 3 * 60 * 60 * 1000; // 3 uur -- ruim boven duur+heruitgave-marge van een warning, voorkomt kruisbesmetting met een latere, ongerelateerde waarschuwing in hetzelfde gebied
 const actieveKetens = new Map(); // huidige id -> { categorie, gebiedTokens, niveau, laatstGezien }
 
@@ -112,6 +130,30 @@ function heeftOverlap(a, b) {
   return false;
 }
 
+// Haalt de id's van vorige alerts die dit signaal (volgens NWS zelf)
+// vervangt uit het CAP `references`-veld -- defensief tegen twee vormen die
+// api.weather.gov kan teruggeven: een array van objecten ({identifier: ...})
+// in de GeoJSON-vorm, of de rauwe CAP-tekstvorm ("sender,identifier,sent",
+// evt. meerdere door een spatie gescheiden). Geeft altijd een array terug
+// (leeg als references ontbreekt/onherkenbaar is) -- nooit fataal, dit is
+// een extra signaal bovenop de bestaande gebied-heuristiek, geen vereiste.
+function referentieIdsUit(p) {
+  const ref = p.references;
+  if (!ref) return [];
+  const lijst = Array.isArray(ref) ? ref : typeof ref === 'string' ? ref.split(' ').filter(Boolean) : [];
+  return lijst
+    .map((r) => {
+      if (typeof r === 'string') {
+        const delen = r.split(',');
+        return delen.length >= 2 ? delen[1] : null;
+      }
+      if (r && typeof r === 'object') return r.identifier ?? null;
+      return null;
+    })
+    .filter(Boolean)
+    .map((identifier) => `nws-${identifier}`);
+}
+
 // Dreigingsniveau als rangnummer, voor de escalatie-veiligheidsklep hierboven
 // (hoger = ernstiger). Niet-tornado-categorieën (tsunami) hebben geen van
 // deze velden, dus altijd 0 -- daar wordt elke heruitgave onderdrukt, net als
@@ -123,34 +165,50 @@ function dreigingsNiveauRang(signaal) {
   return 0;
 }
 
-// Zoekt of `signaal` de voortzetting is van een bestaande keten: zelfde
-// categorie, overlappend gebied met het LAATST bekende gebied van die keten
-// (niet per se het allereerste -- zie uitleg hierboven bij KETEN_TTL_MS),
-// waarvan de oude id niet meer in de huidige pollcyclus voorkomt (dus echt
-// vervangen lijkt, niet toevallig een gelijktijdig ander signaal). Bij een
-// match schuift de keten door naar het nieuwe id/gebied/niveau.
+// Zoekt of `signaal` de voortzetting is van een bestaande keten, in twee
+// stappen (zie de 2026-09-03-toelichting hierboven):
 //
+// 1. Autoritatief: NWS' eigen CAP `references`-veld (referentieIdsUit)
+//    vertelt letterlijk welk vorig alert-id dit signaal vervangt -- geen
+//    gok, en werkt ook als dat oude id nog gewoon live in de feed staat.
+// 2. Fallback: dezelfde gebied-heuristiek als voorheen (zelfde categorie,
+//    overlappend gebied met het LAATST bekende gebied van de keten, MAAR
+//    alleen als het oude id inmiddels uit de huidige pollcyclus verdween --
+//    die eis is hier wel nodig, anders koppelt de heuristiek te makkelijk
+//    twee toevallig-overlappende maar echt verschillende tornado's).
+//
+// Bij een match schuift de keten door naar het nieuwe id/gebied/niveau.
 // Return-waarde: `true` = onderdrukken (geen alarm), `false` = keten
 // gevonden maar niveau is hoger dan eerder gealarmeerd -- alarm gaat WEL
 // door (keten is al bijgewerkt), `null` = geen bestaande keten gevonden.
 function vindEnSchuifKeten(signaal, huidigeIds) {
   const tokens = gebiedTokens(signaal.detail?.gebied);
-  if (!tokens.size) return null;
   const niveau = dreigingsNiveauRang(signaal);
-  for (const [oudId, keten] of actieveKetens) {
-    if (oudId === signaal.id) continue;
-    if (huidigeIds.has(oudId)) continue; // oud id zelf nog steeds actief, geen reden om te koppelen
-    if (keten.categorie !== signaal.categorie) continue;
-    if (!heeftOverlap(keten.gebiedTokens, tokens)) continue;
+
+  const schuifDoor = (oudId, keten, bron) => {
     actieveKetens.delete(oudId);
     const onderdrukken = niveau <= keten.niveau;
     actieveKetens.set(signaal.id, { categorie: signaal.categorie, gebiedTokens: tokens, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now() });
     console.log(
       onderdrukken
-        ? `[weer] nws: heruitgave gekoppeld -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm onderdrukt (al eerder gealarmeerd voor deze doorlopende dreiging).`
-        : `[weer] nws: heruitgave gekoppeld -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm gaat WEL door -- dreigingsniveau steeg (${keten.niveau} -> ${niveau}).`,
+        ? `[weer] nws: heruitgave gekoppeld (${bron}) -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm onderdrukt (al eerder gealarmeerd voor deze doorlopende dreiging).`
+        : `[weer] nws: heruitgave gekoppeld (${bron}) -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm gaat WEL door -- dreigingsniveau steeg (${keten.niveau} -> ${niveau}).`,
     );
     return onderdrukken;
+  };
+
+  for (const refId of signaal.detail?.nwsReferenties ?? []) {
+    const keten = actieveKetens.get(refId);
+    if (keten) return schuifDoor(refId, keten, 'NWS-references');
+  }
+
+  if (!tokens.size) return null;
+  for (const [oudId, keten] of actieveKetens) {
+    if (oudId === signaal.id) continue;
+    if (huidigeIds.has(oudId)) continue; // oud id zelf nog steeds actief -- alleen voor de gebied-fallback een reden om niet te koppelen
+    if (keten.categorie !== signaal.categorie) continue;
+    if (!heeftOverlap(keten.gebiedTokens, tokens)) continue;
+    return schuifDoor(oudId, keten, 'gebied-heuristiek');
   }
   return null;
 }
@@ -342,6 +400,7 @@ async function fetchEventType({ event, categorie }) {
           pds,
           tornadoEmergency: emergency,
           tornadoWaargenomen: waargenomen,
+          nwsReferenties: referentieIdsUit(p),
         },
       });
     })
