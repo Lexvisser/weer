@@ -873,8 +873,10 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .popup-schip-wit .popup-haven-leeg { color:rgba(31,36,48,0.4); }
 .popup-schip-wit .popup-schip-reistijden { color:#4b5563; }
 .popup-schip-wit .popup-schip-reistijden b { color:#111827; }
-.popup-schip-wit .popup-schip-reislijn::before,
+.popup-schip-wit .popup-schip-reislijn::before { background:rgba(0,0,0,0.15); }
+.popup-schip-wit .popup-schip-reisgedaan,
 .popup-schip-wit .popup-schip-reisstip { background:#1b7fd4; }
+.popup-schip-wit .popup-schip-reisvoortgang, .popup-schip-wit .popup-haven-naam { color:#6b7280; }
 .popup-schip-wit .popup-schip-reispijl { border-left-color:#1b7fd4; }
 .popup-schip-wit .popup-schip-cellen { border-color:rgba(0,0,0,0.1); }
 .popup-schip-wit .popup-schip-cel { border-right-color:rgba(0,0,0,0.1); }
@@ -912,8 +914,16 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .popup-schip-reistijden { display:flex; justify-content:space-between; gap:8px; margin-top:3px; font-size:10px; color:#9199b5; }
 .popup-schip-reistijden b { color:#f4f6fb; font-weight:600; }
 .popup-schip-reislijn { position:relative; height:14px; margin:6px 4px 0; }
-.popup-schip-reislijn::before { content:''; position:absolute; left:4px; right:8px; top:6px; height:2px; background:#3ec6ff; opacity:0.8; }
-.popup-schip-reisstip { position:absolute; left:0; top:2px; width:10px; height:10px; border-radius:50%; background:#3ec6ff; }
+/* 2026-09-03: lijn = nog te gaan (grijs), .popup-schip-reisgedaan = afgelegd
+   (blauw), stip schuift mee (left:X%, zie reislijnHtml() in app.js);
+   -onbekend = geen bruikbare bestemming, alleen een gedempte lijn + pijl. */
+.popup-schip-reislijn::before { content:''; position:absolute; left:4px; right:8px; top:6px; height:2px; background:rgba(255,255,255,0.25); }
+.popup-schip-reisbaan { position:absolute; left:4px; right:8px; top:0; bottom:0; }
+.popup-schip-reisgedaan { position:absolute; left:0; top:6px; height:2px; background:#3ec6ff; }
+.popup-schip-reisstip { position:absolute; left:0; top:2px; width:10px; height:10px; border-radius:50%; background:#3ec6ff; margin-left:-5px; transition:left 0.4s ease; }
+.popup-schip-reislijn-onbekend .popup-schip-reispijl { opacity:0.35; }
+.popup-schip-reisvoortgang { font-size:9.5px; color:#9199b5; margin-top:1px; text-align:center; }
+.popup-haven-naam { display:block; font-size:0.62em; font-weight:400; letter-spacing:0; color:#9199b5; line-height:1.1; }
 .popup-schip-reispijl { position:absolute; right:0; top:1px; width:0; height:0; border-top:6px solid transparent; border-bottom:6px solid transparent; border-left:10px solid #3ec6ff; }
 .popup-schip-cellen { display:grid; grid-template-columns:1.2fr 1fr 0.8fr; margin:8px -12px 0; border-top:1px solid rgba(255,255,255,0.1); border-bottom:1px solid rgba(255,255,255,0.1); }
 .popup-schip-cel { padding:6px 8px; border-right:1px solid rgba(255,255,255,0.1); display:flex; flex-direction:column; gap:2px; min-width:0; }

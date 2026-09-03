@@ -6110,16 +6110,32 @@ async function haalEnToonScheepsfoto(marker, mmsi) {
 // Bestemming: AIS-schepen zenden vaak een UN/LOCODE uit ("NLRTM", "NL RTM",
 // "NL IJM") -- die splitsen we in landvlag + code zoals MarineTraffic doet;
 // vrije tekst ("ROTTERDAM 7E PETROH") blijft gewoon staan.
-function havenHtml(tekst, leegLabel) {
+function havenHtml(tekst, leegLabel, havenNaam) {
   const t = String(tekst ?? '').trim().toUpperCase();
   if (!t) return `<span class="popup-haven popup-haven-leeg">${leegLabel}</span>`;
   const m = t.match(/^([A-Z]{2})\s?([A-Z2-9]{3})$/);
   if (m && MMSI_MID_LAND_CODES.has(m[1])) {
-    return `<span class="popup-haven">${vlagHtml(m[1])}<span class="popup-haven-code">${escapeHtml(m[2])}</span></span>`;
+    const naamHtml = havenNaam ? `<span class="popup-haven-naam">${escapeHtml(havenNaam)}</span>` : '';
+    return `<span class="popup-haven">${vlagHtml(m[1])}<span class="popup-haven-code">${escapeHtml(m[2])}${naamHtml}</span></span>`;
   }
   return `<span class="popup-haven popup-haven-tekst" title="${escapeHtml(t)}">${escapeHtml(t)}</span>`;
 }
 const MMSI_MID_LAND_CODES = new Set(Object.values(MMSI_MID_LAND));
+
+// 2026-09-03, op verzoek van Lex ("MarineTraffic gebruikt de pijl om te tonen
+// hoeveel van de reis is afgelegd"): de stip schuift mee met s.reisVoortgang
+// (0..1, geschat door reisvoortgang.js in de backend -- zie de eerlijke
+// beperking daar: startpunt is ons eerste gezicht, niet de vertrekhaven).
+// Zonder bruikbare bestemming (vrije tekst, onbekende LOCODE) geen stip en
+// een gedempte lijn, zodat de lijn niets suggereert wat we niet weten.
+function reislijnHtml(s) {
+  const v = typeof s.reisVoortgang === 'number' ? s.reisVoortgang : null;
+  if (v == null) return '<div class="popup-schip-reislijn popup-schip-reislijn-onbekend"><span class="popup-schip-reispijl"></span></div>';
+  const pct = Math.round(v * 100);
+  const teGaan = s.bestemmingAfstandKm != null ? `${s.bestemmingAfstandKm} km te gaan` : '';
+  return `<div class="popup-schip-reislijn" title="${pct}% afgelegd sinds eerste waarneming${teGaan ? ` · ${teGaan}` : ''}"><span class="popup-schip-reisbaan"><span class="popup-schip-reisgedaan" style="width:${pct}%"></span><span class="popup-schip-reisstip" style="left:${pct}%"></span></span><span class="popup-schip-reispijl"></span></div>
+    <div class="popup-schip-reisvoortgang">${pct}% afgelegd${teGaan ? ` · ${teGaan}` : ''}</div>`;
+}
 
 function scheepsKaartHtml(s, statusTekst) {
   const bronTekst = s.bron === 'aishub' ? 'AISHub' : s.bron === 'lokaal' ? 'eigen ontvanger' : 'aisstream';
@@ -6146,13 +6162,13 @@ function scheepsKaartHtml(s, statusTekst) {
     <div class="popup-schip-reis">
       <div class="popup-schip-havens">
         ${havenHtml(null, 'Vertrek —')}
-        ${havenHtml(s.bestemming, 'Bestemming —')}
+        ${havenHtml(s.bestemming, 'Bestemming —', s.bestemmingHaven?.naam)}
       </div>
       <div class="popup-schip-reistijden">
         <span><b>Vertrek:</b> —</span>
         <span>${etaHtml}</span>
       </div>
-      <div class="popup-schip-reislijn"><span class="popup-schip-reisstip"></span><span class="popup-schip-reispijl"></span></div>
+      ${reislijnHtml(s)}
     </div>
     <div class="popup-schip-cellen">
       <div class="popup-schip-cel"><span class="popup-schip-cellabel">Navigatie-status</span><span class="popup-schip-celwaarde">${escapeHtml(statusTekst ?? '—')}</span></div>

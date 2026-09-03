@@ -47,6 +47,7 @@ import { controleerIssAlarm } from './sources/celestrak.js';
 import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.js';
 import { startVaarradarLokaalFeed } from './sources/vaarradarLokaal.js';
 import { startVaarradarAishubFeed } from './sources/vaarradarAishub.js';
+import { verrijkMetReisvoortgang, ruimReisvoortgangOp } from './reisvoortgang.js';
 import { haalScheepsfotoOp } from './sources/scheepsfoto.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
 import { fetchStormvloedkering } from './sources/stormvloedkering.js';
@@ -1256,6 +1257,12 @@ export function createApp(env) {
       const heeftAishub = vaarradarAishubFeed.posities.size > 0;
       const bronPosities = merged.size > 0 ? merged : vaarradarFeed.posities;
       const schepen = vaarradarBinnenStraal(bronPosities, lat, lon, straal);
+      // 2026-09-03: geschatte reisvoortgang voor de reislijn in de popup, zie
+      // reisvoortgang.js (LOCODE-bestemming -> haven-coördinaat, startpunt =
+      // ons eerste gezicht). Eén afstandsberekening per schip, verwaarloosbaar.
+      const nuMs = Date.now();
+      for (const s of schepen) verrijkMetReisvoortgang(s, nuMs);
+      ruimReisvoortgangOp(nuMs);
       let bronLabel;
       if (merged.size > 0) {
         bronLabel = heeftLokaal && heeftAishub
