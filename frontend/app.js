@@ -6276,7 +6276,7 @@ function scheepsvormPunten(lat, lon, headingGraden, a) {
   });
 }
 
-function tekenScheepsvorm(s, kleur) {
+function tekenScheepsvorm(s, kleur, marker) {
   if (!vaarVormLaag) return;
   const zichtbaar = kaart.getZoom() >= VAAR_ZOOM_SCHEEPSVORM && s.afmetingen && typeof s.headingGraden === 'number';
   let vorm = vaarVormen.get(s.mmsi);
@@ -6287,7 +6287,13 @@ function tekenScheepsvorm(s, kleur) {
   const punten = scheepsvormPunten(s.lat, s.lon, s.headingGraden, s.afmetingen);
   const opacity = s.bron === 'aishub' ? 0.45 : 0.65;
   if (!vorm) {
-    vorm = L.polygon(punten, { color: kleur, weight: 1, opacity: 0.9, fillColor: kleur, fillOpacity: opacity, interactive: false, pane: 'overlayPane' });
+    // 2026-09-03 (Lex: "ingezoomd niet meer klikbaar? ... oh, op de punt"):
+    // de omtrek is zelf klikbaar/hoverbaar en geeft dat door aan de marker,
+    // zodat je niet precies het stipje hoeft te raken.
+    vorm = L.polygon(punten, { color: kleur, weight: 1, opacity: 0.9, fillColor: kleur, fillOpacity: opacity, bubblingMouseEvents: false, pane: 'overlayPane' });
+    vorm.on('click', () => { const m = vaarMarkers.get(s.mmsi); if (m) m.openPopup(); });
+    vorm.on('mouseover', () => { const m = vaarMarkers.get(s.mmsi); if (m) { m._vaarHover = true; vaarRingBijwerken(m); m.openTooltip(); } });
+    vorm.on('mouseout', () => { const m = vaarMarkers.get(s.mmsi); if (m) { m._vaarHover = false; vaarRingBijwerken(m); m.closeTooltip(); } });
     vaarVormLaag.addLayer(vorm);
     vaarVormen.set(s.mmsi, vorm);
   } else {
