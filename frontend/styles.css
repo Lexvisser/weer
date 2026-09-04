@@ -1549,6 +1549,7 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    ogen. */
 .melding-meer.melding-meer-verlopen { color:#7d8399; }
 /* 2026-09-04: statusregel boven het Lifeliner-vluchtlogboek in de Meldingen-lijst */
+.lifeliner-budget-op, .melding-meer.lifeliner-budget-op { color:#ff2e6d; }
 .lifeliner-status { margin:-2px 0 6px 12px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#7d8399; line-height:1.5; }
 .melding-item.verlopen-item { opacity:0.6; }
 .melding-item.verlopen-item .sub { color:#6b7280; font-style:italic; }

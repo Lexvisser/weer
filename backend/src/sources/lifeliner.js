@@ -552,7 +552,7 @@ function vluchtTellerRegels(icao24) {
   const gaten = v.gaten ? `, ${v.gaten} keer even kwijt` : '';
   return [
     `🚁 In beeld sinds ${sinds} (${minuten} min) — ${v.waarnemingen} posities ontvangen${gaten}`,
-    `🎟️ OpenSky: ${creditsVandaag} van ${openskyDagBudget()} credits gebruikt${openskyRestCredits ? `, ${openskyRestCredits.waarde} over` : ''}`,
+    `🎟️ OpenSky: ${creditsVandaag} van ${openskyDagBudget()} credits gebruikt${openskyRestCredits ? `, ${openskyRestCredits.waarde} over` : ''}${laatstePollWas429() ? ' — ⛔ OP, OpenSky weigert' : ''}`,
   ];
 }
 
@@ -583,9 +583,20 @@ export function vluchtlogboekTekst() {
   return regels.join('\n');
 }
 
+function laatstePollWas429() {
+  const laatste = [...pollLog].reverse().find((p) => p.uitkomst !== 'budget-vol');
+  return laatste?.uitkomst === '429';
+}
+
 export function vluchtlogboekJson() {
   return {
     status: {
+      // 2026-09-04 (Lex: "maak ook inzichtelijk hoe we totaal door de credits
+      // heen zijn"): budgetOp = ons eigen plafond bereikt óf OpenSky zegt 0
+      // over óf de laatste poll gaf 429. Reset om 00:00 UTC (02:00 NL).
+      budgetOp: creditsVandaag >= openskyDagBudget() || openskyRestCredits?.waarde === 0 || laatstePollWas429(),
+      laatste429Ms: [...pollLog].reverse().find((p) => p.uitkomst === '429')?.tijdMs ?? null,
+      aantal429Vandaag: pollLog.filter((p) => p.uitkomst === '429' && new Date(p.tijdMs).toISOString().slice(0, 10) === huidigeUtcDatum()).length,
       modus: huidigeModus(),
       creditsVandaag,
       budget: openskyDagBudget(),

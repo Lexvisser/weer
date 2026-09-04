@@ -7962,9 +7962,11 @@ function maakLifelinerSectie() {
   const d = lifelinerVluchten;
   const aantalOpen = d?.open?.length ?? 0;
   const aantal = aantalOpen + (d?.afgesloten?.length ?? 0);
+  const budgetOp = Boolean(d?.status?.budgetOp);
   toggle.textContent = lifelinerUitgeklapt
     ? '– Lifeliner-vluchten verbergen'
-    : `🚁 Lifeliner-vluchten${aantalOpen ? ` · ${aantalOpen} in de lucht` : ''}${aantal ? ` (${aantal})` : ''}`;
+    : `🚁 Lifeliner-vluchten${aantalOpen ? ` · ${aantalOpen} in de lucht` : ''}${aantal ? ` (${aantal})` : ''}${budgetOp ? ' · ⛔ credits op' : ''}`;
+  if (budgetOp) toggle.classList.add('lifeliner-budget-op');
   toggle.addEventListener('click', () => {
     lifelinerUitgeklapt = !lifelinerUitgeklapt;
     if (lifelinerUitgeklapt) laadLifelinerVluchten();
@@ -7979,7 +7981,10 @@ function maakLifelinerSectie() {
     status.textContent = 'Laden…';
   } else {
     const st = d.status ?? {};
-    status.innerHTML = `${LIFELINER_MODUS_TEKST[st.modus] ?? st.modus ?? ''}<br>OpenSky vandaag: ${st.creditsVandaag ?? '?'} gebruikt${st.restCredits != null ? `, ${st.restCredits} over` : ''} (budget ${st.budget ?? '?'})`;
+    const opRegel = st.budgetOp
+      ? `<br><span class="lifeliner-budget-op">⛔ Credits op — OpenSky weigert tot 02:00 NL${st.aantal429Vandaag ? ` (${st.aantal429Vandaag}× geweigerd vandaag)` : ''}</span>`
+      : '';
+    status.innerHTML = `${LIFELINER_MODUS_TEKST[st.modus] ?? st.modus ?? ''}<br>OpenSky vandaag: ${st.creditsVandaag ?? '?'} van ${st.budget ?? '?'} gebruikt${st.restCredits != null ? `, ${st.restCredits} over` : ''}${opRegel}`;
   }
   uit.push(status);
   if (d) {
