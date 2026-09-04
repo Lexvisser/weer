@@ -7913,7 +7913,7 @@ function maakVerlopenMeldingItem(s) {
 let lifelinerVluchten = null;
 let lifelinerVluchtenLaatstMs = 0;
 let lifelinerUitgeklapt = false;
-const LIFELINER_MODUS_TEKST = { missie: '🟢 heli in de lucht — volgt elke 15 s', trigger: '🟡 MMT gealarmeerd — kijkt elke minuut', hartslag: '⚪ rust — kijkt elke 2 min' };
+const LIFELINER_MODUS_TEKST = { missie: '🟢 heli in de lucht — volgt elke 10 s', trigger: '🟡 MMT gealarmeerd — kijkt elke minuut', hartslag: '⚪ rust — kijkt elke 2 min' };
 
 async function laadLifelinerVluchten() {
   if (Date.now() - lifelinerVluchtenLaatstMs < 30 * 1000) return;

@@ -197,9 +197,10 @@ export const SOURCES = [
     // dagbudget-stop toegevoegd in `sources/lifeliner.js` zelf
     // (`OPENSKY_DAG_BUDGET`), die het écht garandeert i.p.v. hopen dat het
     // interval ruim genoeg is. Zie de comment daar voor hoe dat werkt.
-    // 2026-09-04: tik naar 15s = de fijnste korrel; lifeliner.js zelf bepaalt
-    // per tik of er echt gepolld wordt (missie 15s / trigger 60s / hartslag 2 min).
-    pollIntervalMs: 15 * 1000,
+    // 2026-09-04: tik naar 10s = de fijnste korrel (OpenSky ververst zelf
+    // ~elke 5-10s, fijner heeft geen zin); lifeliner.js zelf bepaalt per tik
+    // of er echt gepolld wordt (missie 10s / trigger 60s / hartslag 2 min).
+    pollIntervalMs: 10 * 1000,
     // Idle-drempel + direct-verversen-bij-terugkeer zit in server.js
     // (IDLE_DREMPEL_MS/isIdle()/signaalVerzoekOntvangen()) — deze vlag
     // schakelt dat gedrag alleen voor déze bron in, want dit is de enige met

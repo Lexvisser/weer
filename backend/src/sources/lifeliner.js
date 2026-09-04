@@ -462,17 +462,17 @@ function noteerRestCredits(res) {
 // dat moment heel vaak pollen zodat we een vlucht goed kunnen vastleggen"),
 // nu het budget 4000/dag is i.p.v. ~400. Drie tempo's:
 //   missie   — toestel in de lucht gezien (tot 10 min na de laatste
-//              waarneming): elke MISSIE_POLL_MS (15s). Een vlucht van 45 min
-//              kost dan ~180 credits.
+//              waarneming): elke MISSIE_POLL_MS (10s). Een vlucht van 45 min
+//              kost dan ~270 credits.
 //   trigger  — MMT-P2000-melding korter dan 15 min geleden, maar nog geen
 //              toestel gezien: elke TRIGGER_POLL_MS (60s) om de opstijging te
 //              vangen. Max ~15 credits per trigger.
 //   hartslag — rust: elke LIFELINER_HEARTBEAT_MS (nu 2 min i.p.v. 10;
 //              ~720/dag bij de app 24/7 open). Alles via .env aanpasbaar.
 // De setInterval-tik in server.js (config.js pollIntervalMs) is de fijnste
-// korrel: die staat nu op 15s; de tempo's hierboven zijn veelvouden daarvan.
+// korrel: die staat nu op 10s; de tempo's hierboven zijn veelvouden daarvan.
 const LIFELINER_HEARTBEAT_MS = Number(process.env.LIFELINER_HEARTBEAT_MS ?? 2 * 60 * 1000);
-const MISSIE_POLL_MS = Number(process.env.LIFELINER_MISSIE_POLL_MS ?? 15 * 1000);
+const MISSIE_POLL_MS = Number(process.env.LIFELINER_MISSIE_POLL_MS ?? 10 * 1000);
 const TRIGGER_POLL_MS = Number(process.env.LIFELINER_TRIGGER_POLL_MS ?? 60 * 1000);
 
 function huidigeModus() {
