@@ -205,8 +205,9 @@ function stuurRapportBijNood(statusCode) {
 // OpenSky gedocumenteerd is (uit eerdere 429-ervaringen afgeleid, niet uit
 // hun docs). Aanpasbaar via `OPENSKY_DAG_BUDGET` in .env zonder codewijziging.
 // 2026-08-28: standaard-budget hangt nu af van de modus — met de OpenSky
-// API-client is het dagbudget 4.000, waarvan we er 3.500 nemen als eigen
-// marge; anoniem blijft de oude voorzichtige 300 onder de ~400 staan.
+// API-client is het dagbudget 4.000. 2026-09-04, op verzoek van Lex ("naar
+// max"): geen eigen marge meer — plafond = OpenSky's echte grens (4000, of
+// 400 anoniem). Als 'ie op is, zien we dat in de app en maken we er beleid op.
 // OPENSKY_DAG_BUDGET in .env overschrijft beide.
 // LIVE-BUG-FIX (gezien op het echte rapport, direct na de eerste deploy):
 // dit was eerst een const op moduleniveau — maar ES-imports worden
@@ -215,7 +216,7 @@ function stuurRapportBijNood(statusCode) {
 // terwijl de authenticatie zelf (die de env pas bij gebruik leest) wél
 // werkte. Daarom nu een functie: elke check leest de env vers.
 function openskyDagBudget() {
-  return Number(process.env.OPENSKY_DAG_BUDGET ?? (openskyCredsAanwezig() ? 3500 : 300));
+  return Number(process.env.OPENSKY_DAG_BUDGET ?? (openskyCredsAanwezig() ? 4000 : 400));
 }
 let budgetDatumUtc = null; // "2026-08-21" — resetpunt
 let creditsVandaag = 0;
