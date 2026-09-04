@@ -205,7 +205,12 @@ export const SOURCES = [
     // (IDLE_DREMPEL_MS/isIdle()/signaalVerzoekOntvangen()) — deze vlag
     // schakelt dat gedrag alleen voor déze bron in, want dit is de enige met
     // een harde per-dag credit-limiet bij de bron zelf.
-    overslaanAlsIdle: true,
+    // 2026-09-04, op verzoek van Lex: NIET meer overslaan als niemand kijkt —
+    // met 4000 credits/dag kan Lifeliner 24/7 doorlopen (rust ~720/dag), en
+    // dan vult het vluchtlogboek zich ook zonder dat de app openstaat. "Ook
+    // al zijn we door de credits heen dan zien we dat en kunnen we er beleid
+    // op maken in plaats van zo maar zuinig te gaan doen."
+    overslaanAlsIdle: false,
     staleAfterMs: 10 * 60 * 1000,
     note: 'Volgt bekende Lifeliner-registraties (PH-TTR/PH-MAA/PH-UMC/PH-HVB/PH-OOP) via OpenSky\'s gratis ADS-B-data binnen 75km van huis, incl. zelf opgebouwd vluchtspoor (geen historie van vóór opstarten). Registratie- en callsign-matching nog niet live bevestigd — zie sources/lifeliner.js. Polt alleen zolang er een client actief is (zie overslaanAlsIdle) om OpenSky\'s anonieme dagbudget te sparen.',
   },

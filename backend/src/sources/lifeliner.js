@@ -542,11 +542,18 @@ function vluchtSamenvatting(icao24) {
   if (!v) return null;
   return { startMs: v.startMs, waarnemingen: v.waarnemingen, gaten: v.gaten, maxAfstandKm: v.maxAfstandKm, creditsVandaag };
 }
-function vluchtTellerTekst(icao24) {
+// 2026-09-04 (Lex: "zet de credits op een eigen regel, maak de tekst iets
+// leesbaarder"): twee losse regels onder de Lifeliner-melding.
+function vluchtTellerRegels(icao24) {
   const v = openVluchten.get(icao24);
-  if (!v) return '';
+  if (!v) return [];
   const sinds = new Date(v.startMs).toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' });
-  return ` · gevolgd sinds ${sinds}: ${v.waarnemingen}× gezien${v.gaten ? `, ${v.gaten} gat${v.gaten > 1 ? 'en' : ''}` : ''} · ${creditsVandaag} credits`;
+  const minuten = Math.max(1, Math.round((Date.now() - v.startMs) / 60000));
+  const gaten = v.gaten ? `, ${v.gaten} keer even kwijt` : '';
+  return [
+    `🚁 In beeld sinds ${sinds} (${minuten} min) — ${v.waarnemingen} posities ontvangen${gaten}`,
+    `🎟️ OpenSky: ${creditsVandaag} van ${openskyDagBudget()} credits gebruikt${openskyRestCredits ? `, ${openskyRestCredits.waarde} over` : ''}`,
+  ];
 }
 
 function nlTijd(ms) {
@@ -696,7 +703,8 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
           // 2026-09-04 (Lex: "kan je de teller laten meelopen op de lifeliner
           // kaart?"): live vluchtteller erbij — sinds wanneer gevolgd, hoeveel
           // waarnemingen (elke 10s één), en de credits van vandaag.
-          subtitel: `${afstand} km van huis${kompas ? ` · koers ${kompas}` : ''}${baroAltM != null ? ` · ${Math.round(baroAltM)} m hoogte` : ''}${vluchtTellerTekst(icao24)}`,
+          subtitel: `${afstand} km van huis${kompas ? ` · koers ${kompas}` : ''}${baroAltM != null ? ` · ${Math.round(baroAltM)} m hoogte` : ''}`,
+          subregels: vluchtTellerRegels(icao24), // elk op een eigen regel in lijst + popup
           vlucht: vluchtSamenvatting(icao24),
           bronUrl: 'https://opensky-network.org/',
           // Route tot nu toe (sinds deze poll-loop 'm is gaan volgen — geen
