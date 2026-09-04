@@ -1835,6 +1835,8 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .alarm-rij-kop span:not(:first-child), .alarm-rij .alarm-toggle, .alarm-rij .alarm-nvt { justify-self:center; text-align:center; }
 .alarm-rij .alarm-toggle { padding:5px 0; width:54px; font-size:10px; }
 .alarm-nvt { color:rgba(125,131,153,0.5); }
+/* 2026-09-04: PROEF-knopje bij het onweer-alarm (Instellingen), zie ALARM_RIJEN.proef in app.js. */
+.alarm-proef { margin-left:8px; padding:3px 7px; border:1px solid rgba(62,198,255,0.5); border-radius:6px; background:rgba(62,198,255,0.1); color:#3ec6ff; font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.05em; cursor:pointer; vertical-align:middle; }
 .legenda { display:flex; gap:16px; margin: 16px 16px 0; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#9199b5; }
 .legenda-item { display:flex; align-items:center; gap:6px; }
 

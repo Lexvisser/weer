@@ -9353,7 +9353,7 @@ const ALARM_RIJEN = [
   { id: 'stormvloedkering-waarschuwing', label: 'Kans op sluiting stormvloedkering', scherm: false, telefoon: true },
   { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)', scherm: true, telefoon: true },
   { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)', scherm: true, telefoon: true },
-  { id: 'onweer', label: '⚡ Onweer nadert (< 50 km)', scherm: true, telefoon: true }, // 2026-09-04, Lex: "extra alarm voor als een onweer bij mij in de buurt komt" -- zie backend/src/onweerAlarm.js
+  { id: 'onweer', label: '⚡ Onweer nadert (< 50 km)', scherm: true, telefoon: true, proef: () => window.testOnweerAlarm?.() }, // 2026-09-04, Lex: "extra alarm voor als een onweer bij mij in de buurt komt" -- zie backend/src/onweerAlarm.js
 ];
 const ALARM_CATEGORIE_DEFINITIES = ALARM_RIJEN.filter((r) => r.scherm);
 
@@ -9438,6 +9438,16 @@ function renderAlarmInstellingen() {
     const label = document.createElement('span');
     label.className = 'alarm-rij-label';
     label.textContent = def.label;
+    if (def.proef) {
+      // 2026-09-04, Lex: "kan ik dat op de iPhone testen?" -- klein PROEF-
+      // knopje in het label (geen console nodig), zie window.testOnweerAlarm.
+      const proef = document.createElement('button');
+      proef.type = 'button';
+      proef.className = 'alarm-proef';
+      proef.textContent = 'PROEF';
+      proef.addEventListener('click', def.proef);
+      label.appendChild(proef);
+    }
     rij.appendChild(label);
 
     if (def.scherm) {
