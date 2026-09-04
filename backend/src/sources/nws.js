@@ -234,6 +234,25 @@ function registreerNieuweKeten(signaal) {
 // aanroep in fetchNws() hieronder: true = stuur het alarm, false = een
 // heruitgave van een al-gealarmeerde keten, dus onderdrukken.
 function magDoorAlarmeren(signaal, huidigeIds) {
+  // 2026-09-04, bugfix na Lex' mails van vannacht (Grant/Otter Tail MN,
+  // 03:04 én 03:23): de heruitgave werd om 03:24 keurig gekoppeld en
+  // onderdrukt, maar bij de VOLGENDE poll was het nieuwe id zelf de kop van
+  // de keten -- vindEnSchuifKeten() vond dan niets (references wijzen naar
+  // het al verwijderde oude id, de gebied-fallback slaat het eigen id over),
+  // registreerNieuweKeten() overschreef de keten (spoor weg) en het alarm
+  // ging alsnog de deur uit. Nu: een signaal dat al de kop van een keten is,
+  // is al afgehandeld -- alleen bij een escalatie mag het alarm nog door.
+  const kop = actieveKetens.get(signaal.id);
+  if (kop) {
+    kop.laatstGezien = Date.now();
+    const niveau = dreigingsNiveauRang(signaal);
+    if (niveau > kop.niveau) {
+      console.log(`[weer] nws: keten-kop "${signaal.id}" escaleert (${kop.niveau} -> ${niveau}), alarm gaat door.`);
+      kop.niveau = niveau;
+      return true;
+    }
+    return false;
+  }
   const onderdrukken = vindEnSchuifKeten(signaal, huidigeIds);
   if (onderdrukken === null) {
     registreerNieuweKeten(signaal);
