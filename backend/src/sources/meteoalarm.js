@@ -55,6 +55,9 @@ import { stuurWebPushAlarm } from './webpush.js';
 import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js'; // 2026-09-03
 import { verversMedia } from '../mediaHistorie.js';
 import { metHistorie } from '../historie.js';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 const LIJST_URL = 'https://api.meteogate.eu/warnings/collections/warnings/locations/NL';
 const TAAL = 'nl-NL';
@@ -64,7 +67,35 @@ const ERNST_PER_SEVERITY = { Extreme: 'kritiek', Severe: 'waarschuwing', Moderat
 // die de kleur/opacity in de app stuurt) — CAP-severity is Engelstalig.
 const SEVERITY_NL = { Extreme: 'Extreem', Severe: 'Ernstig', Moderate: 'Matig', Minor: 'Licht' };
 const KLEUR_NL = { Yellow: 'Geel', Orange: 'Oranje', Red: 'Rood', Green: 'Groen' };
-const hoogsteKleurPerSleutel = new Map(); // 2026-09-04: fenomeen|gebied -> hoogste kleur ooit gezien (voor detail.afgeschaaldVan)
+// 2026-09-04: fenomeen|gebied -> { kleur, t } = hoogste kleur ooit gezien
+// (voor detail.afgeschaaldVan). Op schijf (72 uur), want de oranje versie
+// verdwijnt uit de feed zodra KNMI afschaalt, en een syncweer-herstart wiste
+// anders het geheugen -- precies wat 2026-09-04 gebeurde ("vandaar").
+const HOOGSTE_KLEUR_PAD = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'meteoalarm-hoogste-kleur.json');
+const HOOGSTE_KLEUR_BEWAAR_MS = 72 * 3600e3;
+const hoogsteKleurPerSleutel = new Map();
+try {
+  if (existsSync(HOOGSTE_KLEUR_PAD)) {
+    const grens = Date.now() - HOOGSTE_KLEUR_BEWAAR_MS;
+    for (const [sleutel, v] of JSON.parse(readFileSync(HOOGSTE_KLEUR_PAD, 'utf-8'))) {
+      if (v && typeof v.kleur === 'string' && Number.isFinite(v.t) && v.t > grens) hoogsteKleurPerSleutel.set(sleutel, v);
+    }
+  }
+} catch (err) {
+  console.error('[weer] meteoalarm: hoogste-kleur-lijst laden mislukt, begin leeg —', err.message ?? err);
+}
+function bewaarHoogsteKleur() {
+  try {
+    const grens = Date.now() - HOOGSTE_KLEUR_BEWAAR_MS;
+    for (const [k, v] of hoogsteKleurPerSleutel) if (v.t < grens) hoogsteKleurPerSleutel.delete(k);
+    mkdirSync(dirname(HOOGSTE_KLEUR_PAD), { recursive: true });
+    const tmp = `${HOOGSTE_KLEUR_PAD}.tmp`;
+    writeFileSync(tmp, JSON.stringify([...hoogsteKleurPerSleutel]));
+    renameSync(tmp, HOOGSTE_KLEUR_PAD);
+  } catch (err) {
+    console.error('[weer] meteoalarm: hoogste-kleur-lijst bewaren mislukt —', err.message ?? err);
+  }
+}
 
 const FENOMEEN_NL = {
   wind: 'wind',
@@ -566,13 +597,17 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
   // "Ernstige wind" bij oranje (zie vertaalEvent), dus die matchen anders nooit.
   const kern = (tekst) => String(tekst ?? '').toLowerCase().replace(/^(extreme|extreem|ernstige|ernstig|matige|matig|lichte|licht)\s+/, '');
   const afschaalSleutel = (s) => `${kern(s.detail?.fenomeenTekst)}|${s.detail?.gebied}`;
+  let gewijzigd = false;
   signalen.forEach((s) => {
     const sleutel = afschaalSleutel(s);
     const rang = KLEUR_RANG[s.detail?.kleur] ?? -1;
-    if (rang > (KLEUR_RANG[hoogsteKleurPerSleutel.get(sleutel)] ?? -1)) hoogsteKleurPerSleutel.set(sleutel, s.detail.kleur);
+    const bestaand = hoogsteKleurPerSleutel.get(sleutel);
+    if (rang > (KLEUR_RANG[bestaand?.kleur] ?? -1)) { hoogsteKleurPerSleutel.set(sleutel, { kleur: s.detail.kleur, t: Date.now() }); gewijzigd = true; }
+    else if (bestaand && rang === KLEUR_RANG[bestaand.kleur]) bestaand.t = Date.now(); // nog steeds actief op dit niveau: houdbaarheid verlengen
   });
+  if (gewijzigd) bewaarHoogsteKleur();
   ontdubbeld.forEach((s) => {
-    const hoogste = hoogsteKleurPerSleutel.get(afschaalSleutel(s));
+    const hoogste = hoogsteKleurPerSleutel.get(afschaalSleutel(s))?.kleur;
     if (hoogste && (KLEUR_RANG[hoogste] ?? -1) > (KLEUR_RANG[s.detail?.kleur] ?? -1)) s.detail.afgeschaaldVan = hoogste;
   });
   if (ontdubbeld.length !== signalen.length) {
