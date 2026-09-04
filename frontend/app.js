@@ -675,6 +675,11 @@ function moetMeetellenVoorTeller(s, gezienNavtexSleutels) {
     const mag = s.detail?.magnitude;
     return typeof mag !== 'number' || mag >= AARDBEVING_TELLER_MIN_MAGNITUDE;
   }
+  // 2026-09-04, op verzoek van Lex: hulpdiensten (P2000 + Lifeliner) tellen
+  // alleen mee bij GRIP-opschaling (backend zet die op 'kritiek') — losse
+  // A1's en helikoptervluchten komen de hele dag door en zouden de badge
+  // permanent oranje houden.
+  if (s.categorie === 'hulpdiensten') return s.ernst === 'kritiek';
   if (s.categorie === 'navtex') {
     const sleutel = navtexTellerSleutel(s);
     if (gezienNavtexSleutels.has(sleutel)) return false;

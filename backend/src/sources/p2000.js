@@ -274,7 +274,11 @@ export function msSindsLaatsteMMTMelding() {
 // brandweer). Niet uitputtend getest tegen echte berichten — vangt de
 // bekendste conventies, valt anders terug op "info".
 function schatErnst(tekst) {
-  if (/\bA1\b|\bPRIO\s*1\b|\bGRIP\s*[1-4]\b/i.test(tekst)) return 'waarschuwing';
+  // 2026-09-04: GRIP (opschaling) = kritiek, zodat de Meldingen-badge
+  // hulpdiensten alleen bij zo'n grote inzet meetelt (zie
+  // moetMeetellenVoorTeller in app.js); losse A1's blijven 'waarschuwing'.
+  if (/\bGRIP\s*[1-5]\b/i.test(tekst)) return 'kritiek';
+  if (/\bA1\b|\bPRIO\s*1\b/i.test(tekst)) return 'waarschuwing';
   if (/\bA2\b|\bPRIO\s*2\b/i.test(tekst)) return 'let-op';
   return 'info';
 }
