@@ -1960,3 +1960,4 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    onderscheiden is van de Amerikaanse brontijd ervoor. Zie markeerNlTijd()
    in app.js. */
 .nl-tijd { color:#3ec6ff; font-weight:normal; margin-top:2px; }
+.nl-tijd + .nl-tijd { margin-top:0; }

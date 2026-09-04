@@ -241,8 +241,12 @@ function markeerNlTijd(html) {
     return '';
   });
   if (!tijden.length) return html;
-  const regel = tijden.length >= 2 ? `${tijden[0]} – ${tijden[tijden.length - 1]}` : tijden[0];
-  return `${zonder}<div class="nl-tijd">NL: ${regel}</div>`;
+  // 2026-09-04 (Lex: "begin en eindtijd allebei onder elkaar op een eigen
+  // regel"): niet meer "NL: a – b" op één regel, maar twee regels.
+  if (tijden.length >= 2) {
+    return `${zonder}<div class="nl-tijd">NL begin: ${tijden[0]}</div><div class="nl-tijd">NL eind: ${tijden[tijden.length - 1]}</div>`;
+  }
+  return `${zonder}<div class="nl-tijd">NL: ${tijden[0]}</div>`;
 }
 
 // Muteert s.titel (in place) voor elk signaal dat een NWS-achtige tijd
