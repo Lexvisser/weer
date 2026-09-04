@@ -1860,6 +1860,43 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
   15%  { opacity:1; box-shadow: inset 0 0 140px 50px rgba(255,46,109,0.9); background: rgba(255,46,109,0.22); }
   100% { opacity:0; box-shadow: inset 0 0 40px 10px rgba(255,46,109,0); background: rgba(255,46,109,0); }
 }
+/* 2026-09-04, onweer-alarm (Lex: "een mooie bliksemschicht zien als alarm"):
+   blauwwitte bliksemflits over het hele scherm -- twee korte flitsen kort
+   na elkaar, zoals echte bliksem -- i.p.v. de rode tornado-gloed. Zie
+   flitsAlarmGloed(true) in app.js. */
+.alarm-gloed.flits-bliksem { animation: alarmGloedBliksem 1.4s ease-out; }
+@keyframes alarmGloedBliksem {
+  0%   { opacity:0; background: rgba(255,255,255,0); }
+  6%   { opacity:1; background: rgba(230,246,255,0.85); box-shadow: inset 0 0 160px 60px rgba(62,198,255,0.9); }
+  14%  { opacity:0.15; background: rgba(62,198,255,0.1); }
+  22%  { opacity:1; background: rgba(230,246,255,0.7); box-shadow: inset 0 0 160px 60px rgba(62,198,255,0.9); }
+  40%  { opacity:0.3; background: rgba(62,198,255,0.12); box-shadow: inset 0 0 120px 40px rgba(62,198,255,0.5); }
+  100% { opacity:0; background: rgba(62,198,255,0); box-shadow: inset 0 0 40px 10px rgba(62,198,255,0); }
+}
+/* Popup in de bliksem-variant: blauw kader/gloed i.p.v. roze, en de SVG-
+   schicht (BLIKSEM_SCHICHT_SVG in app.js) flikkert en gloeit door. */
+.alarm-popup.onweer .alarm-popup-kaart { border-color: rgba(62,198,255,0.7); box-shadow: 0 0 40px rgba(62,198,255,0.45), 0 8px 24px rgba(0,0,0,0.5); }
+.alarm-popup.onweer #alarmPopupBekijk { background:#3ec6ff; }
+.alarm-popup.onweer .alarm-popup-icoon { height:96px; display:flex; align-items:center; justify-content:center; margin-bottom:10px; }
+.bliksem-schicht { width:62px; height:96px; overflow:visible; animation: bliksemFlikker 2.2s ease-in-out infinite; filter: drop-shadow(0 0 6px rgba(158,231,255,0.9)) drop-shadow(0 0 18px rgba(62,198,255,0.7)); }
+.bliksem-schicht .bliksem-kern { stroke:#ffffff; stroke-width:1.5; stroke-linejoin:round; }
+.bliksem-schicht .bliksem-gloed { fill:none; stroke:rgba(62,198,255,0.55); stroke-width:10; stroke-linejoin:round; animation: bliksemGloedPuls 2.2s ease-in-out infinite; }
+@keyframes bliksemFlikker {
+  0%, 100% { opacity:1; transform: scale(1); }
+  8%   { opacity:0.35; }
+  11%  { opacity:1; transform: scale(1.06); }
+  14%  { opacity:0.6; }
+  17%  { opacity:1; transform: scale(1); }
+  55%  { opacity:0.9; }
+  60%  { opacity:0.4; }
+  63%  { opacity:1; transform: scale(1.04); }
+}
+@keyframes bliksemGloedPuls {
+  0%, 100% { stroke-width:10; stroke-opacity:0.55; }
+  11%  { stroke-width:16; stroke-opacity:0.9; }
+  63%  { stroke-width:14; stroke-opacity:0.85; }
+}
+
 
 /* Tornado-alarm pop-up — los van de gloedflits (die is decoratief/kort), dit
    blijft staan tot Lex 'm wegtikt of naar de kaart doorklikt. Boven alles

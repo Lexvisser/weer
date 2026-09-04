@@ -33,6 +33,7 @@ const BESTAND = join(__dirname, '..', 'data', 'alarmSchakelaars.json');
 export const GELDIGE_SLEUTELS = new Set([
   'tornado', 'tornado-watch', 'tsunami', 'tsunami-watch', 'weerwaarschuwing',
   'stormvloedkering-waarschuwing', 'stormvloedkering-gesloten', 'ais-nood', 'navtex-nood',
+  'onweer', // 2026-09-04: onweer nadert binnen 50 km, zie onweerAlarm.js
 ]);
 
 let schakelaars = {};

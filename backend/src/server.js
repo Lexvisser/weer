@@ -21,6 +21,7 @@ import { fetchKnmi } from './sources/knmi.js';
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
 import { startBlitzortungStream } from './sources/blitzortung.js';
+import { meldOnweerNaderend } from './onweerAlarm.js'; // 2026-09-04: onweer-nadert-alarm
 import { fetchCelestrak } from './sources/celestrak.js';
 import { fetchStarlinkTrein, controleerStarlinkAlarm } from './sources/starlinkTrain.js';
 import { fetchStarlinkLive } from './sources/starlinkLive.js';
@@ -956,7 +957,7 @@ export function createApp(env) {
       stopBlitzortung = startBlitzortungStream({
         homeLat: env.homeLat,
         homeLon: env.homeLon,
-        onUpdate: (signalen) => state.markSuccess(signalen),
+        onUpdate: (signalen) => state.markSuccess(meldOnweerNaderend(signalen)), // 2026-09-04: telefoonalarm + detail.alarm-vlag, zie onweerAlarm.js
         onError: (err) => {
           state.markError(err);
           console.error('[weer] blitzortung:', err.message ?? err);

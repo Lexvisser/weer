@@ -9353,6 +9353,7 @@ const ALARM_RIJEN = [
   { id: 'stormvloedkering-waarschuwing', label: 'Kans op sluiting stormvloedkering', scherm: false, telefoon: true },
   { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)', scherm: true, telefoon: true },
   { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)', scherm: true, telefoon: true },
+  { id: 'onweer', label: '⚡ Onweer nadert (< 50 km)', scherm: true, telefoon: true }, // 2026-09-04, Lex: "extra alarm voor als een onweer bij mij in de buurt komt" -- zie backend/src/onweerAlarm.js
 ];
 const ALARM_CATEGORIE_DEFINITIES = ALARM_RIJEN.filter((r) => r.scherm);
 
@@ -9686,6 +9687,12 @@ function magAlarmeren(s) {
   // weerwaarschuwing hieronder, dus een eigen kortsluiting vóór de generieke
   // ALARM_CATEGORIEEN-check (die 'navtex' als categorie sowieso nooit bevat).
   if (s.categorie === 'navtex') return Boolean(s.detail?.noodbericht) && alarmCategorieAan('navtex-nood');
+  // 2026-09-04: onweercomplexen zitten net als navtex NIET in ALARM_CATEGORIEEN
+  // (elk complex op 300 km zou anders alarmeren); de backend zet detail.alarm
+  // zodra een complex naderend is binnen 50 km of al boven je hangt (zie
+  // onweerVerdientAlarm() in backend/src/onweerAlarm.js -- één plek voor de
+  // drempel, telefoon en scherm gebruiken dezelfde).
+  if (s.categorie === 'onweercomplex') return Boolean(s.detail?.alarm) && alarmCategorieAan('onweer');
   if (!ALARM_CATEGORIEEN.has(s.categorie)) return false;
   if (!alarmCategorieAan(s.categorie)) return false; // door Lex zelf uitgezet in Instellingen
   if (s.categorie === 'weerwaarschuwing') return s.detail?.kleur === 'oranje' || s.detail?.kleur === 'rood';
@@ -9723,13 +9730,31 @@ function verwerkTornadoAlarm(signalen) {
     return;
   }
   for (const s of relevant) {
-    if (!gezienAlarmIds.has(s.id)) triggerTornadoAlarm(s);
+    if (gezienAlarmIds.has(s.id)) continue;
+    // 2026-09-04: de complex-id verspringt (positie afgerond op 0,5°) terwijl
+    // het onweer naar je toe trekt -- zonder deze rem zou elke stap opnieuw
+    // het volle alarm geven. Zelfde soort rem als HERHAAL_MS in onweerAlarm.js.
+    if (s.categorie === 'onweercomplex') {
+      if (Date.now() - laatsteOnweerAlarmMs < ONWEER_ALARM_HERHAAL_MS) continue;
+      laatsteOnweerAlarmMs = Date.now();
+    }
+    triggerTornadoAlarm(s);
   }
   gezienAlarmIds = huidigeIds;
 }
+let laatsteOnweerAlarmMs = 0;
+const ONWEER_ALARM_HERHAAL_MS = 30 * 60 * 1000;
+// 2026-09-04: proefalarm vanuit de browserconsole (F12): testOnweerAlarm()
+// -- laat de bliksemflits + popup zien zonder te wachten op echt onweer.
+window.testOnweerAlarm = () =>
+  triggerTornadoAlarm({
+    id: 'onweer-test', categorie: 'onweercomplex', titel: 'Onweercomplex nadert (Proef) - nog 42 km',
+    lat: THUIS.homeLat, lon: THUIS.homeLon,
+    detail: { status: 'naderend', afstandKm: 42, alarm: true, subtitel: '37 flitsen laatste 30 min · 42 km van huis' },
+  });
 
 function triggerTornadoAlarm(signal) {
-  flitsAlarmGloed();
+  flitsAlarmGloed(signal.categorie === 'onweercomplex');
   laatAlarmGeluidHoren();
   trilAlarm();
   alarmWachtrij.push(signal);
@@ -9739,11 +9764,28 @@ function triggerTornadoAlarm(signal) {
 // CSS-klasse verwijderen-en-opnieuw-toevoegen (i.p.v. alleen toevoegen) forceert
 // een reflow, zodat de animatie ook opnieuw start als er kort na elkaar twee
 // nieuwe watches/warnings binnenkomen.
-function flitsAlarmGloed() {
-  ALARM_GLOED_EL.classList.remove('flits');
+function flitsAlarmGloed(bliksem = false) {
+  ALARM_GLOED_EL.classList.remove('flits', 'flits-bliksem');
   void ALARM_GLOED_EL.offsetWidth;
-  ALARM_GLOED_EL.classList.add('flits');
+  // 2026-09-04: bij onweer een blauwwitte bliksemflits i.p.v. de rode gloed
+  ALARM_GLOED_EL.classList.add(bliksem ? 'flits-bliksem' : 'flits');
 }
+
+// 2026-09-04, Lex: "ik wil een mooie bliksemschicht zien als alarm" -- eigen
+// SVG-schicht (geen emoji) die in CSS flikkert en gloeit, zie .bliksem-schicht
+// in styles.css. Alleen voor het onweer-alarm; de andere categorieën houden
+// hun emoji uit EMOJI_PER_CATEGORIE.
+const BLIKSEM_SCHICHT_SVG = `<svg class="bliksem-schicht" viewBox="0 0 64 100" aria-hidden="true">
+  <defs>
+    <linearGradient id="bliksemGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#9be7ff"/>
+      <stop offset="1" stop-color="#3ec6ff"/>
+    </linearGradient>
+  </defs>
+  <path class="bliksem-gloed" d="M38 2 L10 56 L30 56 L22 98 L56 40 L35 40 Z"/>
+  <path class="bliksem-kern" d="M38 2 L10 56 L30 56 L22 98 L56 40 L35 40 Z" fill="url(#bliksemGrad)"/>
+</svg>`;
 
 // Geen los geluidsbestand nodig — een korte drietonige "alarm"-piep,
 // zelf opgebouwd met de Web Audio API (~1 seconde totaal). Safari/iOS staat
@@ -9800,7 +9842,10 @@ function toonVolgendeAlarmPopup() {
   const signal = alarmWachtrij.shift();
   huidigAlarmSignaal = signal;
   alarmPopupOpen = true;
-  ALARM_POPUP_ICOON_EL.textContent = EMOJI_PER_CATEGORIE[signal.categorie] ?? '⚠️';
+  const isOnweer = signal.categorie === 'onweercomplex';
+  ALARM_POPUP_EL.classList.toggle('onweer', isOnweer); // 2026-09-04: blauwe bliksem-variant, zie styles.css
+  if (isOnweer) ALARM_POPUP_ICOON_EL.innerHTML = BLIKSEM_SCHICHT_SVG;
+  else ALARM_POPUP_ICOON_EL.textContent = EMOJI_PER_CATEGORIE[signal.categorie] ?? '⚠️';
   ALARM_POPUP_TITEL_EL.textContent = signal.titel;
   ALARM_POPUP_SUB_EL.textContent = signal.detail?.land ?? signal.detail?.subtitel ?? signal.detail?.gebied ?? '';
   ALARM_POPUP_EL.classList.remove('verborgen');
