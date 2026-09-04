@@ -496,6 +496,7 @@ function pollTempoMs(modus) {
 // herstart ook. Het rapport (lifelinerRapportTekst) toont ze onderaan,
 // inclusief hoeveel credits de vlucht zelf gekost heeft.
 const VLUCHTLOG_MAX = 50;
+const VLUCHT_ROUTE_MAX = 600; // ~100 min op 10s-tempo
 let vluchtLog = []; // afgesloten vluchten, oud -> nieuw
 const openVluchten = new Map(); // icao24 -> vlucht
 
@@ -509,12 +510,20 @@ function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
       minAfstandKm: afstand, maxAfstandKm: afstand, maxHoogteM: baroAltM ?? null, waarnemingen: 0,
       mmtTrigger: msSindsLaatsteMMTMelding() < 60 * 60 * 1000, // P2000-MMT in het uur ervoor = waarschijnlijke aanleiding
       gaten: 0, // aantal keer dat 'ie een poll niet in de data zat maar daarna terugkwam
+      // 2026-09-04 (Lex: "staat daar nog iets over de afgelegde route?"):
+      // volledige route [lat, lon, tijdMs], gecapt op VLUCHT_ROUTE_MAX punten
+      // (bij overschrijding elke tweede punt weggooien -- blijft dan grof
+      // maar compleet). 50 vluchten x 600 punten past makkelijk op schijf.
+      route: [],
     };
     openVluchten.set(icao24, v);
     console.log(`[weer] lifeliner: vlucht gestart — ${naam} op ${afstand} km van huis`);
   } else if (nu - v.laatstMs > 2 * MISSIE_POLL_MS + 5000) {
     v.gaten++;
   }
+  v.route ??= [];
+  v.route.push([Number(lat.toFixed(5)), Number(lon.toFixed(5)), nu]);
+  if (v.route.length > VLUCHT_ROUTE_MAX) v.route = v.route.filter((_, i) => i % 2 === 0 || i === v.route.length - 1);
   v.laatstMs = nu; v.laatstLat = lat; v.laatstLon = lon; v.laatstAfstandKm = afstand;
   v.minAfstandKm = Math.min(v.minAfstandKm, afstand);
   v.maxAfstandKm = Math.max(v.maxAfstandKm, afstand);

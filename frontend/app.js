@@ -402,6 +402,7 @@ function wisselView(naam) {
 // aan (die staat ook bij een verse app-start standaard aan).
 function gaNaarStart() {
   wisselView('kaart');
+  wisLifelinerRoute(); // 2026-09-04: getekende logboek-route opruimen
   // 2026-08-27-fix, zelfde patroon als bij centreerOpMelding() (zie fix
   // aldaar): wisselView() hierboven stelt zijn eigen kaart.invalidateSize()
   // bewust een tik uit (setTimeout(...,0)), maar kaart.setView() hieronder
@@ -7970,8 +7971,35 @@ function maakLifelinerVluchtItem(v, open) {
     </span>
     <span class="chev">›</span>
   `;
-  btn.addEventListener('click', () => centreerOpMelding({ id: `lifeliner-${v.icao24}`, categorie: 'hulpdiensten', lat: v.laatstLat, lon: v.laatstLon }));
+  btn.addEventListener('click', () => toonLifelinerRoute(v));
   return btn;
+}
+
+// 2026-09-04: route van een vlucht uit het logboek op de kaart tekenen
+// (gele stippellijn, zelfde stijl als het live spoor) met start- en eindstip,
+// en eromheen zoomen. Eén tegelijk; een volgende tik vervangt de vorige.
+// De laag blijft staan tot je een andere vlucht kiest of gaNaarStart() doet.
+let lifelinerRouteLaag = null;
+function wisLifelinerRoute() {
+  if (lifelinerRouteLaag) { lifelinerRouteLaag.remove(); lifelinerRouteLaag = null; }
+}
+function toonLifelinerRoute(v) {
+  const punten = (v.route ?? []).map((p) => [p[0], p[1]]);
+  wisLifelinerRoute();
+  wisselView('kaart');
+  if (zeeModusActief) toggleZeeModus();
+  if (vliegModusActief) toggleVliegradar();
+  if (punten.length < 2) {
+    kaart.setView([v.laatstLat, v.laatstLon], HULPDIENSTEN_ZOOM);
+    return;
+  }
+  const stip = (latlng, kleur, titel) => L.circleMarker(latlng, { radius: 5, color: '#10131c', weight: 1.5, fillColor: kleur, fillOpacity: 1 }).bindTooltip(titel, { direction: 'top', offset: [0, -6] });
+  lifelinerRouteLaag = L.layerGroup([
+    L.polyline(punten, { color: '#ffd633', weight: 3, opacity: 0.85, dashArray: '1,7', lineCap: 'round' }),
+    stip(punten[0], '#3dff8a', `${v.naam} · start ${lifelinerTijd(v.startMs)}`),
+    stip(punten[punten.length - 1], v.eindMs ? '#ff8a3d' : '#ffd633', `${v.naam} · ${v.eindMs ? `laatst gezien ${lifelinerTijd(v.eindMs)}` : 'nu'}`),
+  ]).addTo(kaart);
+  setTimeout(() => kaart.fitBounds(L.latLngBounds(punten).pad(0.15), { maxZoom: 13 }), 50);
 }
 
 function maakLifelinerSectie() {
