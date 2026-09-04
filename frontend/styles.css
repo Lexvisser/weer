@@ -1096,8 +1096,13 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    hierboven (KNMI geeft geel en oranje vaak allebei severity Moderate). Zie
    WEER_KLEUR_KLASSE in app.js; het gebied kleurt mee via WEER_KLEUR_HEX. */
 .hazard-pin.kleur-geel { background:rgba(255,214,51,0.42); border:1.5px solid rgba(255,214,51,0.9); box-shadow:0 0 12px rgba(255,214,51,0.45), 0 2px 6px rgba(10,13,22,0.3); }
-.hazard-pin.kleur-oranje { background:rgba(255,138,61,0.5); border:1.5px solid rgba(255,138,61,0.95); box-shadow:0 0 16px rgba(255,138,61,0.6), 0 2px 6px rgba(10,13,22,0.3); }
-.hazard-pin.kleur-rood { background:rgba(255,46,109,0.5); border:1.5px solid rgba(255,46,109,0.95); box-shadow:0 0 16px rgba(255,46,109,0.65), 0 2px 6px rgba(10,13,22,0.3); }
+/* 2026-09-04, Lex ("verschil iets prominenter?"): oranje/rood voller, dikkere
+   rand en een pulserende gloed; geel blijft rustig. */
+.hazard-pin.kleur-oranje { background:rgba(255,138,61,0.78); border:2.5px solid #ffb070; box-shadow:0 0 18px 4px rgba(255,138,61,0.7), 0 2px 6px rgba(10,13,22,0.3); animation: weerPinPulsOranje 1.6s ease-in-out infinite; }
+.hazard-pin.kleur-rood { background:rgba(255,46,109,0.8); border:2.5px solid #ff8fb0; box-shadow:0 0 18px 4px rgba(255,46,109,0.75), 0 2px 6px rgba(10,13,22,0.3); animation: weerPinPulsRood 1.1s ease-in-out infinite; }
+@keyframes weerPinPulsOranje { 0%,100% { box-shadow:0 0 12px 2px rgba(255,138,61,0.5), 0 2px 6px rgba(10,13,22,0.3); } 50% { box-shadow:0 0 26px 8px rgba(255,138,61,0.85), 0 2px 6px rgba(10,13,22,0.3); } }
+@keyframes weerPinPulsRood { 0%,100% { box-shadow:0 0 12px 2px rgba(255,46,109,0.55), 0 2px 6px rgba(10,13,22,0.3); } 50% { box-shadow:0 0 28px 10px rgba(255,46,109,0.9), 0 2px 6px rgba(10,13,22,0.3); } }
+.hazard-pin.is-verlopen.kleur-oranje, .hazard-pin.is-verlopen.kleur-rood { animation:none; }
 /* Lifeliner (traumahelikopter) — eigen vast gele helikopter-SVG i.p.v. de
    ernst-kleur/emoji, 2026-08-19 op Lex' verzoek ("een gele helikopter").
    Vervangt de ernst-klasse (zie renderMap in app.js), dus dit staat los van
