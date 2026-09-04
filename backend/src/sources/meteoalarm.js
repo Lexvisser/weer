@@ -472,7 +472,7 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
           // voor de popup -- daar staat "zware windstoten" i.p.v. ons "wind".
           headline: info.headline ?? null,
           omschrijving: info.description ?? null,
-          instructie: info.instruction ?? null,
+          instructie: info.instruction && !/geen\s+instructies/i.test(info.instruction) ? info.instruction : null, // KNMI's placeholder "Geen instructies beschikbaar" weglaten
           severity: severity ?? null,
           kleur,
           certainty: info.certainty ?? null,
@@ -595,7 +595,7 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
   const KLEUR_RANG = { Groen: 0, Geel: 1, Oranje: 2, Rood: 3 };
   // Sleutel ZONDER ernst-woord: fenomeenTekst is "Matige wind" bij geel en
   // "Ernstige wind" bij oranje (zie vertaalEvent), dus die matchen anders nooit.
-  const kern = (tekst) => String(tekst ?? '').toLowerCase().replace(/^(extreme|extreem|ernstige|ernstig|matige|matig|lichte|licht)\s+/, '');
+  const kern = (tekst) => fenomeenZonderErnst(tekst).toLowerCase(); // ook zonder '... waarschuwing' achteraan (nl-NL-feed)
   const afschaalSleutel = (s) => `${kern(s.detail?.fenomeenTekst)}|${s.detail?.gebied}`;
   let gewijzigd = false;
   signalen.forEach((s) => {

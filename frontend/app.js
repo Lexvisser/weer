@@ -2743,10 +2743,15 @@ function popupExtraHtml(s) {
   // omschrijving/instructie uit de CAP-feed in nl-NL, zie meteoalarm.js) --
   // daar staat "zware windstoten" waar onze titel alleen "Wind" zegt.
   if (s.categorie === 'weerwaarschuwing') {
-    const titelKaal = (s.titel ?? '').toLowerCase();
-    if (d.headline && !titelKaal.includes(d.headline.toLowerCase())) blokken.push(`<div class="popup-stats">${escapeHtml(d.headline)}</div>`);
-    if (d.omschrijving) blokken.push(`<div class="popup-advies">${escapeHtml(d.omschrijving)}</div>`);
-    if (d.instructie) blokken.push(`<div class="popup-advies">💡 ${escapeHtml(d.instructie)}</div>`);
+    // KNMI's description begint meestal letterlijk met de headline -- dan
+    // alleen de omschrijving; kop apart alleen als hij niet in de tekst zit.
+    const kop = (d.headline ?? '').trim();
+    const tekst = (d.omschrijving ?? '').trim();
+    const kopApart = kop && !tekst.toLowerCase().includes(kop.toLowerCase());
+    // Eén blok (advies erbij in), zodat de kleine Leaflet-popup één
+    // 'tik voor volledig bericht'-afklemming heeft i.p.v. twee door elkaar.
+    const delen = [kopApart ? kop : null, tekst || null, d.instructie ? `💡 ${d.instructie}` : null].filter(Boolean);
+    if (delen.length) blokken.push(`<div class="popup-advies">${escapeHtml(delen.join('\n\n'))}</div>`);
   }
 
   if (s.categorie === 'orkaan') {
