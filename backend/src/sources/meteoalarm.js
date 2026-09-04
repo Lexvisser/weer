@@ -341,13 +341,24 @@ async function haalWaarschuwingDetail(feature) {
   return { body, info };
 }
 
+// 2026-09-04, na Lex' "fantoommelding" (een oude code oranje die telkens
+// even opdook en weer verdween): de API pagineert (metadata.page_size 100,
+// total_pages) en dit las alleen pagina 1 -- bij 315 berichten in het venster
+// wisselde het dus per poll welke waarschuwingen überhaupt binnenkwamen. Nu
+// alle pagina's ophalen (cap op 20 als vangnet).
 async function haalLijstOp(vanIso, totIso, apiKey) {
-  const url = `${LIJST_URL}?language=${TAAL}&datetime=${encodeURIComponent(`${vanIso}/${totIso}`)}`;
-  const res = await fetch(url, { headers: { apikey: apiKey } });
-  if (res.status === 204) return []; // geldige query, gewoon niets verstuurd in dit venster
-  if (!res.ok) throw new Error(`Meteoalarm (MeteoGate) lijst gaf status ${res.status}`);
-  const body = await res.json();
-  return body.features ?? [];
+  const alles = [];
+  for (let pagina = 1; pagina <= 20; pagina++) {
+    const url = `${LIJST_URL}?language=${TAAL}&datetime=${encodeURIComponent(`${vanIso}/${totIso}`)}&page=${pagina}`;
+    const res = await fetch(url, { headers: { apikey: apiKey } });
+    if (res.status === 204) break; // geldige query, gewoon niets verstuurd in dit venster
+    if (!res.ok) throw new Error(`Meteoalarm (MeteoGate) lijst gaf status ${res.status}`);
+    const body = await res.json();
+    alles.push(...(body.features ?? []));
+    const totaalPaginas = Number(body.metadata?.total_pages ?? 1);
+    if (pagina >= totaalPaginas || !(body.features ?? []).length) break;
+  }
+  return alles;
 }
 
 export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
@@ -392,6 +403,11 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
     try {
       const alertId = feature.properties?.alertId;
       if (!alertId) continue;
+      // 2026-09-04: de API zegt zelf welk bericht vervangen is
+      // (supersededByAlertId/supersededAt) -- autoritatiever dan onze eigen
+      // references-/nieuwste-wint-ontdubbeling verderop, en scheelt een
+      // detail-fetch per vervangen bericht.
+      if (feature.properties?.supersededByAlertId) continue;
       if (alertIdsGetoond.has(alertId)) continue;
       alertIdsGetoond.add(alertId);
 
