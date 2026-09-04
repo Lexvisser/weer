@@ -2740,7 +2740,10 @@ function popupHtml(s) {
   // uitvergroot via .popup-icoon-groot (zie styles.css) i.p.v. de kleine
   // pin-maat, links naast de titel/subtekst.
   const icoonGrootHtml = `<div class="popup-icoon-groot">${hazardIconHtml(s)}</div>`;
-  const tekstHtml = `<div class="popup-titel">${pilHtml}${titelHtml}</div>${verlopenHtml}${subHtml}`;
+  // 2026-09-04: detail.subregels (nu alleen Lifeliner, zie lifeliner.js) —
+  // extra losse regels onder de subtitel, elk op een eigen regel.
+  const extraSubHtml = (s.detail?.subregels ?? []).map((r) => `<div class="popup-sub">${escapeHtml(r)}</div>`).join('');
+  const tekstHtml = `<div class="popup-titel">${pilHtml}${titelHtml}</div>${verlopenHtml}${subHtml}${extraSubHtml}`;
   return `<div class="popup-kop"><div class="popup-kop-tekst">${tekstHtml}</div>${icoonGrootHtml}</div>${popupExtraHtml(s)}`;
 }
 
@@ -7808,7 +7811,7 @@ function maakMeldingItem(s) {
     <span class="txt">
       ${navtexNummerHtml}
       <div class="titel">${pilHtml}${afgeschaaldHtml}${datumOnbetrouwbaarHtml}${markeerNlTijd(s.titel)}</div>
-      <div class="sub">${subRegel}</div>
+      <div class="sub">${subRegel}</div>${(s.detail?.subregels ?? []).map((r) => `<div class="sub">${escapeHtml(r)}</div>`).join('')}
     </span>
     ${opKaart ? '<span class="chev">›</span>' : ''}
   `;
