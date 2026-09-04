@@ -2646,7 +2646,15 @@ function popupHtml(s) {
   // voor tornado-bevestigd — de bredere pil-logica (EMERGENCY/PDS/OP DE
   // GROND/weerwaarschuwing) heeft nooit in de popup gestaan en dat is hier
   // niet gevraagd, dus die laat ik met rust.
-  const pilHtml = s.categorie === 'tornado-bevestigd' ? `<span class="pil grijs">BEVESTIGD</span>` : '';
+  // 2026-09-04, Lex ("ik zie kans op zeer zware windstoten, maar geen pil"):
+  // bij een weeralarm nu ook hier de code-pil (GEEL/ORANJE/ROOD) en de
+  // "WAS ORANJE"-pil van een afgeschaald alarm, zelfde als in de lijst.
+  const weerPilKlasse = { Geel: 'geel', Oranje: 'oranje', Rood: 'rood' };
+  const weerPilHtml = s.categorie === 'weerwaarschuwing' && s.detail?.kleur
+    ? `<span class="pil ${weerPilKlasse[s.detail.kleur] ?? 'grijs'}">${escapeHtml(s.detail.kleur.toUpperCase())}</span>`
+      + (s.detail.afgeschaaldVan ? `<span class="pil ${weerPilKlasse[s.detail.afgeschaaldVan] ?? 'grijs'} pil-was">WAS ${escapeHtml(s.detail.afgeschaaldVan.toUpperCase())}</span>` : '')
+    : '';
+  const pilHtml = s.categorie === 'tornado-bevestigd' ? `<span class="pil grijs">BEVESTIGD</span>` : weerPilHtml;
   const titelHtml = markeerNlTijd(riglijstTitelHtml(s) ?? s.titel);
   // 2026-08-24, op verzoek van Lex ("het icon waarop werd geklikt als grote
   // kopie bij de tekst... dan zie je ook eindelijk eens goed hoe mooi die
