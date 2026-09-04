@@ -7943,7 +7943,7 @@ function maakLifelinerVluchtItem(v, open) {
   const btn = document.createElement('button');
   btn.className = open
     ? 'melding-item ernst-waarschuwing cat-hulpdiensten'
-    : 'melding-item verlopen-item ernst-info cat-hulpdiensten';
+    : 'melding-item ernst-info cat-hulpdiensten lifeliner-klaar'; // 2026-09-04: niet meer de verlopen-stijl (0.6 opacity + cursief = onleesbaar, zie Lex' screenshot)
   const eind = open ? Date.now() : v.eindMs;
   const duur = Math.round((eind - v.startMs) / 60000);
   const vandaag = lifelinerDatum(Date.now()) === lifelinerDatum(v.startMs);
