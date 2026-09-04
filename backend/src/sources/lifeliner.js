@@ -546,7 +546,7 @@ function vluchtTellerTekst(icao24) {
   const v = openVluchten.get(icao24);
   if (!v) return '';
   const sinds = new Date(v.startMs).toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' });
-  return ` · gevolgd sinds ${sinds}: ${v.waarnemingen}× gezien${v.gaten ? `, ${v.gaten} gat${v.gaten > 1 ? 'en' : ''}` : ''} · credits vandaag ${creditsVandaag}`;
+  return ` · gevolgd sinds ${sinds}: ${v.waarnemingen}× gezien${v.gaten ? `, ${v.gaten} gat${v.gaten > 1 ? 'en' : ''}` : ''} · ${creditsVandaag} credits`;
 }
 
 function nlTijd(ms) {
