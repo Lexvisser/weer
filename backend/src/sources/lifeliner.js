@@ -565,7 +565,17 @@ export function vluchtlogboekTekst() {
 }
 
 export function vluchtlogboekJson() {
-  return { open: [...openVluchten.values()], afgesloten: [...vluchtLog].reverse() };
+  return {
+    status: {
+      modus: huidigeModus(),
+      creditsVandaag,
+      budget: openskyDagBudget(),
+      restCredits: openskyRestCredits?.waarde ?? null,
+      geauthenticeerd: openskyCredsAanwezig(),
+    },
+    open: [...openVluchten.values()],
+    afgesloten: [...vluchtLog].reverse(),
+  };
 }
 const MMT_TRIGGER_VENSTER_MS = 15 * 60 * 1000; // spiegel van LIFELINER_TRIGGER_VENSTER_MS in server.js
 const ACTIEF_NA_VLUCHT_MS = 10 * 60 * 1000; // na de laatste in-de-lucht-waarneming nog even snel blijven volgen (landing/doorstart)

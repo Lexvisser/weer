@@ -7906,8 +7906,95 @@ function maakVerlopenMeldingItem(s) {
   return btn;
 }
 
+// ---- Lifeliner-vluchtlogboek in de Meldingen-lijst, 2026-09-04 ------------
+// Data uit /api/lifeliner-vluchten (zie vluchtlogboekJson in lifeliner.js):
+// status (poll-modus + credits) + open en afgesloten vluchten. Wordt alleen
+// opgehaald als de Meldingen-tab in beeld is, hooguit elke 30s.
+let lifelinerVluchten = null;
+let lifelinerVluchtenLaatstMs = 0;
+let lifelinerUitgeklapt = false;
+const LIFELINER_MODUS_TEKST = { missie: '🟢 heli in de lucht — volgt elke 15 s', trigger: '🟡 MMT gealarmeerd — kijkt elke minuut', hartslag: '⚪ rust — kijkt elke 2 min' };
+
+async function laadLifelinerVluchten() {
+  if (Date.now() - lifelinerVluchtenLaatstMs < 30 * 1000) return;
+  lifelinerVluchtenLaatstMs = Date.now();
+  try {
+    lifelinerVluchten = await fetch('/api/lifeliner-vluchten').then((r) => r.json());
+    if (huidigeView === 'meldingen') renderMeldingen(laatsteMeldingenSignalen);
+  } catch (_) { /* backend even niet bereikbaar — oude data blijft staan */ }
+}
+
+function lifelinerTijd(ms) {
+  return new Date(ms).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+}
+function lifelinerDatum(ms) {
+  return new Date(ms).toLocaleDateString('nl-NL', { day: '2-digit', month: 'short' });
+}
+
+function maakLifelinerVluchtItem(v, open) {
+  const btn = document.createElement('button');
+  btn.className = `melding-item verlopen-item ernst-${open ? 'waarschuwing' : 'info'} cat-hulpdiensten`;
+  const eind = open ? Date.now() : v.eindMs;
+  const duur = Math.round((eind - v.startMs) / 60000);
+  const vandaag = lifelinerDatum(Date.now()) === lifelinerDatum(v.startMs);
+  const wanneer = `${vandaag ? '' : `${lifelinerDatum(v.startMs)} `}${lifelinerTijd(v.startMs)} – ${open ? 'nu' : lifelinerTijd(v.eindMs)}`;
+  const gem = v.waarnemingen > 1 ? Math.round((v.laatstMs - v.startMs) / 1000 / (v.waarnemingen - 1)) : null;
+  btn.innerHTML = `
+    <span class="em">${LIFELINER_HELI_SVG}</span>
+    <span class="txt">
+      <div class="titel">${open ? '<span class="pil grijs">LOOPT</span>' : ''}${escapeHtml(v.naam)} · ${wanneer} (${duur} min)</div>
+      <div class="sub">${v.startAfstandKm} → ${v.laatstAfstandKm} km van huis · verst ${v.maxAfstandKm} km${v.maxHoogteM != null ? ` · ${v.maxHoogteM} m` : ''}</div>
+      <div class="sub">${v.waarnemingen} waarnemingen${gem != null ? ` (elke ${gem} s)` : ''}${v.gaten ? ` · ${v.gaten} gat${v.gaten > 1 ? 'en' : ''}` : ''}${v.credits != null ? ` · ${v.credits} credits` : ''}${v.mmtTrigger ? ' · na MMT-melding' : ''}</div>
+    </span>
+    <span class="chev">›</span>
+  `;
+  btn.addEventListener('click', () => centreerOpMelding({ id: `lifeliner-${v.icao24}`, categorie: 'hulpdiensten', lat: v.laatstLat, lon: v.laatstLon }));
+  return btn;
+}
+
+function maakLifelinerSectie() {
+  const uit = [];
+  const toggle = document.createElement('button');
+  toggle.className = 'melding-meer melding-meer-verlopen';
+  const d = lifelinerVluchten;
+  const aantalOpen = d?.open?.length ?? 0;
+  const aantal = aantalOpen + (d?.afgesloten?.length ?? 0);
+  toggle.textContent = lifelinerUitgeklapt
+    ? '– Lifeliner-vluchten verbergen'
+    : `🚁 Lifeliner-vluchten${aantalOpen ? ` · ${aantalOpen} in de lucht` : ''}${aantal ? ` (${aantal})` : ''}`;
+  toggle.addEventListener('click', () => {
+    lifelinerUitgeklapt = !lifelinerUitgeklapt;
+    if (lifelinerUitgeklapt) laadLifelinerVluchten();
+    renderMeldingen(laatsteMeldingenSignalen);
+  });
+  uit.push(toggle);
+  if (!lifelinerUitgeklapt) return uit;
+
+  const status = document.createElement('div');
+  status.className = 'lifeliner-status';
+  if (!d) {
+    status.textContent = 'Laden…';
+  } else {
+    const st = d.status ?? {};
+    status.innerHTML = `${LIFELINER_MODUS_TEKST[st.modus] ?? st.modus ?? ''}<br>OpenSky vandaag: ${st.creditsVandaag ?? '?'} gebruikt${st.restCredits != null ? `, ${st.restCredits} over` : ''} (budget ${st.budget ?? '?'})`;
+  }
+  uit.push(status);
+  if (d) {
+    (d.open ?? []).forEach((v) => uit.push(maakLifelinerVluchtItem(v, true)));
+    (d.afgesloten ?? []).slice(0, 20).forEach((v) => uit.push(maakLifelinerVluchtItem(v, false)));
+    if (!aantal) {
+      const leeg = document.createElement('div');
+      leeg.className = 'lifeliner-status';
+      leeg.textContent = 'Nog geen vluchten vastgelegd sinds de laatste update.';
+      uit.push(leeg);
+    }
+  }
+  return uit;
+}
+
 function renderMeldingen(signalen) {
   laatsteMeldingenSignalen = signalen;
+  if (huidigeView === 'meldingen' && lifelinerUitgeklapt) laadLifelinerVluchten();
   // 2026-08-20: detail.verlopen (zie historie.js, backend) — tot 48u terug
   // bewaarde, inmiddels niet meer actieve waarschuwingen, puur bedoeld als
   // lichte trail op de KAART (zie renderMap) zodat je kunt zien waar een
@@ -8027,6 +8114,10 @@ function renderMeldingen(signalen) {
     } else {
       MELDINGEN_LIJST_EL.appendChild(maakLegeMeldingItem(cat, laatsteVerlopenPerCategorie[cat] ?? null));
     }
+
+    // 2026-09-04: Lifeliner-vluchtlogboek als eigen uitklapsectie onder
+    // Hulpdiensten (Lex: "wat een crappy oplossing" over de kale tekst-URL).
+    if (cat === 'hulpdiensten') maakLifelinerSectie().forEach((el) => MELDINGEN_LIJST_EL.appendChild(el));
 
     // 2026-08-20, op verzoek van Lex: de "🕓 verlopen"-sectie hoort bij ELKE
     // categorie (actief of leeg) even hard — vandaar hier ná de if/else,
