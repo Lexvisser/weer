@@ -9755,7 +9755,8 @@ window.testOnweerAlarm = () =>
 
 function triggerTornadoAlarm(signal) {
   flitsAlarmGloed(signal.categorie === 'onweercomplex');
-  laatAlarmGeluidHoren();
+  if (signal.categorie === 'onweercomplex') laatDonderHoren(); // 2026-09-04, Lex: "de donder er ook keihard bij"
+  else laatAlarmGeluidHoren();
   trilAlarm();
   alarmWachtrij.push(signal);
   toonVolgendeAlarmPopup();
@@ -9806,6 +9807,66 @@ function ontgrendelAudioContext() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 document.addEventListener('pointerdown', ontgrendelAudioContext, { once: true });
+
+// 2026-09-04, Lex: "Ik wil de donder er ook keihard bij!" -- donderslag
+// zonder geluidsbestand: gefilterde ruis (Web Audio) met een scherpe klap
+// vooraan en een lange, rommelende uitloop. Twee lagen: (1) de KLAP -- witte
+// ruis door een bandpass rond 300 Hz, ~0,4 s, hard; (2) het GEROMMEL -- bruine
+// (laagfrequente) ruis door een lowpass die van 400 naar 80 Hz zakt terwijl
+// het volume in ~4 s wegsterft, met een tweede opleving na ~1,2 s zoals echte
+// donder die tussen de wolken weerkaatst. Volume bewust ruim boven de
+// alarm-piep; het systeemvolume bepaalt de rest.
+function laatDonderHoren() {
+  ontgrendelAudioContext();
+  if (!audioCtx) return;
+  const nu = audioCtx.currentTime;
+  const sr = audioCtx.sampleRate;
+  const duur = 5;
+  const buffer = audioCtx.createBuffer(1, Math.floor(sr * duur), sr);
+  const data = buffer.getChannelData(0);
+  let vorige = 0;
+  for (let i = 0; i < data.length; i++) {
+    // bruine ruis: geïntegreerde witte ruis, klinkt als diep gerommel
+    const wit = Math.random() * 2 - 1;
+    vorige = (vorige + 0.02 * wit) / 1.02;
+    data[i] = vorige * 3.5;
+  }
+  const master = audioCtx.createGain();
+  master.gain.value = 1;
+  master.connect(audioCtx.destination);
+
+  // (1) de klap
+  const klapBron = audioCtx.createBufferSource();
+  klapBron.buffer = buffer;
+  const klapFilter = audioCtx.createBiquadFilter();
+  klapFilter.type = 'bandpass';
+  klapFilter.frequency.value = 300;
+  klapFilter.Q.value = 0.7;
+  const klapGain = audioCtx.createGain();
+  klapGain.gain.setValueAtTime(0, nu);
+  klapGain.gain.linearRampToValueAtTime(2.5, nu + 0.015);
+  klapGain.gain.exponentialRampToValueAtTime(0.001, nu + 0.45);
+  klapBron.connect(klapFilter).connect(klapGain).connect(master);
+  klapBron.start(nu);
+  klapBron.stop(nu + 0.5);
+
+  // (2) het gerommel
+  const rommelBron = audioCtx.createBufferSource();
+  rommelBron.buffer = buffer;
+  const rommelFilter = audioCtx.createBiquadFilter();
+  rommelFilter.type = 'lowpass';
+  rommelFilter.frequency.setValueAtTime(400, nu);
+  rommelFilter.frequency.exponentialRampToValueAtTime(80, nu + duur);
+  const rommelGain = audioCtx.createGain();
+  rommelGain.gain.setValueAtTime(0, nu);
+  rommelGain.gain.linearRampToValueAtTime(1.8, nu + 0.08);
+  rommelGain.gain.exponentialRampToValueAtTime(0.6, nu + 1.0);
+  rommelGain.gain.linearRampToValueAtTime(1.4, nu + 1.3); // tweede opleving (weerkaatsing)
+  rommelGain.gain.exponentialRampToValueAtTime(0.001, nu + duur);
+  rommelBron.connect(rommelFilter).connect(rommelGain).connect(master);
+  rommelBron.start(nu);
+  rommelBron.stop(nu + duur);
+}
 
 function laatAlarmGeluidHoren() {
   ontgrendelAudioContext();
