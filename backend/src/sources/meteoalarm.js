@@ -71,7 +71,7 @@ const KLEUR_NL = { Yellow: 'Geel', Orange: 'Oranje', Red: 'Rood', Green: 'Groen'
 // (voor detail.afgeschaaldVan). Op schijf (72 uur), want de oranje versie
 // verdwijnt uit de feed zodra KNMI afschaalt, en een syncweer-herstart wiste
 // anders het geheugen -- precies wat 2026-09-04 gebeurde ("vandaar").
-const HOOGSTE_KLEUR_PAD = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'meteoalarm-hoogste-kleur.json');
+const HOOGSTE_KLEUR_PAD = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'meteoalarm-hoogste-kleur.json'); // src/sources -> backend/data
 const HOOGSTE_KLEUR_BEWAAR_MS = 72 * 3600e3;
 const hoogsteKleurPerSleutel = new Map();
 try {
