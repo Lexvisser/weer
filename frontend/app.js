@@ -7916,7 +7916,7 @@ function maakVerlopenMeldingItem(s) {
 let lifelinerVluchten = null;
 let lifelinerVluchtenLaatstMs = 0;
 let lifelinerUitgeklapt = false;
-const LIFELINER_MODUS_TEKST = { missie: '🟢 heli in de lucht — volgt elke 10 s', trigger: '🟡 MMT gealarmeerd — kijkt elke minuut', hartslag: '⚪ rust — kijkt elke 2 min' };
+const LIFELINER_MODUS_TEKST = { missie: '🟢 Heli in de lucht — positie elke 10 s', trigger: '🟡 MMT gealarmeerd — wacht op opstijgen, elke minuut', hartslag: '⚪ Rust — kijkt elke 2 min of er iets vliegt' };
 
 async function laadLifelinerVluchten() {
   if (Date.now() - lifelinerVluchtenLaatstMs < 30 * 1000) return;
@@ -7935,19 +7935,38 @@ function lifelinerDatum(ms) {
 }
 
 function maakLifelinerVluchtItem(v, open) {
+  // 2026-09-04-vervolg (Lex: "slecht leesbaar... heel onduidelijke status"):
+  // een LOPENDE vlucht ziet er nu uit als een actieve melding (niet gedimd)
+  // met een groene IN DE LUCHT-pil; een afgesloten vlucht is gedimd met een
+  // grijze KLAAR-pil. Regels in gewone taal, per regel één onderwerp.
   const btn = document.createElement('button');
-  btn.className = `melding-item verlopen-item ernst-${open ? 'waarschuwing' : 'info'} cat-hulpdiensten`;
+  btn.className = open
+    ? 'melding-item ernst-waarschuwing cat-hulpdiensten'
+    : 'melding-item verlopen-item ernst-info cat-hulpdiensten';
   const eind = open ? Date.now() : v.eindMs;
   const duur = Math.round((eind - v.startMs) / 60000);
   const vandaag = lifelinerDatum(Date.now()) === lifelinerDatum(v.startMs);
-  const wanneer = `${vandaag ? '' : `${lifelinerDatum(v.startMs)} `}${lifelinerTijd(v.startMs)} – ${open ? 'nu' : lifelinerTijd(v.eindMs)}`;
+  const datum = vandaag ? '' : `${lifelinerDatum(v.startMs)} `;
   const gem = v.waarnemingen > 1 ? Math.round((v.laatstMs - v.startMs) / 1000 / (v.waarnemingen - 1)) : null;
+  const pil = open ? '<span class="pil groen">IN DE LUCHT</span>' : '<span class="pil grijs">KLAAR</span>';
+  const titel = open
+    ? `${escapeHtml(v.naam)} · opgestegen ${datum}${lifelinerTijd(v.startMs)} · ${duur} min in beeld`
+    : `${escapeHtml(v.naam)} · ${datum}${lifelinerTijd(v.startMs)} – ${lifelinerTijd(v.eindMs)} · ${duur} min`;
+  const regel1 = open
+    ? `Nu ${v.laatstAfstandKm} km van huis${v.maxHoogteM != null ? ` · ${v.maxHoogteM} m hoog` : ''} · verst weg ${v.maxAfstandKm} km`
+    : `Van ${v.startAfstandKm} naar ${v.laatstAfstandKm} km van huis · verst weg ${v.maxAfstandKm} km${v.maxHoogteM != null ? ` · max ${v.maxHoogteM} m` : ''}`;
+  const regel2 = [
+    `${v.waarnemingen} posities${gem != null ? ` (om de ${gem} s)` : ''}`,
+    v.gaten ? `${v.gaten}× even kwijt` : null,
+    v.credits != null ? `${v.credits} credits` : null,
+    v.mmtTrigger ? 'na MMT-melding' : null,
+  ].filter(Boolean).join(' · ');
   btn.innerHTML = `
     <span class="em">${LIFELINER_HELI_SVG}</span>
     <span class="txt">
-      <div class="titel">${open ? '<span class="pil grijs">LOOPT</span>' : ''}${escapeHtml(v.naam)} · ${wanneer} (${duur} min)</div>
-      <div class="sub">${v.startAfstandKm} → ${v.laatstAfstandKm} km van huis · verst ${v.maxAfstandKm} km${v.maxHoogteM != null ? ` · ${v.maxHoogteM} m` : ''}</div>
-      <div class="sub">${v.waarnemingen} waarnemingen${gem != null ? ` (elke ${gem} s)` : ''}${v.gaten ? ` · ${v.gaten} gat${v.gaten > 1 ? 'en' : ''}` : ''}${v.credits != null ? ` · ${v.credits} credits` : ''}${v.mmtTrigger ? ' · na MMT-melding' : ''}</div>
+      <div class="titel">${pil}${titel}</div>
+      <div class="sub">${regel1}</div>
+      <div class="sub">${regel2}</div>
     </span>
     <span class="chev">›</span>
   `;
@@ -7984,7 +8003,7 @@ function maakLifelinerSectie() {
     const opRegel = st.budgetOp
       ? `<br><span class="lifeliner-budget-op">⛔ Credits op — OpenSky weigert tot 02:00 NL${st.aantal429Vandaag ? ` (${st.aantal429Vandaag}× geweigerd vandaag)` : ''}</span>`
       : '';
-    status.innerHTML = `${LIFELINER_MODUS_TEKST[st.modus] ?? st.modus ?? ''}<br>OpenSky vandaag: ${st.creditsVandaag ?? '?'} van ${st.budget ?? '?'} gebruikt${st.restCredits != null ? `, ${st.restCredits} over` : ''}${opRegel}`;
+    status.innerHTML = `${LIFELINER_MODUS_TEKST[st.modus] ?? st.modus ?? ''}<br>🎟️ Credits vandaag: ${st.creditsVandaag ?? '?'} gebruikt van ${st.budget ?? '?'}${st.restCredits != null ? ` — OpenSky zegt ${st.restCredits} over` : ''}${opRegel}`;
   }
   uit.push(status);
   if (d) {
