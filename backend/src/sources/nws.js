@@ -23,6 +23,9 @@ import { stuurWebPushAlarm } from './webpush.js';
 import { metHistorie } from '../historie.js';
 import { verversMedia } from '../mediaHistorie.js';
 import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 // 2026-08-19: Lex vroeg "hebben we al tsunami warnings?" — nog niet, terwijl
 // dit dezelfde api.weather.gov/alerts-infrastructuur is als tornado hierboven
@@ -98,13 +101,66 @@ const EVENT_TYPES = [
 // de heuristiek WEL nodig, anders koppelt-ie te makkelijk twee toevallig-
 // overlappende maar echt verschillende tornado's aan elkaar).
 const KETEN_TTL_MS = 3 * 60 * 60 * 1000; // 3 uur -- ruim boven duur+heruitgave-marge van een warning, voorkomt kruisbesmetting met een latere, ongerelateerde waarschuwing in hetzelfde gebied
-const actieveKetens = new Map(); // huidige id -> { categorie, gebiedTokens, niveau, laatstGezien }
+const actieveKetens = new Map(); // huidige id -> { categorie, gebiedTokens, gebiedPolygons, niveau, laatstGezien }
+
+// 2026-09-04, op verzoek van Lex ("we hebben al twee keer eerder een
+// failsafe gebouwd voor syncweer, dus waarom nu niet?"): ketens op schijf,
+// zodat een syncweer-herstart de lopende ketens (en hun spoor) niet wist --
+// dat gaf gisteravond (Saginaw, 19:58 + 20:06) een dubbele mail zonder
+// spoor. Zelfde patroon als gemeldOpSchijf.js; gebiedTokens is een Set,
+// vandaar de array-omzetting bij laden/bewaren.
+const KETENS_PAD = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'nws-ketens.json');
+function bewaarKetens() {
+  try {
+    mkdirSync(dirname(KETENS_PAD), { recursive: true });
+    const tmp = `${KETENS_PAD}.tmp`;
+    writeFileSync(tmp, JSON.stringify([...actieveKetens].map(([id, k]) => [id, { ...k, gebiedTokens: [...(k.gebiedTokens ?? [])] }])));
+    renameSync(tmp, KETENS_PAD);
+  } catch (err) {
+    console.error('[weer] nws: ketens bewaren mislukt —', err.message ?? err);
+  }
+}
+try {
+  if (existsSync(KETENS_PAD)) {
+    for (const [id, k] of JSON.parse(readFileSync(KETENS_PAD, 'utf-8'))) {
+      if (typeof id === 'string' && k && Number.isFinite(k.laatstGezien)) actieveKetens.set(id, { ...k, gebiedTokens: new Set(k.gebiedTokens ?? []), gebiedPolygons: k.gebiedPolygons ?? [] });
+    }
+    console.log(`[weer] nws: ${actieveKetens.size} keten(s) geladen van schijf (overleeft herstarts).`);
+  }
+} catch (err) {
+  console.error('[weer] nws: ketens laden mislukt, begin leeg —', err.message ?? err);
+}
 
 function ruimVerlopenKetensOp() {
   const nu = Date.now();
+  let gewijzigd = false;
   for (const [id, keten] of actieveKetens) {
-    if (nu - keten.laatstGezien > KETEN_TTL_MS) actieveKetens.delete(id);
+    if (nu - keten.laatstGezien > KETEN_TTL_MS) { actieveKetens.delete(id); gewijzigd = true; }
   }
+  if (gewijzigd) bewaarKetens();
+}
+
+// 2026-09-04, Lex: "mijn doel is dat ik de evolutie zie in de mails, dus
+// daar wil ik de gebieden ook over elkaar heen zien net als in de app" --
+// bij een gekoppelde (en verder onderdrukte) heruitgave waarvan het gebied
+// écht veranderd is, gaat één spoor-MAIL uit met alle omtrekken van de
+// keten over elkaar (kaartUrlVoor() in email.js). Alleen mail: Pushover/
+// webpush blijven stil, dat kanaal is voor "nieuw" en "escalatie".
+function stuurSpoorMail(signaal, keten) {
+  if (!mailAlarmAan(signaal.categorie)) return;
+  const spoor = keten.gebiedPolygons ?? [];
+  if (spoor.length < 2) return;
+  if (JSON.stringify(spoor[spoor.length - 1]) === JSON.stringify(spoor[spoor.length - 2])) return; // gebied ongewijzigd: niks nieuws te zien
+  const label = signaal.categorie === 'tornado' ? '🌪️ Tornado Warning' : signaal.categorie === 'tornado-watch' ? 'Tornado Watch' : signaal.categorie;
+  stuurMailAlarm({
+    id: `${signaal.id}-spoor`,
+    titel: `${label} – heruitgave ${spoor.length} (gebied aangepast)`,
+    bericht: kaartTekst(signaal),
+    lat: signaal.lat,
+    lon: signaal.lon,
+    gebiedPolygon: signaal.detail?.gebiedPolygon,
+    gebiedPolygonTrail: spoor,
+  });
 }
 
 // 2026-08-27, op melding van Lex: de gebieden (county's) van opeenvolgende
@@ -195,7 +251,10 @@ function vindEnSchuifKeten(signaal, huidigeIds) {
     // Begrensd op TRAIL_MAX (zie email.js) -- hier ruim gehouden, de
     // uiteindelijke begrenzing gebeurt daar vlak vóór de kaart-URL.
     const gebiedPolygons = [...(keten.gebiedPolygons ?? []), signaal.detail?.gebiedPolygon].filter(Boolean).slice(-12);
-    actieveKetens.set(signaal.id, { categorie: signaal.categorie, gebiedTokens: tokens, gebiedPolygons, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now() });
+    const nieuweKeten = { categorie: signaal.categorie, gebiedTokens: tokens, gebiedPolygons, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now() };
+    actieveKetens.set(signaal.id, nieuweKeten);
+    bewaarKetens();
+    if (onderdrukken) stuurSpoorMail(signaal, nieuweKeten); // 2026-09-04: evolutie in de mail, zie stuurSpoorMail()
     console.log(
       onderdrukken
         ? `[weer] nws: heruitgave gekoppeld (${bron}) -- "${oudId}" -> "${signaal.id}" (${signaal.categorie}, gebied nu: ${signaal.detail?.gebied ?? '?'}), alarm onderdrukt (al eerder gealarmeerd voor deze doorlopende dreiging).`
@@ -228,6 +287,7 @@ function registreerNieuweKeten(signaal) {
     niveau: dreigingsNiveauRang(signaal),
     laatstGezien: Date.now(),
   });
+  bewaarKetens();
 }
 
 // Centrale poort vóór elke stuurAlarm/stuurMailAlarm/stuurWebPushAlarm-
@@ -249,6 +309,7 @@ function magDoorAlarmeren(signaal, huidigeIds) {
     if (niveau > kop.niveau) {
       console.log(`[weer] nws: keten-kop "${signaal.id}" escaleert (${kop.niveau} -> ${niveau}), alarm gaat door.`);
       kop.niveau = niveau;
+      bewaarKetens();
       return true;
     }
     return false;
