@@ -243,10 +243,16 @@ function markeerNlTijd(html) {
   if (!tijden.length) return html;
   // 2026-09-04 (Lex: "begin en eindtijd allebei onder elkaar op een eigen
   // regel"): niet meer "NL: a – b" op één regel, maar twee regels.
-  if (tijden.length >= 2) {
-    return `${zonder}<div class="nl-tijd">NL begin: ${tijden[0]}</div><div class="nl-tijd">NL eind: ${tijden[tijden.length - 1]}</div>`;
-  }
-  return `${zonder}<div class="nl-tijd">NL: ${tijden[0]}</div>`;
+  // Uitgelijnd onder elkaar (Lex): label in een vaste-breedte-span en het
+  // dagnummer rechts uitgelijnd in een eigen span, zodat "2 sep" en "12 sep"
+  // dezelfde kolommen houden. Zie .nl-tijd-label/.nl-tijd-dag in styles.css.
+  const regel = (label, t) => {
+    const m = /^(\d{1,2}) (.*)$/.exec(t);
+    const dag = m ? `<span class="nl-tijd-dag">${m[1]}</span> ${m[2]}` : t;
+    return `<div class="nl-tijd"><span class="nl-tijd-label">${label}</span>${dag}</div>`;
+  };
+  if (tijden.length >= 2) return `${zonder}${regel('NL begin', tijden[0])}${regel('NL eind', tijden[tijden.length - 1])}`;
+  return `${zonder}${regel('NL', tijden[0])}`;
 }
 
 // Muteert s.titel (in place) voor elk signaal dat een NWS-achtige tijd

@@ -1961,3 +1961,5 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    in app.js. */
 .nl-tijd { color:#3ec6ff; font-weight:normal; margin-top:2px; }
 .nl-tijd + .nl-tijd { margin-top:0; }
+.nl-tijd-label { display:inline-block; min-width:4.6em; }
+.nl-tijd-dag { display:inline-block; min-width:1.2em; text-align:right; font-variant-numeric:tabular-nums; }
