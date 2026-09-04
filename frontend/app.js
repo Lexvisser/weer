@@ -7683,6 +7683,12 @@ function maakMeldingItem(s) {
     pilTekst = sindsTekst ? `NIEUW OP ${sindsTekst.toUpperCase()}` : 'NIEUW';
   }
   const pilHtml = pilKlasse ? `<span class="pil ${pilKlasse}">${pilTekst}</span>` : '';
+  // 2026-09-04, Lex ("is wel leuk"): een door KNMI afgeschaald weeralarm
+  // (detail.afgeschaaldVan, zie meteoalarm.js) krijgt een tweede pil in de
+  // oude kleur, bv. GEEL + WAS ORANJE.
+  const afgeschaaldHtml = s.categorie === 'weerwaarschuwing' && s.detail?.afgeschaaldVan
+    ? `<span class="pil ${KLEUR_KLASSE[s.detail.afgeschaaldVan] ?? 'grijs'} pil-was" title="Door KNMI afgeschaald van code ${s.detail.afgeschaaldVan}">WAS ${s.detail.afgeschaaldVan.toUpperCase()}</span>`
+    : '';
   // 2026-08-24, op verzoek van Lex ("mag een marker meegeven... datum of
   // herkomst onbetrouwbaar, rode gloed of zo") — LOS van de pilKlasse-keten
   // hierboven (die geeft er maar één per melding), want dit kan tegelijk met
@@ -7700,7 +7706,7 @@ function maakMeldingItem(s) {
     <span class="em">${hazardIconHtml(s)}</span>
     <span class="txt">
       ${navtexNummerHtml}
-      <div class="titel">${pilHtml}${datumOnbetrouwbaarHtml}${markeerNlTijd(s.titel)}</div>
+      <div class="titel">${pilHtml}${afgeschaaldHtml}${datumOnbetrouwbaarHtml}${markeerNlTijd(s.titel)}</div>
       <div class="sub">${subRegel}</div>
     </span>
     ${opKaart ? '<span class="chev">›</span>' : ''}

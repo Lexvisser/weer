@@ -1455,6 +1455,8 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    datakwaliteit-kanttekening. Zie .melding-item.item-onbetrouwbaar
    hieronder voor de bijbehorende gloed op de hele regel. */
 .pil.roodvaag { background:#e08a8a; }
+/* 2026-09-04: 'WAS ORANJE'-pil bij een afgeschaald weeralarm (detail.afgeschaaldVan): oude kleur, maar gedempt met een doorgestreept randje zodat 'm niet met het actuele niveau verward wordt. */
+.pil.pil-was { opacity:0.7; text-decoration:line-through; text-decoration-color:rgba(10,12,18,0.7); }
 /* 2026-08-26, zie navtexNummerBadge() in app.js -- eigen, prominente regel
    bovenaan het NAVTEX-kaartje (stationnummer + eigen ontvangstteller, bv.
    "PA45 · 8x"), bewust los van de kleine pilletjes hierboven en van de

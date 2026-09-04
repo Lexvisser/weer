@@ -64,6 +64,7 @@ const ERNST_PER_SEVERITY = { Extreme: 'kritiek', Severe: 'waarschuwing', Moderat
 // die de kleur/opacity in de app stuurt) — CAP-severity is Engelstalig.
 const SEVERITY_NL = { Extreme: 'Extreem', Severe: 'Ernstig', Moderate: 'Matig', Minor: 'Licht' };
 const KLEUR_NL = { Yellow: 'Geel', Orange: 'Oranje', Red: 'Rood', Green: 'Groen' };
+const hoogsteKleurPerSleutel = new Map(); // 2026-09-04: fenomeen|gebied -> hoogste kleur ooit gezien (voor detail.afgeschaaldVan)
 
 const FENOMEEN_NL = {
   wind: 'wind',
@@ -531,6 +532,24 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
     if (!bestaand || new Date(s.tijd ?? 0) > new Date(bestaand.tijd ?? 0)) nieuwstePerSleutel.set(sleutel, s);
   });
   const ontdubbeld = zonderVoorgangers.filter((s) => nieuwstePerSleutel.get(`${s.detail?.fenomeenTekst}|${s.detail?.gebied}`) === s);
+  // 2026-09-04, op melding van Lex ("hoe kan het dat ik die zware wind
+  // ineens niet meer zie"): KNMI schaalde een code oranje via een Update af
+  // naar geel, en de oranje versie verdween hier stilletjes als "vervangen".
+  // Lex wil dat zien ("is wel leuk"): de winnende versie krijgt
+  // detail.afgeschaaldVan = de hoogste kleur die een weggelaten voorganger
+  // voor hetzelfde fenomeen+gebied had, als die hoger is dan de huidige.
+  // Voorgangers blijven ~48u in de feed (sent-venster), daarna houdt de
+  // in-memory hoogsteKleurPerSleutel het nog vast tot een herstart.
+  const KLEUR_RANG = { Groen: 0, Geel: 1, Oranje: 2, Rood: 3 };
+  signalen.forEach((s) => {
+    const sleutel = `${s.detail?.fenomeenTekst}|${s.detail?.gebied}`;
+    const rang = KLEUR_RANG[s.detail?.kleur] ?? -1;
+    if (rang > (KLEUR_RANG[hoogsteKleurPerSleutel.get(sleutel)] ?? -1)) hoogsteKleurPerSleutel.set(sleutel, s.detail.kleur);
+  });
+  ontdubbeld.forEach((s) => {
+    const hoogste = hoogsteKleurPerSleutel.get(`${s.detail?.fenomeenTekst}|${s.detail?.gebied}`);
+    if (hoogste && (KLEUR_RANG[hoogste] ?? -1) > (KLEUR_RANG[s.detail?.kleur] ?? -1)) s.detail.afgeschaaldVan = hoogste;
+  });
   if (ontdubbeld.length !== signalen.length) {
     console.log(`[weer] meteoalarm: ${signalen.length - ontdubbeld.length} vervangen/oudere versie(s) van een bijgewerkt alarm weggelaten`);
   }
