@@ -1065,6 +1065,11 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    lijst is t.o.v. de hoofdmelding erboven. */
 .popup-groep { margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.12); }
 .popup-groep-kop { color:#9199b5; font-size:10.5px; font-weight:600; margin-bottom:3px; }
+/* 2026-09-04: groep als uitklapbare teller — summary met eigen pijltje */
+summary.popup-groep-kop { cursor:pointer; list-style:none; user-select:none; }
+summary.popup-groep-kop::-webkit-details-marker { display:none; }
+summary.popup-groep-kop::before { content:'▸ '; color:#6d7ff0; }
+details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .popup-groep-item { color:#9199b5; font-size:10.5px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } /* 2026-08-30: één regel per bericht, nooit afbreken (popup is nu 360px breed, zie renderMap) */
 .popup-groep-meer { font-style:italic; opacity:0.8; }
 

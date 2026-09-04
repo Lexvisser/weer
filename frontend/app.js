@@ -7388,7 +7388,11 @@ function navtexGroepPopupHtml(s) {
   const kop = s.detail?.positieIsStation
     ? `+${s._groepMeer.length} ander(e) bericht(en) van dit station`
     : `+${s._groepMeer.length} ander(e) bericht(en) op deze positie`;
-  return `<div class="popup-groep"><div class="popup-groep-kop">${kop}</div>${items}</div>`;
+  // 2026-09-04, op verzoek van Lex ("deze melding van station mag een
+  // teller worden"): standaard alleen de telregel; de lijst klapt pas uit
+  // als je erop tikt (<details>, werkt zonder eigen event-handler in een
+  // Leaflet-popup).
+  return `<details class="popup-groep"><summary class="popup-groep-kop">${kop}</summary>${items}</details>`;
 }
 
 function renderMap(signalen) {
