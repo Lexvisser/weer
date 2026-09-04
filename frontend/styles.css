@@ -1959,7 +1959,5 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
    in meldingstitels/popups in een eigen kleur, zodat die meteen te
    onderscheiden is van de Amerikaanse brontijd ervoor. Zie markeerNlTijd()
    in app.js. */
-.nl-tijd { color:#3ec6ff; font-weight:normal; margin-top:2px; font-variant-numeric:tabular-nums; }
-.nl-tijd + .nl-tijd { margin-top:0; }
-.nl-tijd-label { display:inline-block; min-width:4.6em; }
-.nl-tijd-dag { display:inline-block; min-width:1.2em; text-align:right; font-variant-numeric:tabular-nums; }
+.nl-tijd { color:#3ec6ff; font-weight:normal; margin-top:2px; font-variant-numeric:tabular-nums; display:grid; grid-template-columns:max-content max-content; column-gap:0.8em; row-gap:1px; }
+.nl-tijd-label { opacity:0.8; }

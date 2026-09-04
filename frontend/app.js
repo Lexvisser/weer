@@ -246,14 +246,15 @@ function markeerNlTijd(html) {
   // Uitgelijnd onder elkaar (Lex): label in een vaste-breedte-span en het
   // dagnummer rechts uitgelijnd in een eigen span, zodat "2 sep" en "12 sep"
   // dezelfde kolommen houden. Zie .nl-tijd-label/.nl-tijd-dag in styles.css.
-  const regel = (label, t) => {
-    const m = /^(\d{1,2}) (.*)$/.exec(t);
-    // "volledig gelijk format" (Lex): dag altijd twee cijfers -> "02 sep 14:57"
-    const dag = m ? `<span class="nl-tijd-dag">${m[1].padStart(2, '0')}</span> ${m[2]}` : t;
-    return `<div class="nl-tijd"><span class="nl-tijd-label">${label}</span>${dag}</div>`;
-  };
-  if (tijden.length >= 2) return `${zonder}${regel('NL begin', tijden[0])}${regel('NL eind', tijden[tijden.length - 1])}`;
-  return `${zonder}${regel('NL', tijden[0])}`;
+  // 2026-09-04-vervolg ("niet netjes" -- in de popup, monospace-font, plakte
+  // het label tegen de tijd): één CSS-grid met twee kolommen (label | tijd)
+  // i.p.v. spans met een gegokte min-width, dan klopt 't in elk lettertype.
+  // "volledig gelijk format" (Lex): dag altijd twee cijfers -> "02 sep 14:57".
+  const tijd = (t) => t.replace(/^(\d) /, '0$1 ');
+  const rijen = tijden.length >= 2
+    ? [['NL begin', tijden[0]], ['NL eind', tijden[tijden.length - 1]]]
+    : [['NL', tijden[0]]];
+  return `${zonder}<div class="nl-tijd">${rijen.map(([l, t]) => `<span class="nl-tijd-label">${l}</span><span>${tijd(t)}</span>`).join('')}</div>`;
 }
 
 // Muteert s.titel (in place) voor elk signaal dat een NWS-achtige tijd
