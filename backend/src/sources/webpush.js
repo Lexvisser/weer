@@ -25,6 +25,7 @@
 // via WEBPUSH_INGESCHAKELD=0, en een in-memory Set voorkomt dat hetzelfde
 // alarm elke pollcyclus opnieuw verstuurd wordt.
 import webpush from 'web-push';
+import { maakGemeldOpSchijf } from '../gemeldOpSchijf.js';
 import { readFileSync, mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -133,15 +134,19 @@ export function verwijderAbonnementViaEndpoint(endpoint) {
   verwijderAbonnement(endpoint);
 }
 
-// Zelfde in-memory dedup-aanpak als pushover.js (gemeld-Set): voorkomt dat
-// hetzelfde nog actieve alarm bij elke pollcyclus opnieuw een melding stuurt.
-const gemeld = new Set();
+// Zelfde dedup-aanpak als pushover.js: voorkomt dat hetzelfde nog actieve
+// alarm bij elke pollcyclus opnieuw een melding stuurt.
+// 2026-09-04, na melding van Lex (journal: "webpush: alarm verstuurd -- Code
+// Oranje" bij ELKE syncweer-herstart, 15:16/15:27/15:35): dit was nog een
+// kale in-memory Set, terwijl pushover/mail al sinds 2026-09-02 op schijf
+// dedupliceren (gemeldOpSchijf.js). Nu dezelfde schijf-lijst, 72 uur.
+const gemeld = maakGemeldOpSchijf('webpush');
 let waarschuwingGelogd = false;
 
 export async function stuurWebPushAlarm({ id, titel, bericht, url, lat, lon, gebiedPolygon }) {
   if (!id) return;
   if (gemeld.has(id)) {
-    console.log(`[weer] webpush: "${id}" al eerder gemeld sinds laatste herstart, overgeslagen (titel: ${titel}).`);
+    console.log(`[weer] webpush: "${id}" al eerder gemeld (ook over herstarts heen), overgeslagen (titel: ${titel}).`);
     return;
   }
   if (!beschikbaar()) {
