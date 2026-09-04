@@ -106,6 +106,7 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.mp3': 'audio/mpeg', // 2026-09-04: donder bij het onweer-alarm (frontend/geluid/onweer.mp3)
 };
 
 // 2026-08-27, trage-kaart-analyse: alles (tegels, /api/signals, statische

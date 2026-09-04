@@ -9826,8 +9826,42 @@ document.addEventListener('pointerdown', ontgrendelAudioContext, { once: true })
 // het volume in ~4 s wegsterft, met een tweede opleving na ~1,2 s zoals echte
 // donder die tussen de wolken weerkaatst. Volume bewust ruim boven de
 // alarm-piep; het systeemvolume bepaalt de rest.
+// 2026-09-04: Lex leverde een echte donderopname aan (frontend/geluid/
+// onweer.mp3, eerste 8 s van zijn bestand, met fade-out). Die gaat vóór de
+// synthetische donder hieronder; via Web Audio (decodeAudioData + buffer-
+// source) i.p.v. een <audio>-element, zodat 'm op iOS ook automatisch
+// afspeelt zodra de AudioContext eenmaal ontgrendeld is. Eén keer laden,
+// daarna uit geheugen. Mislukt laden/decoderen -> synthetische donder.
+const DONDER_URL = '/geluid/onweer.mp3';
+let donderBuffer = null;
+let donderLaadPoging = null;
+function laadDonder() {
+  if (!audioCtx) return Promise.resolve(null);
+  if (donderBuffer) return Promise.resolve(donderBuffer);
+  if (!donderLaadPoging) {
+    donderLaadPoging = fetch(DONDER_URL)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then((bytes) => audioCtx.decodeAudioData(bytes))
+      .then((buf) => { donderBuffer = buf; return buf; })
+      .catch((err) => { console.warn('[weer] donder-opname laden mislukt, synthetische donder:', err); donderLaadPoging = null; return null; });
+  }
+  return donderLaadPoging;
+}
 function laatDonderHoren() {
   ontgrendelAudioContext();
+  if (!audioCtx) return;
+  laadDonder().then((buf) => {
+    if (!buf) { laatSynthetischeDonderHoren(); return; }
+    const bron = audioCtx.createBufferSource();
+    bron.buffer = buf;
+    const gain = audioCtx.createGain();
+    gain.gain.value = 1.6; // opname is genormaliseerd op -12 LUFS; iets extra, Lex: "keihard"
+    bron.connect(gain).connect(audioCtx.destination);
+    bron.start();
+  });
+}
+// Vangnet zonder opname: donder uit gefilterde ruis (zie toelichting hierboven).
+function laatSynthetischeDonderHoren() {
   if (!audioCtx) return;
   const nu = audioCtx.currentTime;
   const sr = audioCtx.sampleRate;
