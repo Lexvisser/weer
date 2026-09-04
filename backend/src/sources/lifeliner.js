@@ -537,6 +537,18 @@ function sluitVerlopenVluchten(nu) {
   }
 }
 
+function vluchtSamenvatting(icao24) {
+  const v = openVluchten.get(icao24);
+  if (!v) return null;
+  return { startMs: v.startMs, waarnemingen: v.waarnemingen, gaten: v.gaten, maxAfstandKm: v.maxAfstandKm, creditsVandaag };
+}
+function vluchtTellerTekst(icao24) {
+  const v = openVluchten.get(icao24);
+  if (!v) return '';
+  const sinds = new Date(v.startMs).toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' });
+  return ` · gevolgd sinds ${sinds}: ${v.waarnemingen}× gezien${v.gaten ? `, ${v.gaten} gat${v.gaten > 1 ? 'en' : ''}` : ''} · credits vandaag ${creditsVandaag}`;
+}
+
 function nlTijd(ms) {
   return new Date(ms).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
@@ -681,7 +693,11 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
           koersGraden: koersGraden != null ? Math.round(koersGraden) : null,
           kompas,
           afstandTotJouKm: afstand,
-          subtitel: `${afstand} km van huis${kompas ? ` · koers ${kompas}` : ''}${baroAltM != null ? ` · ${Math.round(baroAltM)} m hoogte` : ''}`,
+          // 2026-09-04 (Lex: "kan je de teller laten meelopen op de lifeliner
+          // kaart?"): live vluchtteller erbij — sinds wanneer gevolgd, hoeveel
+          // waarnemingen (elke 10s één), en de credits van vandaag.
+          subtitel: `${afstand} km van huis${kompas ? ` · koers ${kompas}` : ''}${baroAltM != null ? ` · ${Math.round(baroAltM)} m hoogte` : ''}${vluchtTellerTekst(icao24)}`,
+          vlucht: vluchtSamenvatting(icao24),
           bronUrl: 'https://opensky-network.org/',
           // Route tot nu toe (sinds deze poll-loop 'm is gaan volgen — geen
           // historische data van vóór het opstarten van de backend), oud
