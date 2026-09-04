@@ -265,6 +265,13 @@ const tegelStadiaApiKey = () => (process.env.STADIAMAPS_API_KEY ?? '').trim();
 // de bestaande osm/diepte/stadia-paden blijven zoals ze zijn. {s} = subdomein
 // (a/b/c, per tegel gewisseld), {r} leeg (geen retina-tegels: cache blijft
 // klein). Esri-bronnen: gratis voor niet-commercieel gebruik met attributie.
+// 2026-09-04: CARTO eist sinds kort een gratis API-key (anders een "API KEY
+// REQUIRED"-watermerk over de tegels) — CARTO_API_KEY in .env, wordt als
+// ?key=... achter de carto-*-URL's geplakt. Zelfde functie-i.p.v.-constante-
+// truc als tegelStadiaApiKey hierboven (ESM-hoisting, zie die toelichting).
+// Zonder sleutel blijft carto-* gewoon werken (CARTO faalt niet hard, toont
+// alleen het watermerk) — dus geen 501-gate zoals bij Stadia.
+const tegelCartoApiKey = () => (process.env.CARTO_API_KEY ?? '').trim();
 const TEGEL_STIJLEN = {
   'carto-dark': { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', maxZ: 20, s: 'abcd' },
   'carto-voyager': { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', maxZ: 20, s: 'abcd' },
@@ -280,7 +287,12 @@ function tegelStijlUrl(stijl, z, x, y) {
   const def = TEGEL_STIJLEN[stijl];
   if (!def) return null;
   const sub = def.s ? def.s[(x + y) % def.s.length] : '';
-  return def.url.replace('{s}', sub).replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  const basis = def.url.replace('{s}', sub).replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  if (stijl.startsWith('carto-')) {
+    const sleutel = tegelCartoApiKey();
+    if (sleutel) return `${basis}?key=${sleutel}`;
+  }
+  return basis;
 }
 const TEGEL_USER_AGENT = 'WeerApp/1.0 (persoonlijk zelfgehost hobbyproject, geen commercieel gebruik)';
 
