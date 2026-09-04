@@ -9832,7 +9832,7 @@ document.addEventListener('pointerdown', ontgrendelAudioContext, { once: true })
 // source) i.p.v. een <audio>-element, zodat 'm op iOS ook automatisch
 // afspeelt zodra de AudioContext eenmaal ontgrendeld is. Eén keer laden,
 // daarna uit geheugen. Mislukt laden/decoderen -> synthetische donder.
-const DONDER_URL = '/geluid/onweer.mp3?v=6'; // v6: 6 s, maximale bas, fade-out 3,0-5,5 s tot echte stilte (v5 kapte af: fade liep tot voorbij het bestandseinde)
+const DONDER_URL = '/geluid/onweer.mp3?v=8'; // v8: volledige 8 s, eigen dynamiek van de opname (stille aanloop -> klap) behouden: geen loudnorm/compressor meer, alleen bas-EQ, laatste 1,2 s naar nul
 let donderBuffer = null;
 let donderLaadPoging = null;
 function laadDonder() {
@@ -9855,7 +9855,7 @@ function laatDonderHoren() {
     const bron = audioCtx.createBufferSource();
     bron.buffer = buf;
     const gain = audioCtx.createGain();
-    gain.gain.value = 1.6; // opname is genormaliseerd op -12 LUFS; iets extra, Lex: "keihard"
+    gain.gain.value = 1.0; // v8 piekt al op -0,8 dB; meer zou clippen (Web Audio kapt boven 0 dB hard af)
     bron.connect(gain).connect(audioCtx.destination);
     bron.start();
   });
