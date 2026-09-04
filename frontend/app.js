@@ -9832,7 +9832,7 @@ document.addEventListener('pointerdown', ontgrendelAudioContext, { once: true })
 // source) i.p.v. een <audio>-element, zodat 'm op iOS ook automatisch
 // afspeelt zodra de AudioContext eenmaal ontgrendeld is. Eén keer laden,
 // daarna uit geheugen. Mislukt laden/decoderen -> synthetische donder.
-const DONDER_URL = '/geluid/onweer.mp3?v=5'; // v5: 6 s, maximale bas, volledige fade-out vanaf 3,5 s
+const DONDER_URL = '/geluid/onweer.mp3?v=6'; // v6: 6 s, maximale bas, fade-out 3,0-5,5 s tot echte stilte (v5 kapte af: fade liep tot voorbij het bestandseinde)
 let donderBuffer = null;
 let donderLaadPoging = null;
 function laadDonder() {
