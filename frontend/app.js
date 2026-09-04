@@ -6801,9 +6801,9 @@ function vaarMenuHandleKlik() {
 const KAART_STIJLEN = [
   { id: 'standaard', naam: 'Standaard', sub: 'OSM donker, Stadia in Vaart-modus' },
   { id: 'stadia-dark', naam: 'Stadia donker', sub: 'vlak en rustig (Vaart-kaart)', url: '/api/tegel-donker/{z}/{x}/{y}.png?v=stadia1', attr: '© Stadia Maps, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
-  { id: 'carto-dark', naam: 'CARTO Dark Matter', sub: 'donker, gratis', url: '/api/tegel-stijl/carto-dark/{z}/{x}/{y}.png', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
-  { id: 'carto-voyager', naam: 'CARTO Voyager', sub: 'licht, rustig', url: '/api/tegel-stijl/carto-voyager/{z}/{x}/{y}.png', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
-  { id: 'carto-positron', naam: 'CARTO Positron', sub: 'bijna wit', url: '/api/tegel-stijl/carto-positron/{z}/{x}/{y}.png', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'carto-dark', naam: 'CARTO Dark Matter', sub: 'donker, gratis', url: '/api/tegel-stijl/carto-dark/{z}/{x}/{y}.png?v=key1', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'carto-voyager', naam: 'CARTO Voyager', sub: 'licht, rustig', url: '/api/tegel-stijl/carto-voyager/{z}/{x}/{y}.png?v=key1', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
+  { id: 'carto-positron', naam: 'CARTO Positron', sub: 'bijna wit', url: '/api/tegel-stijl/carto-positron/{z}/{x}/{y}.png?v=key1', attr: '© CARTO, © OpenStreetMap-auteurs', maxNativeZoom: 20 },
   { id: 'osm-licht', naam: 'OSM Standaard', sub: 'zonder kleurfilter', url: '/api/tegel/{z}/{x}/{y}.png?v=osm1', attr: '© OpenStreetMap-auteurs', maxNativeZoom: 19 },
   { id: 'hot', naam: 'OSM Humanitarian', sub: 'licht, veel detail', url: '/api/tegel-stijl/hot/{z}/{x}/{y}.png', attr: '© OpenStreetMap-auteurs, HOT', maxNativeZoom: 20 },
   { id: 'opentopo', naam: 'OpenTopoMap', sub: 'reliëf, tot zoom 17', url: '/api/tegel-stijl/opentopo/{z}/{x}/{y}.png', attr: '© OpenTopoMap, © OpenStreetMap-auteurs', maxNativeZoom: 17 },
