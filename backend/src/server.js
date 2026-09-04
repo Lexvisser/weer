@@ -32,7 +32,7 @@ import { fetchSpcOutlook } from './sources/spcOutlook.js';
 import { fetchIemLsr } from './sources/iemLsr.js';
 import { fetchNexradStations } from './sources/nexradStations.js';
 import { fetchP2000, msSindsLaatsteMMTMelding } from './sources/p2000.js';
-import { fetchLifeliner, lifelinerRapportTekst } from './sources/lifeliner.js';
+import { fetchLifeliner, lifelinerRapportTekst, vluchtlogboekJson } from './sources/lifeliner.js';
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
@@ -1366,6 +1366,11 @@ export function createApp(env) {
     // los opvraagbaar zodat je niet per se op een 429 hoeft te wachten om
     // mee te kunnen kijken. Platte tekst, geen JSON — bedoeld om zo in de
     // browser of curl te lezen.
+    // 2026-09-04: vluchtlogboek als JSON (voor een latere lijst in de app).
+    if (url === '/api/lifeliner-vluchten') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify(vluchtlogboekJson()));
+    }
     if (url === '/api/lifeliner-rapport') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end(lifelinerRapportTekst());

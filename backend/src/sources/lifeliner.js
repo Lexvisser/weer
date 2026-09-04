@@ -78,9 +78,11 @@ let pollLog = []; // [{ tijdMs, uitkomst }] — uitkomst: 'poll' | 'budget-vol' 
 // herstart wél.
 let rapportVerstuurdOpUtcDatum = null;
 
-function loggeer(uitkomst) {
+// 2026-09-04: `modus` erbij ('missie' | 'trigger' | 'hartslag') zodat het
+// rapport kan laten zien waar de credits heen gaan (zie huidigeModus()).
+function loggeer(uitkomst, modus = huidigeModus()) {
   const nu = Date.now();
-  pollLog.push({ tijdMs: nu, uitkomst });
+  pollLog.push({ tijdMs: nu, uitkomst, modus });
   pollLog = pollLog.filter((p) => nu - p.tijdMs <= RAPPORT_VENSTER_MS);
   schrijfStaatNaarSchijf();
 }
@@ -120,10 +122,21 @@ export function lifelinerRapportTekst() {
     .map(([dag, n]) => `  ${dag}: ${n} credit(s)`)
     .join('\n') || '  (geen)';
 
+  // 2026-09-04: credits per poll-modus, zodat er beleid op te maken valt
+  // ("wat kost een missie eigenlijk, en wat kost de hartslag?").
+  const perModus = { missie: 0, trigger: 0, hartslag: 0, onbekend: 0 };
+  polls.forEach((p) => { perModus[p.modus ?? 'onbekend'] = (perModus[p.modus ?? 'onbekend'] ?? 0) + 1; });
+  const modusTekst = `  missie (toestel in de lucht, elke ${Math.round(MISSIE_POLL_MS / 1000)}s): ${perModus.missie}\n`
+    + `  trigger (MMT-P2000 gezien, elke ${Math.round(TRIGGER_POLL_MS / 1000)}s): ${perModus.trigger}\n`
+    + `  hartslag (rust, elke ${Math.round(LIFELINER_HEARTBEAT_MS / 1000)}s): ${perModus.hartslag}`
+    + (perModus.onbekend ? `\n  (van vóór deze indeling: ${perModus.onbekend})` : '');
+
   return [
     `Lifeliner-poll-rapport - rollend venster van de laatste 24 uur.`,
     ``,
     `${polls.length} credit(s) verbruikt in dit venster (let op: het venster kan twee UTC-dagen overspannen).`,
+    `Waarvan per poll-modus:`,
+    modusTekst,
     `Per UTC-dag (dagbudget ${openskyDagBudget()}/dag, reset 00:00 UTC):`,
     perDagTekst,
     `${budgetVol.length} tik(ken) overgeslagen omdat het dagbudget al op was.`,
@@ -138,6 +151,8 @@ export function lifelinerRapportTekst() {
     ``,
     `Echte polls per uur (UTC):`,
     histogram,
+    ``,
+    vluchtlogboekTekst(),
   ]
     .filter((regel) => regel != null)
     .join('\n');
@@ -228,6 +243,10 @@ try {
     if (typeof ruw.budgetDatumUtc === 'string') budgetDatumUtc = ruw.budgetDatumUtc;
     if (typeof ruw.creditsVandaag === 'number') creditsVandaag = ruw.creditsVandaag;
     if (typeof ruw.rapportVerstuurdOpUtcDatum === 'string') rapportVerstuurdOpUtcDatum = ruw.rapportVerstuurdOpUtcDatum;
+    if (Array.isArray(ruw.vluchtLog)) vluchtLog = ruw.vluchtLog.slice(-VLUCHTLOG_MAX);
+    if (ruw.openVluchten && typeof ruw.openVluchten === 'object') {
+      for (const [k, v] of Object.entries(ruw.openVluchten)) openVluchten.set(k, v);
+    }
     console.log(
       `[weer] lifeliner: staat teruggeladen van schijf (${pollLog.length} poll-log-regel(s), ${creditsVandaag}/${openskyDagBudget()} credits vandaag al verbruikt) — overleeft nu een herstart/deploy.`
     );
@@ -240,7 +259,7 @@ try {
 // het pollen/rapporteren zelf nooit blokkeren, dan blijft het gewoon (net als
 // vóór deze toevoeging) puur in het geheugen werken tot de volgende herstart.
 function schrijfStaatNaarSchijf() {
-  const data = { pollLog, budgetDatumUtc, creditsVandaag, rapportVerstuurdOpUtcDatum };
+  const data = { pollLog, budgetDatumUtc, creditsVandaag, rapportVerstuurdOpUtcDatum, vluchtLog, openVluchten: Object.fromEntries(openVluchten) };
   writeFile(STAAT_BESTAND, JSON.stringify(data), (err) => {
     if (err) console.error('[weer] lifeliner: staat wegschrijven naar schijf mislukt —', err.message ?? err);
   });
@@ -439,7 +458,115 @@ function noteerRestCredits(res) {
   }
 }
 
-const LIFELINER_HEARTBEAT_MS = Number(process.env.LIFELINER_HEARTBEAT_MS ?? 10 * 60 * 1000);
+// 2026-09-04, op verzoek van Lex ("zodra we beet hebben met pollen wil ik op
+// dat moment heel vaak pollen zodat we een vlucht goed kunnen vastleggen"),
+// nu het budget 4000/dag is i.p.v. ~400. Drie tempo's:
+//   missie   — toestel in de lucht gezien (tot 10 min na de laatste
+//              waarneming): elke MISSIE_POLL_MS (15s). Een vlucht van 45 min
+//              kost dan ~180 credits.
+//   trigger  — MMT-P2000-melding korter dan 15 min geleden, maar nog geen
+//              toestel gezien: elke TRIGGER_POLL_MS (60s) om de opstijging te
+//              vangen. Max ~15 credits per trigger.
+//   hartslag — rust: elke LIFELINER_HEARTBEAT_MS (nu 2 min i.p.v. 10;
+//              ~720/dag bij de app 24/7 open). Alles via .env aanpasbaar.
+// De setInterval-tik in server.js (config.js pollIntervalMs) is de fijnste
+// korrel: die staat nu op 15s; de tempo's hierboven zijn veelvouden daarvan.
+const LIFELINER_HEARTBEAT_MS = Number(process.env.LIFELINER_HEARTBEAT_MS ?? 2 * 60 * 1000);
+const MISSIE_POLL_MS = Number(process.env.LIFELINER_MISSIE_POLL_MS ?? 15 * 1000);
+const TRIGGER_POLL_MS = Number(process.env.LIFELINER_TRIGGER_POLL_MS ?? 60 * 1000);
+
+function huidigeModus() {
+  const nuMs = Date.now();
+  if (nuMs < actiefTotMs) return 'missie';
+  if (msSindsLaatsteMMTMelding() < MMT_TRIGGER_VENSTER_MS) return 'trigger';
+  return 'hartslag';
+}
+function pollTempoMs(modus) {
+  return modus === 'missie' ? MISSIE_POLL_MS : modus === 'trigger' ? TRIGGER_POLL_MS : LIFELINER_HEARTBEAT_MS;
+}
+
+// ---- Vluchtlogboek, 2026-09-04 ---------------------------------------------
+// Lex: "Ik heb geen zicht op waar ik in het proces zit en kan eigenlijk nooit
+// een vlucht volgen." De losse waarnemingen (elke poll een momentopname)
+// worden hier tot VLUCHTEN gebundeld: eerste waarneming in de lucht opent
+// een vlucht, elke volgende waarneming werkt 'm bij, en TRAIL_STALE_MS (20
+// min) zonder waarneming sluit 'm af. Afgesloten vluchten gaan naar
+// vluchtLog (op schijf, laatste VLUCHTLOG_MAX), open vluchten overleven een
+// herstart ook. Het rapport (lifelinerRapportTekst) toont ze onderaan,
+// inclusief hoeveel credits de vlucht zelf gekost heeft.
+const VLUCHTLOG_MAX = 50;
+let vluchtLog = []; // afgesloten vluchten, oud -> nieuw
+const openVluchten = new Map(); // icao24 -> vlucht
+
+function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
+  let v = openVluchten.get(icao24);
+  if (v && nu - v.laatstMs > TRAIL_STALE_MS) { sluitVlucht(icao24, v); v = null; }
+  if (!v) {
+    v = {
+      icao24, naam, startMs: nu, startLat: lat, startLon: lon, startAfstandKm: afstand,
+      laatstMs: nu, laatstLat: lat, laatstLon: lon, laatstAfstandKm: afstand,
+      minAfstandKm: afstand, maxAfstandKm: afstand, maxHoogteM: baroAltM ?? null, waarnemingen: 0,
+      mmtTrigger: msSindsLaatsteMMTMelding() < 60 * 60 * 1000, // P2000-MMT in het uur ervoor = waarschijnlijke aanleiding
+      gaten: 0, // aantal keer dat 'ie een poll niet in de data zat maar daarna terugkwam
+    };
+    openVluchten.set(icao24, v);
+    console.log(`[weer] lifeliner: vlucht gestart — ${naam} op ${afstand} km van huis`);
+  } else if (nu - v.laatstMs > 2 * MISSIE_POLL_MS + 5000) {
+    v.gaten++;
+  }
+  v.laatstMs = nu; v.laatstLat = lat; v.laatstLon = lon; v.laatstAfstandKm = afstand;
+  v.minAfstandKm = Math.min(v.minAfstandKm, afstand);
+  v.maxAfstandKm = Math.max(v.maxAfstandKm, afstand);
+  if (baroAltM != null) v.maxHoogteM = Math.max(v.maxHoogteM ?? 0, Math.round(baroAltM));
+  v.waarnemingen++;
+}
+
+function sluitVlucht(icao24, v) {
+  openVluchten.delete(icao24);
+  v.eindMs = v.laatstMs;
+  v.credits = pollLog.filter((p) => p.uitkomst === 'poll' && p.tijdMs >= v.startMs - MISSIE_POLL_MS && p.tijdMs <= v.eindMs + ACTIEF_NA_VLUCHT_MS).length;
+  vluchtLog.push(v);
+  vluchtLog = vluchtLog.slice(-VLUCHTLOG_MAX);
+  console.log(`[weer] lifeliner: vlucht afgesloten — ${v.naam}, ${Math.round((v.eindMs - v.startMs) / 60000)} min, ${v.waarnemingen} waarnemingen, ~${v.credits} credits`);
+  schrijfStaatNaarSchijf();
+}
+
+function sluitVerlopenVluchten(nu) {
+  for (const [icao24, v] of openVluchten) {
+    if (nu - v.laatstMs > TRAIL_STALE_MS) sluitVlucht(icao24, v);
+  }
+}
+
+function nlTijd(ms) {
+  return new Date(ms).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function vluchtRegel(v, open) {
+  const eind = open ? nu0() : v.eindMs;
+  const duur = Math.round((eind - v.startMs) / 60000);
+  const gem = v.waarnemingen > 1 ? Math.round((v.laatstMs - v.startMs) / 1000 / (v.waarnemingen - 1)) : null;
+  return [
+    `  ${v.naam} — ${nlTijd(v.startMs)} t/m ${open ? 'nu' : nlTijd(v.eindMs)} NL (${duur} min${open ? ', LOOPT NOG' : ''})`,
+    `    ${v.waarnemingen} waarneming(en)${gem != null ? `, gem. elke ${gem}s` : ''}${v.gaten ? `, ${v.gaten} gat(en) in de data` : ''}${v.credits != null ? `, ~${v.credits} credits` : ''}`,
+    `    afstand van huis: start ${v.startAfstandKm} km, laatst ${v.laatstAfstandKm} km (dichtstbij ${v.minAfstandKm} km, verst ${v.maxAfstandKm} km)${v.maxHoogteM != null ? `, max ${v.maxHoogteM} m hoogte` : ''}`,
+    `    aanleiding: ${v.mmtTrigger ? 'MMT-P2000-melding in het uur ervoor' : 'geen MMT-P2000-melding gezien'}`,
+  ].join('\n');
+}
+function nu0() { return Date.now(); }
+
+export function vluchtlogboekTekst() {
+  const nu = Date.now();
+  const recent = vluchtLog.filter((v) => nu - v.eindMs <= 7 * 24 * 60 * 60 * 1000);
+  const regels = [`Vluchtlogboek (open vluchten + afgesloten vluchten van de laatste 7 dagen, max ${VLUCHTLOG_MAX} bewaard):`];
+  for (const v of openVluchten.values()) regels.push(vluchtRegel(v, true));
+  for (const v of [...recent].reverse()) regels.push(vluchtRegel(v, false));
+  if (regels.length === 1) regels.push('  (nog geen vluchten vastgelegd)');
+  return regels.join('\n');
+}
+
+export function vluchtlogboekJson() {
+  return { open: [...openVluchten.values()], afgesloten: [...vluchtLog].reverse() };
+}
 const MMT_TRIGGER_VENSTER_MS = 15 * 60 * 1000; // spiegel van LIFELINER_TRIGGER_VENSTER_MS in server.js
 const ACTIEF_NA_VLUCHT_MS = 10 * 60 * 1000; // na de laatste in-de-lucht-waarneming nog even snel blijven volgen (landing/doorstart)
 let laatsteEchtePollMs = 0;
@@ -449,10 +576,12 @@ let spaarstandOvergeslagen = 0; // teller voor het rapport (sinds procesherstart
 export async function fetchLifeliner({ homeLat, homeLon }) {
   if (homeLat == null || homeLon == null) return [];
   const nuMs = Date.now();
-  const actief = nuMs < actiefTotMs || msSindsLaatsteMMTMelding() < MMT_TRIGGER_VENSTER_MS;
-  if (!actief && nuMs - laatsteEchtePollMs < LIFELINER_HEARTBEAT_MS) {
+  sluitVerlopenVluchten(nuMs);
+  const modus = huidigeModus();
+  // -1s speling: de setInterval-tik komt nooit exact op tijd.
+  if (nuMs - laatsteEchtePollMs < pollTempoMs(modus) - 1000) {
     spaarstandOvergeslagen++;
-    return laatsteSignalen; // spaarstand: geen API-call, geen credit
+    return laatsteSignalen; // tempo-gate: geen API-call, geen credit
   }
   if (!magPollenEnTeltMee()) return laatsteSignalen; // dagbudget op — laatst bekende data laten staan
   laatsteEchtePollMs = nuMs;
@@ -501,6 +630,7 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
       // (zie de spaarstand-toelichting bij fetchLifeliner) — en nog even
       // erná, zodat een landing/doorstart niet gemist wordt.
       actiefTotMs = nu + ACTIEF_NA_VLUCHT_MS;
+      vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand: afstandKm(homeLat, homeLon, lat, lon), nu });
       trail.punten.push({ lat, lon, tijdMs: nu });
       trail.punten = trail.punten
         .filter((p) => nu - p.tijdMs <= TRAIL_VENSTER_MS)
