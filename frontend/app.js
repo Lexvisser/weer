@@ -248,7 +248,8 @@ function markeerNlTijd(html) {
   // dezelfde kolommen houden. Zie .nl-tijd-label/.nl-tijd-dag in styles.css.
   const regel = (label, t) => {
     const m = /^(\d{1,2}) (.*)$/.exec(t);
-    const dag = m ? `<span class="nl-tijd-dag">${m[1]}</span> ${m[2]}` : t;
+    // "volledig gelijk format" (Lex): dag altijd twee cijfers -> "02 sep 14:57"
+    const dag = m ? `<span class="nl-tijd-dag">${m[1].padStart(2, '0')}</span> ${m[2]}` : t;
     return `<div class="nl-tijd"><span class="nl-tijd-label">${label}</span>${dag}</div>`;
   };
   if (tijden.length >= 2) return `${zonder}${regel('NL begin', tijden[0])}${regel('NL eind', tijden[tijden.length - 1])}`;
