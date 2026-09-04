@@ -150,7 +150,7 @@ function formatDatum(iso) {
 // "... waarschuwing" achteraan; die valt hier ook weg.
 function fenomeenZonderErnst(tekst) {
   const kaal = String(tekst ?? '')
-    .replace(/^(extreme|extreem|ernstige|ernstig|matige|matig|lichte|licht)\s+/i, '')
+    .replace(/^(zeer zware|zeer zwaar|extreme|extreem|ernstige|ernstig|zware|zwaar|matige|matig|lichte|licht)\s+/i, '')
     .replace(/\s+waarschuwing$/i, '')
     .trim();
   return kaal ? kaal.charAt(0).toUpperCase() + kaal.slice(1) : tekst;
