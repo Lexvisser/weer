@@ -1865,13 +1865,13 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 /* 2026-09-04 (Lex: "kan je de punt OP de bel zetten"): badge hangt aan de
    rechterbovenhoek van het bel-icoon zelf (icoon is 19px, gecentreerd) i.p.v.
    los in de knop; donkere rand zodat 'ie op de emoji afsteekt. */
-.nav-badge { position:absolute; top:2px; right:calc(50% - 5px); border:1.5px solid #10131c; background:#ff2e6d; color:#fff; font-size:9px; font-family:'JetBrains Mono',monospace; min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; box-shadow:0 0 6px rgba(255,46,109,0.6); }
+.nav-badge { position:absolute; top:2px; right:calc(50% - 7px); border:1.5px solid #10131c; background:#ff2e6d; color:#fff; font-size:9px; font-family:'JetBrains Mono',monospace; min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; box-shadow:0 0 6px rgba(255,46,109,0.6); }
 
 /* 2026-09-04: badge-kleur = hoogste ernst die nu speelt; .stip = geen nieuwe
    meldingen sinds je laatst keek, alleen een puntje (zie werkMeldingenBadgeBij). */
 .nav-badge.ernst-waarschuwing, .nav-badge.ernst-let-op { background:#ff8a3d; box-shadow:0 0 6px rgba(255,138,61,0.6); }
 .nav-badge.ernst-info { background:#3ec6ff; box-shadow:0 0 6px rgba(62,198,255,0.6); }
-.nav-badge.stip { min-width:9px; width:9px; height:9px; padding:0; top:5px; right:calc(50% - 2px); background:#6b7690; box-shadow:none; }
+.nav-badge.stip { min-width:9px; width:9px; height:9px; padding:0; top:5px; right:calc(50% - 4px); background:#6b7690; box-shadow:none; }
 
 .error-banner { margin: 12px 16px; padding: 10px 14px; border-radius: 10px; background: rgba(255,46,109,0.1); border:1px solid rgba(255,46,109,0.35); color:#ff9db8; font-family:'JetBrains Mono',monospace; font-size:11px; display:none; }
 .error-banner.show { display:block; }
