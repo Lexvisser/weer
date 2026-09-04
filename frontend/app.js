@@ -727,9 +727,13 @@ function werkMeldingenBadgeBij(tellerRelevant) {
   bewaarMeldingenGezien();
 
   const nieuw = tellerRelevant.filter((s) => s.id && !gezien.has(s.id) && MELDINGEN_ERNST_TELT.has(s.ernst));
-  const hoogste = tellerRelevant.reduce((acc, s) => (MELDINGEN_ERNST_RANG[s.ernst] ?? 0) > (MELDINGEN_ERNST_RANG[acc] ?? 0) ? s.ernst : acc, 'info');
+  // 2026-09-04, inzicht van Lex: de kleur op ALLE actieve meldingen baseren
+  // geeft altijd rood/oranje (er is wereldwijd altijd wel een M5.5+-beving,
+  // een NAVTEX-waarschuwing of een NWS-warning). Dus: kleur = hoogste ernst
+  // van wat NIEUW is; niets nieuws = neutraal grijs puntje.
+  const hoogste = nieuw.reduce((acc, s) => (MELDINGEN_ERNST_RANG[s.ernst] ?? 0) > (MELDINGEN_ERNST_RANG[acc] ?? 0) ? s.ernst : acc, 'info');
 
-  MELDINGEN_BADGE_EL.className = `nav-badge ernst-${hoogste}${nieuw.length ? '' : ' stip'}`;
+  MELDINGEN_BADGE_EL.className = nieuw.length ? `nav-badge ernst-${hoogste}` : 'nav-badge stip';
   MELDINGEN_BADGE_EL.textContent = nieuw.length ? String(nieuw.length) : '';
   MELDINGEN_BADGE_EL.title = nieuw.length
     ? `${nieuw.length} nieuw sinds je laatst keek (${tellerRelevant.length} actief)`
