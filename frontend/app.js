@@ -9353,7 +9353,7 @@ const ALARM_RIJEN = [
   { id: 'stormvloedkering-waarschuwing', label: 'Kans op sluiting stormvloedkering', scherm: false, telefoon: true },
   { id: 'stormvloedkering-gesloten', label: 'Stormvloedkering gesloten (bevestigd)', scherm: true, telefoon: true },
   { id: 'ais-nood', label: '🆘 AIS-noodsignaal (SART/MOB/EPIRB)', scherm: true, telefoon: true },
-  { id: 'onweer', label: '⚡ Onweer nadert (< 50 km)', scherm: true, telefoon: true, proef: () => window.testOnweerAlarm?.() }, // 2026-09-04, Lex: "extra alarm voor als een onweer bij mij in de buurt komt" -- zie backend/src/onweerAlarm.js
+  { id: 'onweer', label: '⚡ Onweer nadert (< 50 km)', scherm: true, telefoon: true, proef: () => setTimeout(() => window.testOnweerAlarm?.(), 1500) } // 2026-09-04, Lex: 1,5 s wachten na de tik, dan pas het alarm, // 2026-09-04, Lex: "extra alarm voor als een onweer bij mij in de buurt komt" -- zie backend/src/onweerAlarm.js
 ];
 const ALARM_CATEGORIE_DEFINITIES = ALARM_RIJEN.filter((r) => r.scherm);
 
