@@ -2731,6 +2731,16 @@ function popupExtraHtml(s) {
   // vanzelf een fotostrip — geen aparte code per categorie meer nodig.
   if (d.communityMedia?.length) blokken.push(popupFotostripHtml(d.communityMedia));
 
+  // 2026-09-04, Lex: KNMI's eigen bewoording bij een weeralarm (detail.headline/
+  // omschrijving/instructie uit de CAP-feed in nl-NL, zie meteoalarm.js) --
+  // daar staat "zware windstoten" waar onze titel alleen "Wind" zegt.
+  if (s.categorie === 'weerwaarschuwing') {
+    const titelKaal = (s.titel ?? '').toLowerCase();
+    if (d.headline && !titelKaal.includes(d.headline.toLowerCase())) blokken.push(`<div class="popup-stats">${escapeHtml(d.headline)}</div>`);
+    if (d.omschrijving) blokken.push(`<div class="popup-advies">${escapeHtml(d.omschrijving)}</div>`);
+    if (d.instructie) blokken.push(`<div class="popup-advies">💡 ${escapeHtml(d.instructie)}</div>`);
+  }
+
   if (s.categorie === 'orkaan') {
     const stats = [];
     if (d.windKt != null) stats.push(`${Math.round(d.windKt)} kt wind`);

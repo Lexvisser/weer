@@ -114,6 +114,17 @@ function formatDatum(iso) {
 // FENOMEEN_NL-lookup slaagt) — matcht het niet, dan is de tekst
 // vermoedelijk al Nederlands (of onbekend formaat) en tonen we 'm ongewijzigd
 // i.p.v. er zelf nog een ernst-woord voor te plakken.
+// 2026-09-04: ernst-woord vooraan weghalen ("Matige wind" -> "Wind"), zie de
+// titel-toelichting bij makeSignal(). Meteoalarm levert in nl-NL ook al
+// "... waarschuwing" achteraan; die valt hier ook weg.
+function fenomeenZonderErnst(tekst) {
+  const kaal = String(tekst ?? '')
+    .replace(/^(extreme|extreem|ernstige|ernstig|matige|matig|lichte|licht)\s+/i, '')
+    .replace(/\s+waarschuwing$/i, '')
+    .trim();
+  return kaal ? kaal.charAt(0).toUpperCase() + kaal.slice(1) : tekst;
+}
+
 function vertaalEvent(event, severity) {
   if (!event) return null;
   let rest = event.trim();
@@ -413,7 +424,12 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
         // los gekleurd pilletje in de frontend (zie maakMeldingItem() in
         // app.js) — kleur staat gewoon in detail.kleur hieronder, titel blijft
         // nu kort.
-        titel: `Weeralarm - ${fenomeenTekst} - ${areaDesc}`,
+        // 2026-09-04, Lex ("dit soort vergelijkingen zijn matig toch? er wordt
+        // toch gewoon de term code [x] gebruikt"): het ernst-woord
+        // (Matige/Ernstige/Extreme) is Meteoalarm's CAP-severity, geen KNMI-
+        // taal -- de pil zegt de code al. Titel dus zonder ernst-woord;
+        // fenomeenTekst zelf blijft (mediazoekterm, afschaal-sleutel).
+        titel: `Weeralarm - ${fenomeenZonderErnst(fenomeenTekst)} - ${areaDesc}`,
         ernst: ERNST_PER_SEVERITY[severity] ?? 'let-op',
         lat: bboxLat,
         lon: bboxLon,
@@ -421,6 +437,11 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
         detail: {
           gebied: areaDesc,
           fenomeenTekst,
+          // 2026-09-04: KNMI's eigen (Nederlandse) bewoording uit de feed,
+          // voor de popup -- daar staat "zware windstoten" i.p.v. ons "wind".
+          headline: info.headline ?? null,
+          omschrijving: info.description ?? null,
+          instructie: info.instruction ?? null,
           severity: severity ?? null,
           kleur,
           certainty: info.certainty ?? null,
