@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="nl"><head><meta charset="utf-8"><title>Weeralarm kleuren mockup</title>
+<style>
+body { margin:0; background:#0b1a2b; color:#e8eaed; font-family:Inter,system-ui,sans-serif; padding:24px; }
+h1 { font-size:16px; font-weight:600; margin:0 0 18px; }
+.rij { display:grid; grid-template-columns:110px 1fr 1fr; gap:24px; align-items:center; margin-bottom:22px; }
+.label { font-family:'JetBrains Mono',monospace; font-size:12px; color:#9199b5; }
+.kaart { position:relative; height:150px; border-radius:10px; overflow:hidden;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(40,90,120,0.6), transparent 45%),
+    radial-gradient(circle at 70% 70%, rgba(30,70,100,0.6), transparent 40%),
+    #0e2a44; }
+.kaart svg { position:absolute; inset:0; width:100%; height:100%; }
+.hazard-pin { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; text-shadow:0 1px 4px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.4); backdrop-filter:blur(3px) saturate(1.6); box-shadow:0 2px 6px rgba(10,13,22,0.35); }
+.hazard-pin.kleur-geel { background:rgba(255,214,51,0.42); border:1.5px solid rgba(255,214,51,0.9); box-shadow:0 0 12px rgba(255,214,51,0.45), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.kleur-oranje { background:rgba(255,138,61,0.5); border:1.5px solid rgba(255,138,61,0.95); box-shadow:0 0 16px rgba(255,138,61,0.6), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.kleur-rood { background:rgba(255,46,109,0.5); border:1.5px solid rgba(255,46,109,0.95); box-shadow:0 0 16px rgba(255,46,109,0.65), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.oud { background:rgba(255,176,102,0.38); border:1.5px solid rgba(255,176,102,0.8); box-shadow:0 0 10px rgba(255,176,102,0.3), 0 2px 6px rgba(10,13,22,0.25); }
+.melding { background:#0e111c; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px; }
+.titel { font-size:13px; }
+.sub { font-family:'JetBrains Mono',monospace; font-size:11px; color:#9199b5; margin-top:4px; }
+.pil { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700; letter-spacing:0.03em; padding:1px 6px; border-radius:20px; color:#0a0c12; margin-right:6px; vertical-align:middle; }
+.pil.geel { background:#ffe614; } .pil.oranje { background:#ff8a3d; } .pil.rood { background:#ff2e6d; }
+.pil.pil-was { opacity:0.7; text-decoration:line-through; text-decoration-color:rgba(10,12,18,0.7); }
+.kop { font-family:'JetBrains Mono',monospace; font-size:10px; color:#7d8399; text-transform:uppercase; letter-spacing:0.06em; }
+</style></head><body>
+<h1>Weeralarm — pin, gebied en pil per code-kleur</h1>
+<div class="rij"><div class="kop">code</div><div class="kop">kaart (pin + gebied)</div><div class="kop">meldingenlijst</div></div>
+
+<div class="rij">
+  <div class="label">GEEL<br><span style="opacity:.6">#ffd633</span></div>
+  <div class="kaart"><svg viewBox="0 0 300 150"><polygon points="40,110 90,30 200,25 265,70 240,130 110,140" fill="#ffd633" fill-opacity="0.05" stroke="#ffd633" stroke-opacity="0.55" stroke-width="1.5" stroke-dasharray="5 7"/></svg><div class="hazard-pin kleur-geel">⚠️</div></div>
+  <div class="melding"><div class="titel"><span class="pil geel">GEEL</span>Weeralarm - Matige wind - Zeeland</div><div class="sub">geldig 4 sep 14:00 – 5 sep 03:00</div></div>
+</div>
+
+<div class="rij">
+  <div class="label">ORANJE<br><span style="opacity:.6">#ff8a3d</span></div>
+  <div class="kaart"><svg viewBox="0 0 300 150"><polygon points="40,110 90,30 200,25 265,70 240,130 110,140" fill="#ff8a3d" fill-opacity="0.05" stroke="#ff8a3d" stroke-opacity="0.55" stroke-width="1.5" stroke-dasharray="5 7"/></svg><div class="hazard-pin kleur-oranje">⚠️</div></div>
+  <div class="melding"><div class="titel"><span class="pil oranje">ORANJE</span>Weeralarm - Ernstige wind - Zeeland</div><div class="sub">geldig 4 sep 14:00 – 5 sep 03:00</div></div>
+</div>
+
+<div class="rij">
+  <div class="label">ROOD<br><span style="opacity:.6">#ff2e6d</span></div>
+  <div class="kaart"><svg viewBox="0 0 300 150"><polygon points="40,110 90,30 200,25 265,70 240,130 110,140" fill="#ff2e6d" fill-opacity="0.05" stroke="#ff2e6d" stroke-opacity="0.55" stroke-width="1.5" stroke-dasharray="5 7"/></svg><div class="hazard-pin kleur-rood">⚠️</div></div>
+  <div class="melding"><div class="titel"><span class="pil rood">ROOD</span>Weeralarm - Extreme wind - Zeeland</div><div class="sub">geldig 4 sep 14:00 – 5 sep 03:00</div></div>
+</div>
+
+<div class="rij">
+  <div class="label">GEEL<br><span style="opacity:.6">afgeschaald<br>van oranje</span></div>
+  <div class="kaart"><svg viewBox="0 0 300 150"><polygon points="40,110 90,30 200,25 265,70 240,130 110,140" fill="#ffd633" fill-opacity="0.05" stroke="#ffd633" stroke-opacity="0.55" stroke-width="1.5" stroke-dasharray="5 7"/></svg><div class="hazard-pin kleur-geel">⚠️</div></div>
+  <div class="melding"><div class="titel"><span class="pil geel">GEEL</span><span class="pil oranje pil-was">WAS ORANJE</span>Weeralarm - Matige wind - Zeeland</div><div class="sub">geldig 4 sep 14:00 – 5 sep 03:00</div></div>
+</div>
+
+<div class="rij">
+  <div class="label" style="opacity:.6">ter vergelijking:<br>oude stijl<br>(ernst let-op)</div>
+  <div class="kaart"><svg viewBox="0 0 300 150"><polygon points="40,110 90,30 200,25 265,70 240,130 110,140" fill="#ff2e6d" fill-opacity="0.05" stroke="#ff2e6d" stroke-opacity="0.55" stroke-width="1.5" stroke-dasharray="5 7"/></svg><div class="hazard-pin oud">⚠️</div></div>
+  <div class="melding" style="opacity:.6"><div class="titel"><span class="pil oranje">ORANJE</span>Weeralarm - Ernstige wind - Zeeland</div><div class="sub">zo zag oranje er tot vandaag uit: zelfde pin als geel, roze omtrek</div></div>
+</div>
+</body></html>

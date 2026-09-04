@@ -370,6 +370,9 @@ function wisselView(naam) {
   if (naam === 'kaart' && kaart) {
     setTimeout(() => kaart.invalidateSize(), 0);
   }
+  // 2026-09-04: Meldingen-tab openen = badge-telling ("nieuw sinds je laatst
+  // keek") op nul; zie werkMeldingenBadgeBij().
+  if (naam === 'meldingen' && MELDINGEN_BADGE_EL) werkMeldingenBadgeBij(laatsteTellerRelevant);
   // 2026-08-22: ISS-live-polling (zie zorgIssLivePolling() verderop) moet
   // stoppen zodra je van de Hemel-tab wegnavigeert — renderSky() zelf wordt
   // bij een tabwissel niet opnieuw aangeroepen (dit hele scherm blijft
@@ -679,6 +682,59 @@ function moetMeetellenVoorTeller(s, gezienNavtexSleutels) {
     return true;
   }
   return true;
+}
+
+// 2026-09-04, op verzoek van Lex ("nu op 389... dat zegt eigenlijk niks"):
+// de badge op de Meldingen-knop telt niet langer ALLE actieve meldingen, maar
+// alleen wat NIEUW is sinds je de Meldingen-tab voor het laatst opende én
+// zwaar genoeg is (ernst waarschuwing/kritiek). De KLEUR van de badge toont
+// de hoogste ernst die nu speelt (rood/oranje/blauw). Zijn er geen nieuwe,
+// maar wel actieve meldingen, dan alleen een klein gekleurd puntje zonder
+// getal. Tab openen = alles als gezien markeren.
+// "Gezien" leeft in localStorage (per signaal-id), en wordt bij elke render
+// gesnoeid tot de nu-actieve ids zodat 'ie niet eindeloos groeit. Eerste keer
+// (nog niets opgeslagen) telt alles als gezien, anders begin je meteen op 389.
+const MELDINGEN_GEZIEN_KEY = 'weer.meldingenGezien';
+const MELDINGEN_ERNST_TELT = new Set(['waarschuwing', 'kritiek']);
+const MELDINGEN_ERNST_RANG = { kritiek: 4, waarschuwing: 3, 'let-op': 2, info: 1 };
+let meldingenGezienIds = null; // null = nog niet geladen
+
+function laadMeldingenGezien() {
+  if (meldingenGezienIds) return meldingenGezienIds;
+  try {
+    const raw = localStorage.getItem(MELDINGEN_GEZIEN_KEY);
+    meldingenGezienIds = raw ? new Set(JSON.parse(raw)) : null;
+  } catch (_) { meldingenGezienIds = null; }
+  return meldingenGezienIds;
+}
+
+function bewaarMeldingenGezien() {
+  try { localStorage.setItem(MELDINGEN_GEZIEN_KEY, JSON.stringify([...meldingenGezienIds])); } catch (_) { /* privé-modus */ }
+}
+
+let laatsteTellerRelevant = [];
+
+function werkMeldingenBadgeBij(tellerRelevant) {
+  laatsteTellerRelevant = tellerRelevant;
+  const ids = tellerRelevant.map((s) => s.id).filter(Boolean);
+  let gezien = laadMeldingenGezien();
+  if (!gezien || huidigeView === 'meldingen') {
+    gezien = new Set(ids); // eerste keer, of tab staat open: alles is gezien
+  } else {
+    gezien = new Set(ids.filter((id) => gezien.has(id))); // snoeien tot actueel
+  }
+  meldingenGezienIds = gezien;
+  bewaarMeldingenGezien();
+
+  const nieuw = tellerRelevant.filter((s) => s.id && !gezien.has(s.id) && MELDINGEN_ERNST_TELT.has(s.ernst));
+  const hoogste = tellerRelevant.reduce((acc, s) => (MELDINGEN_ERNST_RANG[s.ernst] ?? 0) > (MELDINGEN_ERNST_RANG[acc] ?? 0) ? s.ernst : acc, 'info');
+
+  MELDINGEN_BADGE_EL.className = `nav-badge ernst-${hoogste}${nieuw.length ? '' : ' stip'}`;
+  MELDINGEN_BADGE_EL.textContent = nieuw.length ? String(nieuw.length) : '';
+  MELDINGEN_BADGE_EL.title = nieuw.length
+    ? `${nieuw.length} nieuw sinds je laatst keek (${tellerRelevant.length} actief)`
+    : `${tellerRelevant.length} actief, niets nieuws`;
+  MELDINGEN_BADGE_EL.style.display = tellerRelevant.length ? 'flex' : 'none';
 }
 
 function initMap() {
@@ -7845,8 +7901,7 @@ function renderMeldingen(signalen) {
   const gezienNavtexSleutels = new Set();
   const tellerRelevant = relevant.filter((s) => moetMeetellenVoorTeller(s, gezienNavtexSleutels));
 
-  MELDINGEN_BADGE_EL.style.display = tellerRelevant.length ? 'flex' : 'none';
-  MELDINGEN_BADGE_EL.textContent = String(tellerRelevant.length);
+  werkMeldingenBadgeBij(tellerRelevant);
 
   const perCategorie = {};
   relevant.forEach((s) => (perCategorie[s.categorie] ??= []).push(s));
