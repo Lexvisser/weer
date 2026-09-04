@@ -541,13 +541,17 @@ export async function fetchMeteoalarm({ meteogateApiKey } = {}) {
   // Voorgangers blijven ~48u in de feed (sent-venster), daarna houdt de
   // in-memory hoogsteKleurPerSleutel het nog vast tot een herstart.
   const KLEUR_RANG = { Groen: 0, Geel: 1, Oranje: 2, Rood: 3 };
+  // Sleutel ZONDER ernst-woord: fenomeenTekst is "Matige wind" bij geel en
+  // "Ernstige wind" bij oranje (zie vertaalEvent), dus die matchen anders nooit.
+  const kern = (tekst) => String(tekst ?? '').toLowerCase().replace(/^(extreme|extreem|ernstige|ernstig|matige|matig|lichte|licht)\s+/, '');
+  const afschaalSleutel = (s) => `${kern(s.detail?.fenomeenTekst)}|${s.detail?.gebied}`;
   signalen.forEach((s) => {
-    const sleutel = `${s.detail?.fenomeenTekst}|${s.detail?.gebied}`;
+    const sleutel = afschaalSleutel(s);
     const rang = KLEUR_RANG[s.detail?.kleur] ?? -1;
     if (rang > (KLEUR_RANG[hoogsteKleurPerSleutel.get(sleutel)] ?? -1)) hoogsteKleurPerSleutel.set(sleutel, s.detail.kleur);
   });
   ontdubbeld.forEach((s) => {
-    const hoogste = hoogsteKleurPerSleutel.get(`${s.detail?.fenomeenTekst}|${s.detail?.gebied}`);
+    const hoogste = hoogsteKleurPerSleutel.get(afschaalSleutel(s));
     if (hoogste && (KLEUR_RANG[hoogste] ?? -1) > (KLEUR_RANG[s.detail?.kleur] ?? -1)) s.detail.afgeschaaldVan = hoogste;
   });
   if (ontdubbeld.length !== signalen.length) {
