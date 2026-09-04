@@ -34,7 +34,7 @@
 // (bv. "NAVAREA XIX", enkel als losse tekst-vermelding binnen een bericht,
 // geen apart warning-type-blok) worden niet apart opgehaald.
 import * as cheerio from 'cheerio';
-import { makeSignal, afstandKm } from '../normalize.js';
+import { makeSignal, afstandKm, navtexErnst } from '../normalize.js';
 
 const UKHO_URL = 'https://msi.admiralty.co.uk/RadioNavigationalWarnings';
 const TOEGESTANE_TYPES = new Set(['navarea 1', 'uk coastal']);
@@ -503,7 +503,7 @@ export async function fetchUkho(env = {}) {
           id: `ukho-${idVeilig}-rig${i}`,
           categorie: 'navtex',
           titel: `${w.type} - ${w.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''} - ${w.reference}`,
-          ernst: 'waarschuwing',
+          ernst: navtexErnst(w.description), // 2026-09-04
           lat: rig.lat,
           lon: rig.lon,
           tijd: w.datum ? w.datum.toISOString() : eersteOntvangst(`ukho-${idVeilig}-rig${i}`),
@@ -518,7 +518,7 @@ export async function fetchUkho(env = {}) {
         id: `ukho-${idVeilig}`,
         categorie: 'navtex',
         titel: `${w.type} - ${w.reference}`,
-        ernst: 'waarschuwing',
+        ernst: navtexErnst(w.description), // 2026-09-04
         lat: w.positie.lat,
         lon: w.positie.lon,
         tijd: w.datum ? w.datum.toISOString() : eersteOntvangst(`ukho-${idVeilig}`),

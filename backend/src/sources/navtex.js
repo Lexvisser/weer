@@ -33,7 +33,7 @@
 //    ooit verhuist, zonder de stationslijst te hoeven aanpassen.
 import * as cheerio from 'cheerio';
 import https from 'node:https';
-import { makeSignal, afstandKm } from '../normalize.js';
+import { makeSignal, afstandKm, navtexErnst } from '../normalize.js';
 import { meldNavtexNood } from '../navtexNoodAlarm.js'; // 2026-09-03
 
 const NAVTEX_URL = 'https://navtex.lv/';
@@ -250,7 +250,7 @@ export async function fetchNavtex(env = {}) {
       id,
       categorie: 'navtex',
       titel: `NAVTEX${typeOmschrijving ? ` - ${typeOmschrijving}` : ''} (${stationNaam})`,
-      ernst: 'waarschuwing',
+      ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04: wind 7 = oranje, 8+/nood = rood, rest let-op
       lat: b.positie.lat,
       lon: b.positie.lon,
       tijd: b.datum ? b.datum.toISOString() : new Date().toISOString(),

@@ -50,7 +50,7 @@
 import { readFileSync, existsSync, writeFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { makeSignal, afstandKm } from '../normalize.js';
+import { makeSignal, afstandKm, navtexErnst } from '../normalize.js';
 import { meldNavtexNood } from '../navtexNoodAlarm.js'; // 2026-09-03: telefoonalarm voor type-D-berichten
 
 // Standaard: zelfde thuismap als waar Lex' eigen tee-commando naartoe
@@ -1763,7 +1763,7 @@ export async function fetchNavtexLokaal(env = {}) {
           // generieke "Boorplatform(s)") als splitsRiglijst() die kon
           // classificeren, zie classificeerRiglijstStatus() hierboven.
           titel: `NAVTEX - ${rig.eventLabel ?? b.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''} - ${stationNaam}`,
-          ernst: 'waarschuwing',
+          ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04
           lat: rig.lat,
           lon: rig.lon,
           tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(`${baseId}-rig${i}`),
@@ -1795,7 +1795,7 @@ export async function fetchNavtexLokaal(env = {}) {
           id: `${baseId}-boei${i}`,
           categorie: 'navtex',
           titel: `NAVTEX - ${b.eventInfo.label}${boei.naam ? ` - ${boei.naam}` : ''} - ${stationNaam}`,
-          ernst: 'waarschuwing',
+          ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04
           lat: boei.lat,
           lon: boei.lon,
           tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(`${baseId}-boei${i}`),
@@ -1817,7 +1817,7 @@ export async function fetchNavtexLokaal(env = {}) {
         // andere titels hierboven/hieronder (riglijst/platform-defect/
         // boei-lijst) die deze hardwarenaam nooit hebben gehad.
         titel: `NAVTEX${typeOmschrijving ? ` - ${typeOmschrijving}` : ''} - ${stationNaam}`,
-        ernst: 'waarschuwing',
+        ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04
         lat: b.positie.lat,
         lon: b.positie.lon,
         tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(baseId),

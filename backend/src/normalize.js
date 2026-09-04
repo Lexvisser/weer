@@ -82,3 +82,40 @@ export class SourceState {
     };
   }
 }
+
+// 2026-09-04, op verzoek van Lex ("navtex voor oranje met wind7 en vanaf
+// wind8 + nood = rood"): ernst van een NAVTEX-/navwarning-bericht op basis
+// van de inhoud, i.p.v. altijd 'waarschuwing'. Bepaalt de kleur op de kaart
+// én of 'ie meetelt voor de Meldingen-badge (die telt vanaf 'waarschuwing').
+//   - noodbericht (berichttype D, of MAYDAY/DISTRESS/SAR-tekst)   -> kritiek
+//   - windkracht 8+ / GALE / STORM / HURRICANE FORCE                -> kritiek
+//   - windkracht 7 / NEAR GALE / STRONG WIND (6-7)                  -> waarschuwing
+//   - alle overige navigatiewaarschuwingen (boeien, kabels, rigs…)  -> let-op
+export function navtexErnst(body, typeLetter = null) {
+  const t = (body ?? '').toUpperCase();
+  if (typeLetter === 'D' || /\b(MAYDAY|DISTRESS|MAN OVERBOARD|SEARCH AND RESCUE|\bSAR\b|PAN[ -]PAN|PIRACY|OVERDUE)\b/.test(t)) return 'kritiek';
+  let maxForce = 0;
+  // "FORCE 8", "FORCE 7 TO 8", "BFT 8", "BEAUFORT 8", "8 TO 9 BFT", "GALE 8"
+  for (const m of t.matchAll(/\b(?:FORCE|BFT|BEAUFORT|GALE|STORM)\s*(\d{1,2})(?:\s*(?:TO|-|\/)\s*(\d{1,2}))?/g)) {
+    maxForce = Math.max(maxForce, Number(m[1]), Number(m[2] ?? 0));
+  }
+  for (const m of t.matchAll(/\b(\d{1,2})(?:\s*(?:TO|-|\/)\s*(\d{1,2}))?\s*(?:BFT|BEAUFORT)\b/g)) {
+    maxForce = Math.max(maxForce, Number(m[1]), Number(m[2] ?? 0));
+  }
+  // Windberichten schrijven de kracht vaak zonder "FORCE": "NORTHWEST 7
+  // DECREASING 6", "SW 8 LATER" -- alleen tellen als het bericht duidelijk
+  // over wind gaat (anders is "BUOY 7" of "7 PERSONS" ineens windkracht).
+  if (/\b(WIND|GALE|STORM)\b/.test(t)) {
+    for (const m of t.matchAll(/\b(?:NORTH|SOUTH|EAST|WEST|NORTHWEST|NORTHEAST|SOUTHWEST|SOUTHEAST|[NSEW]{1,3}|INCREASING|DECREASING|BECOMING|VEERING|BACKING|LATER|SOON)\s+(\d{1,2})\b/g)) {
+      const n = Number(m[1]);
+      if (n >= 5 && n <= 12) maxForce = Math.max(maxForce, n);
+    }
+  }
+  if (maxForce >= 8 || /\b(GALE|STORM|HURRICANE)\s*(FORCE|WARNING)\b|\bSEVERE GALE\b|\bVIOLENT STORM\b/.test(t)) {
+    // "NEAR GALE" is windkracht 7 -- alleen als er verder geen echte gale in zit
+    if (maxForce < 8 && /\bNEAR GALE\b/.test(t) && !/\b(?<!NEAR )GALE\s*(FORCE|WARNING)\b/.test(t)) return 'waarschuwing';
+    return 'kritiek';
+  }
+  if (maxForce === 7 || /\bNEAR GALE\b|\bSTRONG WIND\b/.test(t)) return 'waarschuwing';
+  return 'let-op';
+}
