@@ -1091,6 +1091,13 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .hazard-pin.ernst-waarschuwing { background:rgba(255,138,61,0.42); border:1.5px solid rgba(255,138,61,0.85); box-shadow:0 0 12px rgba(255,138,61,0.4), 0 2px 6px rgba(10,13,22,0.3); }
 .hazard-pin.ernst-let-op { background:rgba(255,176,102,0.38); border:1.5px solid rgba(255,176,102,0.8); box-shadow:0 0 10px rgba(255,176,102,0.3), 0 2px 6px rgba(10,13,22,0.25); }
 .hazard-pin.ernst-info { background:rgba(62,198,255,0.42); border:1.5px solid rgba(62,198,255,0.85); box-shadow:0 0 12px rgba(62,198,255,0.4), 0 2px 6px rgba(10,13,22,0.3); }
+/* 2026-09-04, Lex: "code oranje ... zie ik nergens aan de icons" -- bij een
+   weeralarm wint de code-kleur (detail.kleur) van de CAP-ernst-klasse
+   hierboven (KNMI geeft geel en oranje vaak allebei severity Moderate). Zie
+   WEER_KLEUR_KLASSE in app.js; het gebied kleurt mee via WEER_KLEUR_HEX. */
+.hazard-pin.kleur-geel { background:rgba(255,214,51,0.42); border:1.5px solid rgba(255,214,51,0.9); box-shadow:0 0 12px rgba(255,214,51,0.45), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.kleur-oranje { background:rgba(255,138,61,0.5); border:1.5px solid rgba(255,138,61,0.95); box-shadow:0 0 16px rgba(255,138,61,0.6), 0 2px 6px rgba(10,13,22,0.3); }
+.hazard-pin.kleur-rood { background:rgba(255,46,109,0.5); border:1.5px solid rgba(255,46,109,0.95); box-shadow:0 0 16px rgba(255,46,109,0.65), 0 2px 6px rgba(10,13,22,0.3); }
 /* Lifeliner (traumahelikopter) — eigen vast gele helikopter-SVG i.p.v. de
    ernst-kleur/emoji, 2026-08-19 op Lex' verzoek ("een gele helikopter").
    Vervangt de ernst-klasse (zie renderMap in app.js), dus dit staat los van

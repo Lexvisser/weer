@@ -1828,6 +1828,11 @@ function centreerOpMelding(signal) {
 // dit bestand — al een bekende "let op, maar geen tornado"-kleur in de app.
 const GEBIED_OMTREK_KLEUR_PER_CATEGORIE = { 'severe-thunderstorm': '#ffd633' };
 const GEBIED_OMTREK_KLEUR_STANDAARD = '#ff2e6d';
+// 2026-09-04, op verzoek van Lex ("ook de area zou misschien kunnen
+// meekleuren"): weeralarm-gebied en -pin in de code-kleur (geel/oranje/rood
+// uit detail.kleur, zie meteoalarm.js) i.p.v. altijd de standaard roze omtrek.
+const WEER_KLEUR_HEX = { Geel: '#ffd633', Oranje: '#ff8a3d', Rood: '#ff2e6d' };
+const WEER_KLEUR_KLASSE = { Geel: 'kleur-geel', Oranje: 'kleur-oranje', Rood: 'kleur-rood' };
 
 // 2026-08-20-fix, op verzoek van Lex ("als er meerdere severe thunderstorms
 // zijn kan dat dan tegelijk getoond worden... ik heb nu 2 gebieden in Raleigh
@@ -1855,7 +1860,8 @@ function tekenGebiedOmtrek(signal) {
   const verlopen = Boolean(signal.detail?.verlopen);
   const omtrekKleur = verlopen
     ? '#9ea6b4'
-    : (GEBIED_OMTREK_KLEUR_PER_CATEGORIE[signal.categorie] ?? GEBIED_OMTREK_KLEUR_STANDAARD);
+    : (signal.categorie === 'weerwaarschuwing' && WEER_KLEUR_HEX[signal.detail?.kleur]) // 2026-09-04: code-kleur, zie WEER_KLEUR_HEX
+      || (GEBIED_OMTREK_KLEUR_PER_CATEGORIE[signal.categorie] ?? GEBIED_OMTREK_KLEUR_STANDAARD);
   let ietsGetekend = false;
   // 2026-09-02, op verzoek van Lex ("maak de rasters bij tornado watch
   // gebieden wat prominenter"): actieve tornado-omtrekken (watch én warning)
@@ -7335,7 +7341,14 @@ function renderMap(signalen) {
         }).addTo(signaalLaag);
       }
 
-      const pinKlasse = isLifeliner(s) ? 'is-lifeliner' : `ernst-${s.ernst}`;
+      // 2026-09-04, op melding van Lex ("we hebben nu een code oranje, maar
+      // ik zie dat nergens aan de icons, die zijn hetzelfde als voor code
+      // geel"): de ernst-klasse volgt CAP-severity (Moderate -> let-op), en
+      // KNMI/Meteoalarm geeft geel én oranje vaak allebei 'Moderate'. Voor een
+      // weeralarm wint daarom de code-kleur (detail.kleur, zie meteoalarm.js)
+      // -- zie .hazard-pin.kleur-geel/-oranje/-rood in styles.css.
+      const weerKleurKlasse = s.categorie === 'weerwaarschuwing' ? WEER_KLEUR_KLASSE[s.detail?.kleur] : null;
+      const pinKlasse = isLifeliner(s) ? 'is-lifeliner' : weerKleurKlasse ? `ernst-${s.ernst} ${weerKleurKlasse}` : `ernst-${s.ernst}`;
       // 2026-08-20: detail.verlopen (zie historie.js) — tot 48u terug bewaarde
       // waarschuwingen die niet meer actief zijn, puur als lichte trail op de
       // kaart ("waar was het") i.p.v. een volwaardige actieve melding (die
