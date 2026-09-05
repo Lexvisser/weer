@@ -6131,32 +6131,14 @@ function vaarVervaging(tijdMs) {
   return 0.35;
 }
 
-// 2026-09-05, op verzoek van Lex ("Geef dan voorlopig alleen Class A aan
-// op de kaart ergens"): AIS Class A (SOLAS-plichtig) zendt altijd
-// voyage-data uit (bestemming/diepgang/ETA/IMO, bericht type 5) -- Class B
-// (vrijwillig/klein) heeft die velden principieel niet (type 24, alleen
-// naam/roepnaam). Dus: zodra een van deze vier ooit gevuld binnenkwam
-// (blijft "sticky" dankzij vulOntbrekendeVeldenAan() in de backend) is dit
-// ONMISKENBAAR een Class A-schip. Het omgekeerde geldt NIET (ontbreken
-// bewijst geen Class B -- kan ook een Class A zijn die z'n voyage-data nog
-// niet verzonden heeft) -- daarom hier bewust GEEN "is Class B"-tegenhanger,
-// zie Lex' "veel te twijfelachtig" bij het eerdere voorstel voor zo'n
-// tweerichtingen-onderscheid.
-function isBevestigdClassA(s) {
-  return s.bestemming != null || s.diepgangM != null || s.eta != null || s.imo != null;
-}
-
-function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1, vervaging = 1, classABevestigd = false) {
+function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1, vervaging = 1) {
   const dekking = (bron === 'aishub' ? AISHUB_OPACITEIT : 1) * vervaging;
-  // Klein badge-je, alleen als Class A met zekerheid vaststaat (zie
-  // isBevestigdClassA() hierboven) -- geen badge, dus geen gok, voor de rest.
-  const classABadge = classABevestigd ? '<div class="vaar-classa-badge">A</div>' : '';
   if (stil) {
     // 2026-09-03, Lex: stipjes (stilliggend) NIET meeschalen -- vaste 12px
     // zoals voorheen; alleen de pijltjes volgen de scheepslengte.
     return L.divIcon({
       className: '',
-      html: `${classABadge}<div class="vaar-stip" style="background:${kleur};opacity:${dekking}"></div>`,
+      html: `<div class="vaar-stip" style="background:${kleur};opacity:${dekking}"></div>`,
       iconSize: [12, 12],
       iconAnchor: [6, 6],
     });
@@ -6171,7 +6153,7 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1, vervaging = 1,
   // geeft een centreerbare vorm waar een cirkelvormige ring omheen past.
   return L.divIcon({
     className: '',
-    html: `${classABadge}<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking};width:${px}px;height:${px}px"><svg viewBox="0 0 16 16" width="${px}" height="${px}"><path d="M8,0 L14,15 L8,11.5 L2,15 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.3" stroke-linejoin="round"/></svg></div>`,
+    html: `<div class="vaar-pin" style="transform:rotate(${rotatie}deg);opacity:${dekking};width:${px}px;height:${px}px"><svg viewBox="0 0 16 16" width="${px}" height="${px}"><path d="M8,0 L14,15 L8,11.5 L2,15 Z" fill="${kleur}" stroke="#0a0d16" stroke-width="1.3" stroke-linejoin="round"/></svg></div>`,
     iconSize: [px, px],
     iconAnchor: [px / 2, px / 2],
   });
@@ -6190,8 +6172,8 @@ function bouwVaarIcon(koersGraden, kleur, bron, stil, schaal = 1, vervaging = 1,
 // Leaflet-interne, maar in de praktijk stabiele referentie naar het
 // icoon-element), zonder het element zelf te vervangen -- dus geen
 // onderbroken hover meer.
-function vaarIconSleutel(kleur, bron, stil, schaal = 1, vervaging = 1, classABevestigd = false) {
-  return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}|${schaal}|${vervaging}|${classABevestigd ? 'A' : ''}`;
+function vaarIconSleutel(kleur, bron, stil, schaal = 1, vervaging = 1) {
+  return `${stil ? 'stip' : 'driehoek'}|${kleur}|${bron}|${schaal}|${vervaging}`;
 }
 
 // 2026-09-02, op verzoek van Lex ("dat rondje om het item als er een
@@ -6733,10 +6715,9 @@ function tekenVaarSchepen(data) {
       marker.setLatLng([s.lat, s.lon]);
       const schaal = vaarIconSchaal(s.afmetingen);
       const vervaging = vaarVervaging(s.tijdMs);
-      const classABevestigd = isBevestigdClassA(s);
-      const iconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging, classABevestigd);
+      const iconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
       if (marker.vaarIconSleutel !== iconSleutel) {
-        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging, classABevestigd));
+        marker.setIcon(bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging));
         marker.vaarIconSleutel = iconSleutel;
       } else if (!stil) {
         werkVaarIconRotatieBij(marker, s.koersGraden); // zelfde vorm/kleur, alleen de koers bijwerken -- geen DOM-vervanging
@@ -6766,9 +6747,8 @@ function tekenVaarSchepen(data) {
     }
     const schaal = vaarIconSchaal(s.afmetingen);
     const vervaging = vaarVervaging(s.tijdMs);
-    const classABevestigd = isBevestigdClassA(s);
-    marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging, classABevestigd) });
-    marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging, classABevestigd);
+    marker = L.marker([s.lat, s.lon], { icon: bouwVaarIcon(s.koersGraden, kleur, s.bron, stil, schaal, vervaging) });
+    marker.vaarIconSleutel = vaarIconSleutel(kleur, s.bron, stil, schaal, vervaging);
     marker.basisPopupHtml = kopHtml + basisHtml;
     // 2026-09-03, op verzoek van Lex ("maak de kaart wit"): eigen className
     // op de Leaflet-popup zelf, zodat styles.css de wrapper/tip van alleen

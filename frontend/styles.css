@@ -1259,20 +1259,6 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    soort visuele taal als MarineTraffic/VesselFinder gebruiken. */
 .vaar-stip { width:12px; height:12px; border-radius:50%; border:1.5px solid #0a0d16; box-shadow:0 1px 3px rgba(0,0,0,0.6); }
 
-/* 2026-09-05, op verzoek van Lex ("Geef dan voorlopig alleen Class A aan op
-   de kaart ergens") -- klein badge-je bovenop het scheepsicoon, alleen als
-   Class A met zekerheid vaststaat (zie isBevestigdClassA() in app.js). Zit
-   als eigen element naast .vaar-pin/.vaar-stip in dezelfde marker._icon-div
-   (Leaflet's eigen icoon-container heeft altijd position:absolute), dus
-   position:absolute plaatst 'm relatief tegen die container -- geen wrapper-
-   div nodig die de bestaande ring-/rotatie-selectors zou kunnen breken. */
-.vaar-classa-badge {
-  position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%;
-  background: #3ec6ff; color: #0a0d16; font-family: 'JetBrains Mono', monospace;
-  font-size: 7px; font-weight: 700; line-height: 9px; text-align: center;
-  box-shadow: 0 0 0 1px #0a0d16; pointer-events: none;
-}
-
 /* 2026-09-02, op verzoek van Lex (mouse-over i.p.v. altijd klikken) -- zie
    vaarTooltipHtml() in app.js. Leaflet's standaard-tooltip is een witte
    doos met een puntje eronder; hier omgezet naar dezelfde donkere stijl als
