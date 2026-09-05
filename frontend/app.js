@@ -5649,6 +5649,18 @@ const vaarTellingEl = document.getElementById('vaarTelling');
 // gebruikt (na AISHub-/typefilter) i.p.v. een eigen tweede loop.
 const vaarClassABadgeEl = document.getElementById('vaarClassABadge');
 const vaarClassABadgeAantalEl = document.getElementById('vaarClassABadgeAantal');
+// 2026-09-05-bug-fix: deze functie viel weg bij het terugdraaien van het
+// per-schip-badge-experiment, terwijl 'ie hier (en straks mogelijk elders)
+// nog gewoon nodig is -- ReferenceError bij ELKE tekenbeurt, zie Lex'
+// melding ("hij selecteert geen enkel schip meer"). AIS Class A (SOLAS-
+// plicht) zendt altijd voyage-data uit (bestemming/diepgang/ETA/IMO); Class
+// B principieel niet. Zodra een van die velden ooit gevuld binnenkwam
+// (blijft "sticky" dankzij vulOntbrekendeVeldenAan() in de backend) staat
+// Class A dus vast. Bewust GEEN "is Class B"-tegenhanger (zie Lex' "veel te
+// twijfelachtig" bij dat eerdere voorstel).
+function isBevestigdClassA(s) {
+  return s.bestemming != null || s.diepgangM != null || s.eta != null || s.imo != null;
+}
 function werkVaarTellingBij() {
   if (!vaarTellingEl || !kaart) return;
   if (!vaarradarActief) {
