@@ -5648,16 +5648,13 @@ const vaarTellingEl = document.getElementById('vaarTelling');
 // als de bestaande telling, zodat het exact hetzelfde "getekend"-criterium
 // gebruikt (na AISHub-/typefilter) i.p.v. een eigen tweede loop.
 const vaarClassABadgeEl = document.getElementById('vaarClassABadge');
-const vaarClassABadgeAantalEl = document.getElementById('vaarClassABadgeAantal');
 // 2026-09-05-bug-fix: deze functie viel weg bij het terugdraaien van het
-// per-schip-badge-experiment, terwijl 'ie hier (en straks mogelijk elders)
-// nog gewoon nodig is -- ReferenceError bij ELKE tekenbeurt, zie Lex'
-// melding ("hij selecteert geen enkel schip meer"). AIS Class A (SOLAS-
-// plicht) zendt altijd voyage-data uit (bestemming/diepgang/ETA/IMO); Class
-// B principieel niet. Zodra een van die velden ooit gevuld binnenkwam
-// (blijft "sticky" dankzij vulOntbrekendeVeldenAan() in de backend) staat
-// Class A dus vast. Bewust GEEN "is Class B"-tegenhanger (zie Lex' "veel te
-// twijfelachtig" bij dat eerdere voorstel).
+// per-schip-badge-experiment -- ReferenceError bij ELKE tekenbeurt, zie
+// Lex' melding ("hij selecteert geen enkel schip meer"). Niet meer gebruikt
+// door het schild-icoontje hieronder (dat is nu een vaste legenda-
+// markering, geen live telling meer), maar laten staan als vaststaande
+// AIS-Class-A-check voor eventueel later gebruik: bestemming/diepgang/
+// ETA/IMO komt principieel NOOIT van Class B-apparatuur.
 function isBevestigdClassA(s) {
   return s.bestemming != null || s.diepgangM != null || s.eta != null || s.imo != null;
 }
@@ -5668,8 +5665,9 @@ function werkVaarTellingBij() {
     vaarClassABadgeEl?.classList.add('verborgen');
     return;
   }
+  vaarClassABadgeEl?.classList.remove('verborgen');
   const grens = kaart.getBounds();
-  let inData = 0, getekend = 0, doorFilter = 0, doorAishub = 0, stapel = 0, classA = 0;
+  let inData = 0, getekend = 0, doorFilter = 0, doorAishub = 0, stapel = 0;
   const posities = new Set();
   laatsteVaarSchepen.forEach((s) => {
     if (typeof s.lat !== 'number' || typeof s.lon !== 'number' || !grens.contains([s.lat, s.lon])) return;
@@ -5677,7 +5675,6 @@ function werkVaarTellingBij() {
     if (!aishubZichtbaar && s.bron === 'aishub') { doorAishub++; return; }
     if (schipVerborgenDoorFilter(s)) { doorFilter++; return; }
     getekend++;
-    if (isBevestigdClassA(s)) classA++;
     const sleutel = `${s.lat.toFixed(4)},${s.lon.toFixed(4)}`; // ~10m: zelfde plek = over elkaar getekend
     if (posities.has(sleutel)) stapel++; else posities.add(sleutel);
   });
@@ -5686,10 +5683,6 @@ function werkVaarTellingBij() {
   if (doorAishub) regels.push(`${doorAishub} verborgen (AISHub uit)`);
   if (stapel) regels.push(`${stapel} op dezelfde plek als een ander`);
   vaarTellingEl.textContent = regels.join('\n');
-  if (vaarClassABadgeEl && vaarClassABadgeAantalEl) {
-    vaarClassABadgeEl.classList.remove('verborgen');
-    vaarClassABadgeAantalEl.textContent = classA;
-  }
 }
 
 function vaarZoekGaNaar(s) {
