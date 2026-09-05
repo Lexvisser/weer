@@ -233,6 +233,18 @@ function huidigeUtcDatum() {
 // van een vorige run op schijf staat. Wat buiten het rapport-venster valt
 // (bv. na een lange downtime) wordt meteen weggefilterd i.p.v. pas bij de
 // eerstvolgende loggeer()-call.
+// 2026-09-05: deze vier horen bij het vluchtlogboek (verderop), maar MOETEN
+// hier al staan: het inlaadblok hieronder gebruikt ze, en een `const`/`let`
+// die pas later in het bestand gedeclareerd wordt gooit hier een
+// "Cannot access before initialization". Dat gebeurde precies -- het inladen
+// mislukte stil, het logboek startte leeg en werd daarna leeg over het
+// bestand geschreven, waardoor vastgelegde vluchten bij elke herstart/deploy
+// verdwenen (Lex: "Lifeliner zou toch de vluchten opslaan? Niet gelukt hoor").
+const VLUCHTLOG_MAX = 50;
+const VLUCHT_ROUTE_MAX = 600; // ~100 min op 10s-tempo
+let vluchtLog = []; // afgesloten vluchten, oud -> nieuw
+const openVluchten = new Map(); // icao24 -> vlucht
+
 try {
   mkdirSync(dirname(STAAT_BESTAND), { recursive: true });
   if (existsSync(STAAT_BESTAND)) {
@@ -495,10 +507,8 @@ function pollTempoMs(modus) {
 // vluchtLog (op schijf, laatste VLUCHTLOG_MAX), open vluchten overleven een
 // herstart ook. Het rapport (lifelinerRapportTekst) toont ze onderaan,
 // inclusief hoeveel credits de vlucht zelf gekost heeft.
-const VLUCHTLOG_MAX = 50;
-const VLUCHT_ROUTE_MAX = 600; // ~100 min op 10s-tempo
-let vluchtLog = []; // afgesloten vluchten, oud -> nieuw
-const openVluchten = new Map(); // icao24 -> vlucht
+// (VLUCHTLOG_MAX, VLUCHT_ROUTE_MAX, vluchtLog en openVluchten staan bovenaan bij het
+// inlaadblok van STAAT_BESTAND -- zie de opmerking daar, 2026-09-05.)
 
 function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
   let v = openVluchten.get(icao24);
