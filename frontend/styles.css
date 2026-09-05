@@ -1918,7 +1918,10 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    meldingen sinds je laatst keek, alleen een puntje (zie werkMeldingenBadgeBij). */
 .nav-badge.ernst-waarschuwing, .nav-badge.ernst-let-op { background:#ff8a3d; box-shadow:0 0 6px rgba(255,138,61,0.6); }
 .nav-badge.ernst-info { background:#3ec6ff; box-shadow:0 0 6px rgba(62,198,255,0.6); }
-.nav-badge.stip { min-width:9px; width:9px; height:9px; padding:0; top:5px; right:calc(50% - 4px); background:#6b7690; box-shadow:none; }
+/* 2026-09-05 (Lex: "laat de punt nog wat zakken zodat ie echt in de bel
+   staat"): top 5px->9px -- stond nog net boven/op de rand van de bel-
+   emoji i.p.v. in de ronde "buik" ervan. */
+.nav-badge.stip { min-width:9px; width:9px; height:9px; padding:0; top:9px; right:calc(50% - 4px); background:#6b7690; box-shadow:none; }
 
 .error-banner { margin: 12px 16px; padding: 10px 14px; border-radius: 10px; background: rgba(255,46,109,0.1); border:1px solid rgba(255,46,109,0.35); color:#ff9db8; font-family:'JetBrains Mono',monospace; font-size:11px; display:none; }
 .error-banner.show { display:block; }
