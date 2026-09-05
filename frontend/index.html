@@ -109,23 +109,6 @@
       <button class="doppler-product-btn actief" data-product="reflectiviteit">Reflectiviteit</button>
       <button class="doppler-product-btn" data-product="rotatie">Rotatie</button>
     </div>
-    <!-- 2026-09-05, op verzoek van Lex ("Geef dan voorlopig alleen Class A
-         aan op de kaart ergens" -> "Nee joh niet op de ships zelf" ->
-         "Rechterbovenhoek" -> "badge" -> "doe maar shield" -> uiteindelijk:
-         "Gebruik dit shield met een letter A in het midden en zet die
-         uiterst rechts boven in de kaart"): vast schild-met-A-icoontje,
-         uiterst rechtsboven op de kaart (top:10px/right:10px, dezelfde hoek
-         als .map-toggle, die in Vaart-modus zelf leeg/onzichtbaar is) --
-         geen los aantal meer, gewoon een vaste legenda-achtige markering,
-         zichtbaar zolang Vaart/AIS-modus aanstaat (zie werkVaarTellingBij()
-         in app.js). Volledige uitleg als hover-titel. -->
-    <div class="vaar-classa-badge verborgen" id="vaarClassABadge" title="AIS Class A (SOLAS-plicht) met zekerheid vastgesteld: dit schip zendt een bestemming, diepgang, ETA of IMO-nummer uit -- gegevens die AIS Class B-apparatuur (vrijwillig/klein vaartuig) principieel nooit meestuurt. Alleen schepen waarbij dit vaststaat krijgen dit label; de rest laat de app bewust ongelabeld (geen gok naar Class B).">
-      <svg viewBox="0 0 24 24" width="24" height="24">
-        <defs><linearGradient id="vaarClassAGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3fb0"/><stop offset="1" stop-color="#3ec6ff"/></linearGradient></defs>
-        <path d="M12 2.2 L20 5.8 V11.5 C20 17 16.5 20.5 12 22 C7.5 20.5 4 17 4 11.5 V5.8 Z" fill="none" stroke="url(#vaarClassAGrad)" stroke-width="1.6" stroke-linejoin="round"/>
-        <text x="12" y="15.7" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9.5" font-weight="700" fill="url(#vaarClassAGrad)">A</text>
-      </svg>
-    </div>
     <!-- 2026-09-02, op verzoek van Lex ("Ik denk dat we een verticaal menu
          moeten hebben voor AIS aan de rechterkant. Uitklappen =aan en
          daaronder alle opties") -- vervangt de losse ⛴️ Vaart-knop en de

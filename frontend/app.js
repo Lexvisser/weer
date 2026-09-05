@@ -5647,14 +5647,14 @@ const vaarTellingEl = document.getElementById('vaarTelling');
 // en de toelichting in index.html) -- meegenomen in dezelfde bounds-loop
 // als de bestaande telling, zodat het exact hetzelfde "getekend"-criterium
 // gebruikt (na AISHub-/typefilter) i.p.v. een eigen tweede loop.
-const vaarClassABadgeEl = document.getElementById('vaarClassABadge');
-// 2026-09-05-bug-fix: deze functie viel weg bij het terugdraaien van het
-// per-schip-badge-experiment -- ReferenceError bij ELKE tekenbeurt, zie
-// Lex' melding ("hij selecteert geen enkel schip meer"). Niet meer gebruikt
-// door het schild-icoontje hieronder (dat is nu een vaste legenda-
-// markering, geen live telling meer), maar laten staan als vaststaande
-// AIS-Class-A-check voor eventueel later gebruik: bestemming/diepgang/
-// ETA/IMO komt principieel NOOIT van Class B-apparatuur.
+// AIS Class A (SOLAS-plicht) zendt altijd voyage-data uit (bestemming/
+// diepgang/ETA/IMO, bericht type 5); Class B (vrijwillig/klein vaartuig)
+// heeft die velden principieel niet (type 24, alleen naam/roepnaam). Zodra
+// een van deze vier ooit gevuld binnenkwam (blijft "sticky" dankzij
+// vulOntbrekendeVeldenAan() in de backend) staat Class A dus vast. Bewust
+// GEEN "is Class B"-tegenhanger (zie Lex' "veel te twijfelachtig" bij dat
+// eerdere voorstel). Gebruikt door het schild-met-A-icoontje in de
+// scheepspopup zelf, zie scheepsKaartHtml() hieronder.
 function isBevestigdClassA(s) {
   return s.bestemming != null || s.diepgangM != null || s.eta != null || s.imo != null;
 }
@@ -5662,10 +5662,8 @@ function werkVaarTellingBij() {
   if (!vaarTellingEl || !kaart) return;
   if (!vaarradarActief) {
     vaarTellingEl.textContent = '';
-    vaarClassABadgeEl?.classList.add('verborgen');
     return;
   }
-  vaarClassABadgeEl?.classList.remove('verborgen');
   const grens = kaart.getBounds();
   let inData = 0, getekend = 0, doorFilter = 0, doorAishub = 0, stapel = 0;
   const posities = new Set();
@@ -6484,12 +6482,26 @@ function scheepsKaartHtml(s, statusTekst) {
   ]
     .map(([label, waarde]) => `<div class="popup-schip-detailrij"><span>${label}</span><span>${waarde != null && waarde !== '' ? escapeHtml(String(waarde)) : '—'}</span></div>`)
     .join('');
+  // 2026-09-05, op verzoek van Lex (mockup met een schild-vorm naast de
+  // Vessel-knop): schild-met-A alleen bij dit ene schip tonen als Class A
+  // met zekerheid vaststaat (isBevestigdClassA(), zie hierboven) -- geen
+  // badge voor de rest, dus geen gok naar Class B.
+  const classABadgeHtml = isBevestigdClassA(s)
+    ? `<div class="popup-schip-classa" title="AIS Class A (SOLAS-plicht) met zekerheid vastgesteld: dit schip zendt een bestemming, diepgang, ETA of IMO-nummer uit -- gegevens die AIS Class B-apparatuur (vrijwillig/klein vaartuig) principieel nooit meestuurt. Alleen schepen waarbij dit vaststaat krijgen dit label; de rest laat de app bewust ongelabeld (geen gok naar Class B).">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <defs><linearGradient id="popupClassAGrad-${s.mmsi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3fb0"/><stop offset="1" stop-color="#3ec6ff"/></linearGradient></defs>
+          <path d="M12 2.2 L20 5.8 V11.5 C20 17 16.5 20.5 12 22 C7.5 20.5 4 17 4 11.5 V5.8 Z" fill="none" stroke="url(#popupClassAGrad-${s.mmsi})" stroke-width="1.8" stroke-linejoin="round"/>
+          <text x="12" y="15.7" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9.5" font-weight="700" fill="url(#popupClassAGrad-${s.mmsi})">A</text>
+        </svg>
+      </div>`
+    : '';
   return `
     <div class="popup-schip-knoppen">
       <details class="popup-schip-details">
         <summary class="popup-schip-knop popup-schip-knop-primair">Vessel</summary>
         <div class="popup-schip-detailblok">${detailRegels}</div>
       </details>
+      ${classABadgeHtml}
     </div>
     <div class="popup-schip-reis">
       <div class="popup-schip-havens">
