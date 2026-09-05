@@ -2948,7 +2948,12 @@ function popupExtraHtml(s) {
       blokken.push(`<div class="popup-advies">${escapeHtml(d.bericht)}</div>`);
     }
     if (d.positieUitBericht === false) {
-      blokken.push('<div class="popup-sub">📍 positie geschat via zendstation - geen coördinaat in het bericht zelf gevonden</div>');
+      // 2026-09-05, op verzoek van Lex ("verberg die hele tekst achter de
+      // enkele pin met de tekst 'geschat'"): was een volledige verklarende
+      // zin, nu een kort label -- de titel van het element (title-attribuut)
+      // houdt de oorspronkelijke uitleg nog beschikbaar (bv. bij hover op
+      // desktop), zonder de popup te vullen.
+      blokken.push('<div class="popup-sub" title="Geen coördinaat in het bericht zelf gevonden -- positie geschat via het zendstation">📍 Pos. geschat</div>');
     }
   }
 
@@ -7326,10 +7331,15 @@ function stopKaartVolgen(terugNaarHemel) {
 // oogde dan Scheveningen (2x), puur een bijwerking van het aantal gestapelde
 // lagen, geen bewuste styling. Fix: op de kaart nog maar EEN marker per
 // stationspositie (de nieuwste van de groep als representant), met de
-// overige berichten als compacte lijst onderaan diezelfde popup (zie
-// navtexGroepPopupHtml hieronder) -- er gaat niets verloren, alleen het
-// stapel-effect verdwijnt.
-const NAVTEX_GROEP_TONEN = 10;  // hoeveel daarvan de popup uitschrijft, rest als "...en N meer"
+// overige berichten gewoon nog aanklikbaar vanuit de Meldingen-lijst (zie
+// markersPerId hieronder) -- er gaat niets verloren, alleen het stapel-
+// effect verdwijnt.
+// 2026-09-05, op verzoek van Lex ("laat dat aantal andere berichten maar
+// helemaal vervallen"): de losse "+N ander(e) bericht(en)"-teller/lijst
+// ONDER de popup (navtexGroepPopupHtml, gebruikte NAVTEX_GROEP_TONEN) is
+// verwijderd -- deze groepering hierbeneden blijft gewoon bestaan, want die
+// voorkomt nog steeds de gestapelde-markers-bug hierboven, alleen toont de
+// popup zelf niet langer een lijst/teller van de overige berichten.
 function groepeerStationSignalen(lijst) {
   const groepen = new Map();
   lijst.forEach((s) => {
@@ -7356,43 +7366,6 @@ function groepeerStationSignalen(lijst) {
     rest.forEach((s) => overgeslagenIds.add(s.id));
   });
   return lijst.filter((s) => !overgeslagenIds.has(s.id));
-}
-
-// Compacte lijst van de overige berichten binnen een groepeerStationSignalen()
-// -groep (zie hierboven) -- lege string als er geen groep is, zodat dit
-// veilig altijd achter popupHtml() geplakt kan worden.
-// 2026-08-26-fix, op melding van Lex ("het is nu exact gelijk vaak" — 5
-// regels "25 aug 11:07 — Overige navigatiewaarschuwing" onder elkaar): deze
-// lijst toonde alleen tijd + generieke classificatie, dus verschillende
-// echte berichten (andere code/referentie, andere inhoud) die toevallig
-// zonder eigen coördinaat zaten (dus 'overig' geclassificeerd) en in
-// dezelfde pollcyclus binnenkwamen (dus dezelfde tijd) waren niet van elkaar
-// te onderscheiden. Berichtcode (bv. "PA11", alleen navtexLokaal.js — de
-// korte, herkenbare kenmerk) of anders het referentienummer (bv. "MSI
-// 130/26", beide bronnen) erbij, zodat elke regel een eigen kenmerk toont.
-function navtexGroepPopupHtml(s) {
-  if (!Array.isArray(s._groepMeer) || !s._groepMeer.length) return '';
-  // 2026-08-30, op verzoek van Lex: niet meer de hele groep uitschrijven
-  // (26 regels bij Niton), maar de 10 nieuwste + een telregel voor de rest.
-  const meer = s._groepMeer.length - NAVTEX_GROEP_TONEN;
-  const items = s._groepMeer
-    .slice(0, NAVTEX_GROEP_TONEN)
-    .map((e) => {
-      const kenmerk = e.detail?.code ?? e.detail?.referentie ?? null;
-      const kenmerkTekst = kenmerk ? `${escapeHtml(kenmerk)} - ` : '';
-      return `<div class="popup-groep-item">${tijdstempelTekst(e.tijd) ?? ''} - ${kenmerkTekst}${escapeHtml(e.detail?.eventLabel ?? e.titel ?? '')}</div>`;
-    })
-    .join('') + (meer > 0 ? `<div class="popup-groep-item popup-groep-meer">…en ${meer} meer</div>` : '');
-  // 2026-08-28: de groepering dekt nu ook stapels op een berichtpositie
-  // (zie groepeerStationSignalen) — dan klopt "van dit station" niet meer.
-  const kop = s.detail?.positieIsStation
-    ? `+${s._groepMeer.length} ander(e) bericht(en) van dit station`
-    : `+${s._groepMeer.length} ander(e) bericht(en) op deze positie`;
-  // 2026-09-04, op verzoek van Lex ("deze melding van station mag een
-  // teller worden"): standaard alleen de telregel; de lijst klapt pas uit
-  // als je erop tikt (<details>, werkt zonder eigen event-handler in een
-  // Leaflet-popup).
-  return `<details class="popup-groep"><summary class="popup-groep-kop">${kop}</summary>${items}</details>`;
 }
 
 function renderMap(signalen) {
@@ -7539,9 +7512,10 @@ function renderMap(signalen) {
             iconAnchor: [15, 15],
           });
       // 2026-08-30, op verzoek van Lex: NAVTEX-popup breder (360 i.p.v. 300)
-      // zodat een groepsregel als "29 aug 22:44 - EB60 - Overige
-      // navigatiewaarschuwing" (zie navtexGroepPopupHtml) op één regel past
-      // i.p.v. af te breken; de overige brede categorieën blijven op 300.
+      // voor de langere stats-/coderegels in deze popup; de overige brede
+      // categorieën blijven op 300. (De groepsregel-reden hiervoor -- zie
+      // navtexGroepPopupHtml -- verviel 2026-09-05, maar de bredere popup
+      // op zich is nog steeds prettig voor NAVTEX' langere tekst.)
       const popupBreedte = s.categorie === 'navtex' ? 360 : POPUP_BREED_CATEGORIEEN.has(s.categorie) ? 300 : 240;
       // 2026-08-26, perf-fix (op melding van Lex: kaart-opbouw trager +
       // zwarte tegels bij pinch-zoom): popupHtml(s) draaide voorheen
@@ -7557,7 +7531,7 @@ function renderMap(signalen) {
       // bij een klik, voor die ene marker".
       const marker = L.marker([s.lat, s.lon], { icon })
         .addTo(signaalLaag)
-        .bindPopup(() => popupHtml(s) + navtexGroepPopupHtml(s), { maxWidth: popupBreedte });
+        .bindPopup(() => popupHtml(s), { maxWidth: popupBreedte });
       markersPerId.set(s.id, marker);
       if (Array.isArray(s._groepMeer)) s._groepMeer.forEach((extra) => markersPerId.set(extra.id, marker));
     });

@@ -1400,11 +1400,20 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    dus meteen als "open dit bulletin schermvullend"). In de schermvullende
    overlay zelf (.label-popup-inhoud hieronder) blijft de tekst gewoon
    onafgeklemd, met de eigen tekstgrootte-stepper. */
-.leaflet-popup-content .popup-advies { max-height: 90px; overflow: hidden; position: relative; padding-bottom: 13px; }
+.leaflet-popup-content .popup-advies { max-height: 90px; overflow: hidden; position: relative; padding-bottom: 20px; }
+/* 2026-09-05-fix, op melding van Lex ("tik voor volledig bericht staat
+   min of meer door de tekst heen"): de hint had geen eigen hoogte, alleen
+   padding-top -- bij een tekstregel die toevallig tot vlak onder de 90px-
+   afklemming doorliep, kreeg de gradient te weinig ruimte om écht dekkend
+   te worden vóór de hint-tekst verscheen, dus stond die letterlijk over de
+   laatste regel heen. Nu een vaste hoogte (matcht de padding-bottom
+   hierboven) met de tekst verticaal gecentreerd, en de gradient al bij 40%
+   van die (kleinere) hoogte volledig dekkend -- ruim vóór de hint-tekst. */
 .leaflet-popup-content .popup-advies::after {
-  content: 'tik voor volledig bericht ▾'; position: absolute; left: 0; right: 0; bottom: 0; padding-top: 3px;
+  content: 'tik voor volledig bericht ▾'; position: absolute; left: 0; right: 0; bottom: 0; height: 20px;
+  display: flex; align-items: center; justify-content: center;
   font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #6d7ff0; text-align: center;
-  background: linear-gradient(to bottom, rgba(14,17,28,0) 0%, #0e111c 60%);
+  background: linear-gradient(to bottom, rgba(14,17,28,0) 0%, #0e111c 40%);
 }
 .popup-surge { font-size: 10.5px; color: #ffb454; }
 .popup-link { display: block; font-size: 10.5px; color: #3ec6ff; text-decoration: none; }
