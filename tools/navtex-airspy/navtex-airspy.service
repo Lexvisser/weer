@@ -1,0 +1,19 @@
+[Unit]
+Description=NAVTEX-ontvangst via Airspy HF+ (518 kHz) -> /home/lex/navtex_berichten.txt
+After=network.target
+
+[Service]
+User=lex
+# Airspy op 520 kHz afgestemd (zender op 518 kHz staat dan op -2 kHz in de IQ-stroom,
+# bewust niet op 0 Hz), USB-demodulatie naar 1000 Hz-toon, decoder, en het bestand
+# dat navtexLokaal.js elke 2 minuten uitleest.
+ExecStart=/bin/bash -o pipefail -c '\
+  airspyhf_rx -r stdout -f 0.520 -a 768000 -g on \
+  | /usr/local/bin/navtex_usb_demod.py --rate 768000 --center 520000 \
+  | stdbuf -oL navtex_rx_from_file 12000 \
+  | tee -a /home/lex/navtex_berichten.txt'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
