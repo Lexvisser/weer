@@ -1400,26 +1400,35 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    dus meteen als "open dit bulletin schermvullend"). In de schermvullende
    overlay zelf (.label-popup-inhoud hieronder) blijft de tekst gewoon
    onafgeklemd, met de eigen tekstgrootte-stepper. */
-.leaflet-popup-content .popup-advies { max-height: 90px; overflow: hidden; position: relative; padding-bottom: 20px; }
-/* 2026-09-05-fix, op melding van Lex ("tik voor volledig bericht staat
-   min of meer door de tekst heen"): de hint had geen eigen hoogte, alleen
-   padding-top -- bij een tekstregel die toevallig tot vlak onder de 90px-
-   afklemming doorliep, kreeg de gradient te weinig ruimte om écht dekkend
-   te worden vóór de hint-tekst verscheen, dus stond die letterlijk over de
-   laatste regel heen. Nu een vaste hoogte (matcht de padding-bottom
-   hierboven) met de tekst verticaal gecentreerd, en de gradient al bij 40%
-   van die (kleinere) hoogte volledig dekkend -- ruim vóór de hint-tekst. */
+/* 2026-09-05-fix #2, op melding van Lex ("na hard refreshen staat het nog
+   steeds door de tekst heen"): de vorige poging (2026-09-05-fix #1 hierboven
+   verving max-height door... nee, HIERONDER pas echt vervangen) ging uit van
+   een verkeerde aanname: een pixel-max-height + padding-bottom reserveert
+   GEEN gegarandeerd tekstvrije strook. Met box-sizing:border-box (globaal,
+   zie regel 3) is de padding wel meegerekend in de 90px, maar tekst die
+   niet past stopt niet netjes bij de content/padding-grens -- hij loopt
+   gewoon door tot overflow:hidden 'm op de volle boxrand (90px) afkapt, dus
+   een halve regel kan precies in die gereserveerde strook eindigen. Vandaar
+   nu line-clamp i.p.v. een pixelhoogte: dat kapt altijd op een HELE regel
+   af (nooit een halve), dus de gereserveerde ruimte eronder is nu wel
+   gegarandeerd leeg. */
+.leaflet-popup-content .popup-advies {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
+  overflow: hidden; position: relative; padding-bottom: 16px;
+}
 .leaflet-popup-content .popup-advies::after {
-  content: 'tik voor volledig bericht ▾'; position: absolute; left: 0; right: 0; bottom: 0; height: 20px;
+  content: 'tik voor volledig bericht ▾'; position: absolute; left: 0; right: 0; bottom: 0; height: 16px;
   display: flex; align-items: center; justify-content: center;
   font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #6d7ff0; text-align: center;
-  background: linear-gradient(to bottom, rgba(14,17,28,0) 0%, #0e111c 40%);
+  background: #0e111c;
 }
-/* 2026-09-05: eigen wrapper voor de "Pos. geschat"-pil (zie
-   popupExtraHtml() in app.js) -- los margin-top bovenop de bestaande
-   .popup-extra-gap (6px), zodat dit badge-regeltje duidelijk als eigen
-   element leest i.p.v. vast te plakken aan het berichtblok erboven. */
-.popup-positie-geschat { margin-top: 4px; }
+/* 2026-09-05, op verzoek van Lex ("los staan en leesbaarder/andere kleur"),
+   2026-09-05-terugdraai ("waarom ineens een pil, dat vraag ik niet"): gewoon
+   tekst, geen pil/badge -- wel een duidelijke eigen marge (i.p.v. de kleine
+   6px .popup-extra-gap) en een helderdere kleur dan de standaard-grijze
+   .popup-sub (#9199b5), zelfde blauw als .popup-link hieronder, dat op de
+   donkere achtergrond duidelijk beter leest. */
+.popup-positie-geschat { margin-top: 10px; color: #3ec6ff; font-size: 10.5px; }
 .popup-surge { font-size: 10.5px; color: #ffb454; }
 .popup-link { display: block; font-size: 10.5px; color: #3ec6ff; text-decoration: none; }
 .popup-link:hover { text-decoration: underline; }
