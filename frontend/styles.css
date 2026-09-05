@@ -490,6 +490,13 @@ body {
 .doppler-product-btn { border:none; background:transparent; color:#9199b5; font-family:'JetBrains Mono',monospace; font-size:9.5px; padding:5px 8px; border-radius:6px; cursor:pointer; }
 .doppler-product-btn.actief { background:#1c2030; color:#f4f6fb; }
 
+/* 2026-09-05: los "Class A"-schild-badge-je rechtsboven op de kaart, zie de
+   toelichting bij #vaarClassABadge in index.html. Op top:86px i.p.v. 10/48px
+   zodat 'ie nooit overlapt met .map-toggle/.doppler-producten hierboven,
+   ook als die toevallig tegelijk zichtbaar zijn. */
+.vaar-classa-badge { position:absolute; top:86px; right:10px; z-index:1000; display:flex; align-items:center; gap:5px; background:rgba(10,11,18,0.85); border:1px solid rgba(255,255,255,0.12); border-radius:9px; padding:5px 9px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#f4f6fb; cursor:default; }
+.vaar-classa-badge svg { flex-shrink:0; }
+
 /* 2026-08-22, op verzoek van Lex — vervangt de oude losse "Zoek ISS"/
    "Starlink"-kaartknoppen. Linksboven i.p.v. rechtsboven (zoals
    .map-toggle/.doppler-producten) zodat ze elkaar nooit overlappen. Staat

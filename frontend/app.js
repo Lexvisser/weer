@@ -5642,11 +5642,22 @@ function vaarZoekUitvoeren() {
 // maar wel bij MarineTraffic staat, is dus een ontvangstverschil, geen
 // tekenverschil. Bijgewerkt na elke poll en na elke kaartbeweging.
 const vaarTellingEl = document.getElementById('vaarTelling');
+// 2026-09-05: los schild-badge-je rechtsboven op de kaart met het aantal
+// MET ZEKERHEID Class A-schepen dat nu getekend is (zie isBevestigdClassA()
+// en de toelichting in index.html) -- meegenomen in dezelfde bounds-loop
+// als de bestaande telling, zodat het exact hetzelfde "getekend"-criterium
+// gebruikt (na AISHub-/typefilter) i.p.v. een eigen tweede loop.
+const vaarClassABadgeEl = document.getElementById('vaarClassABadge');
+const vaarClassABadgeAantalEl = document.getElementById('vaarClassABadgeAantal');
 function werkVaarTellingBij() {
   if (!vaarTellingEl || !kaart) return;
-  if (!vaarradarActief) { vaarTellingEl.textContent = ''; return; }
+  if (!vaarradarActief) {
+    vaarTellingEl.textContent = '';
+    vaarClassABadgeEl?.classList.add('verborgen');
+    return;
+  }
   const grens = kaart.getBounds();
-  let inData = 0, getekend = 0, doorFilter = 0, doorAishub = 0, stapel = 0;
+  let inData = 0, getekend = 0, doorFilter = 0, doorAishub = 0, stapel = 0, classA = 0;
   const posities = new Set();
   laatsteVaarSchepen.forEach((s) => {
     if (typeof s.lat !== 'number' || typeof s.lon !== 'number' || !grens.contains([s.lat, s.lon])) return;
@@ -5654,6 +5665,7 @@ function werkVaarTellingBij() {
     if (!aishubZichtbaar && s.bron === 'aishub') { doorAishub++; return; }
     if (schipVerborgenDoorFilter(s)) { doorFilter++; return; }
     getekend++;
+    if (isBevestigdClassA(s)) classA++;
     const sleutel = `${s.lat.toFixed(4)},${s.lon.toFixed(4)}`; // ~10m: zelfde plek = over elkaar getekend
     if (posities.has(sleutel)) stapel++; else posities.add(sleutel);
   });
@@ -5662,6 +5674,10 @@ function werkVaarTellingBij() {
   if (doorAishub) regels.push(`${doorAishub} verborgen (AISHub uit)`);
   if (stapel) regels.push(`${stapel} op dezelfde plek als een ander`);
   vaarTellingEl.textContent = regels.join('\n');
+  if (vaarClassABadgeEl && vaarClassABadgeAantalEl) {
+    vaarClassABadgeEl.classList.remove('verborgen');
+    vaarClassABadgeAantalEl.textContent = classA;
+  }
 }
 
 function vaarZoekGaNaar(s) {
