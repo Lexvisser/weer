@@ -2950,15 +2950,15 @@ function popupExtraHtml(s) {
     if (d.positieUitBericht === false) {
       // 2026-09-05, op verzoek van Lex ("verberg die hele tekst achter de
       // enkele pin met de tekst 'geschat'"): was een volledige verklarende
-      // zin, nu een kort label -- de titel van het element (title-attribuut)
-      // houdt de oorspronkelijke uitleg nog beschikbaar (bv. bij hover op
-      // desktop), zonder de popup te vullen.
-      // 2026-09-05-terugdraai, op verzoek van Lex ("waarom ineens een pil,
-      // dat vraag ik niet"): weer gewone tekst i.p.v. een pil-badge -- de
-      // gevraagde "los staan"/leesbaarheid komt nu uit een eigen CSS-klasse
-      // (.popup-positie-geschat: eigen marge + duidelijkere kleur), niet uit
-      // een badge-vorm.
-      blokken.push('<div class="popup-positie-geschat" title="Geen coördinaat in het bericht zelf gevonden -- positie geschat via het zendstation">📍 Pos. geschat</div>');
+      // zin, nu een kort label. EERSTE poging hield de uitleg achter een
+      // title-attribuut (hover) -- werkt niet op een telefoon (geen hover),
+      // dus de uitleg was daarmee gewoon onbereikbaar geworden ("de tekst
+      // achter de pin heb je zo maar laten vallen"). Nu tik-om-uit-te-
+      // klappen (<details>/<summary>, hergebruikt dezelfde .popup-groep-stijl
+      // als de vervallen "+N berichten"-teller hierboven) -- werkt wel op
+      // touch, en geeft ook de gevraagde duidelijke eigen scheidingslijn
+      // ("los staan") i.p.v. een losse marge.
+      blokken.push('<details class="popup-groep popup-positie-geschat"><summary class="popup-groep-kop">📍 Pos. geschat</summary><div class="popup-groep-item popup-groep-item-vrij">Geen coördinaat in het bericht zelf gevonden — positie geschat via het zendstation.</div></details>');
     }
   }
 

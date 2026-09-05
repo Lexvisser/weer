@@ -1423,12 +1423,19 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
   background: #0e111c;
 }
 /* 2026-09-05, op verzoek van Lex ("los staan en leesbaarder/andere kleur"),
-   2026-09-05-terugdraai ("waarom ineens een pil, dat vraag ik niet"): gewoon
-   tekst, geen pil/badge -- wel een duidelijke eigen marge (i.p.v. de kleine
-   6px .popup-extra-gap) en een helderdere kleur dan de standaard-grijze
-   .popup-sub (#9199b5), zelfde blauw als .popup-link hieronder, dat op de
-   donkere achtergrond duidelijk beter leest. */
-.popup-positie-geschat { margin-top: 10px; color: #3ec6ff; font-size: 10.5px; }
+   daarna 2x bijgesteld: eerst een pil (niet gevraagd, teruggedraaid), daarna
+   een title-attribuut voor de volledige uitleg (werkt niet op een telefoon
+   -- geen hover, dus de uitleg was onbereikbaar). Definitieve vorm: hergebruikt
+   .popup-groep/.popup-groep-kop (dezelfde tik-om-uit-te-klappen-stijl als de
+   vervallen "+N berichten"-teller) -- geeft vanzelf de gevraagde eigen
+   scheidingslijn ("los staan"), plus een eigen kleur op de kop i.p.v. het
+   standaard-grijs van .popup-groep-kop.
+   .popup-groep-item zelf klemt normaliter af op 1 regel (nowrap+ellipsis,
+   voor de berichtenlijst-variant) -- hier juist NIET gewenst, want dit is
+   de volledige uitleg-zin zelf, dus .popup-groep-item-vrij zet dat terug. */
+.popup-positie-geschat > summary.popup-groep-kop { color: #3ec6ff; }
+.popup-positie-geschat > summary.popup-groep-kop::before { color: #3ec6ff; }
+.popup-groep-item-vrij { white-space: normal; overflow: visible; text-overflow: clip; }
 .popup-surge { font-size: 10.5px; color: #ffb454; }
 .popup-link { display: block; font-size: 10.5px; color: #3ec6ff; text-decoration: none; }
 .popup-link:hover { text-decoration: underline; }
