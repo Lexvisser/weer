@@ -7643,6 +7643,18 @@ let uitgeklapteVerlopenCategorieen = new Set();
 const uitgeklapteLocaties = new Set();
 const LOCATIE_GROEPERING_CATEGORIEEN = new Set(['aardbeving']);
 
+// 2026-09-05, op verzoek van Lex ("subniveau's per station, uitklapbaar,
+// daarbinnen dan per station de bestaande regels toepassen"): zelfde
+// twee-niveaus-patroon als LOCATIE_GROEPERING_CATEGORIEEN hierboven, maar
+// dan gegroepeerd op zendstation i.p.v. locatie -- en met een bewust ANDERE
+// sorteerregel dan bij aardbevingen: binnen een stationsgroep gewoon de
+// bestaande sorteerItemsInCategorie()-regel (ernst dan tijd), niet puur
+// chronologisch zoals bij aardbevingen. De groepen zelf staan op Lex'
+// expliciete keuze puur op "laatst ontvangen" (nieuwste bericht in de groep
+// bovenaan), niet op ernst -- zie groepeerPerStation() hieronder.
+const uitgeklapteStations = new Set();
+const STATION_GROEPERING_CATEGORIEEN = new Set(['navtex']);
+
 // Puur op tijd (nieuwste eerst) — bewust NIET dezelfde ernst-dan-tijd-
 // vergelijker als sorteerOpErnstEnTijd hieronder: Lex vroeg expliciet om
 // "op volgorde en laatste bovenaan", dus chronologisch, niet naar zwaarte.
@@ -7665,6 +7677,33 @@ function groepeerPerLocatie(items) {
     // Groepen zelf ook nieuwste-eerst, op basis van hun eigen meest recente
     // item (dat staat na de sort hierboven altijd vooraan).
     .sort((a, b) => nieuwsteEerst(a.items[0], b.items[0]));
+}
+
+// 2026-09-05, zie STATION_GROEPERING_CATEGORIEEN hierboven -- zelfde opzet
+// als groepeerPerLocatie(), met twee bewuste verschillen: (1) groepeersleutel
+// is het station (detail.stationId, of bij een onbevestigd/onbekend station
+// de weergavenaam zelf -- die is dan toch al uniek genoeg per geval), (2)
+// items BINNEN een groep krijgen de gewone sorteerItemsInCategorie-regel
+// (ernst dan tijd) i.p.v. nieuwsteEerst, en de groepen zelf worden gesorteerd
+// op het laatst ontvangen tijdstip in de groep (los van ernst) -- Lex' eigen
+// expliciete keuze, i.p.v. de ernst-dan-tijd-regel die binnen een groep wel
+// geldt ook door te trekken naar de groepsvolgorde zelf.
+function groepeerPerStation(items) {
+  const groepen = new Map(); // stationsleutel -> { naam, items[] }
+  items.forEach((s) => {
+    const sleutel = s.detail?.stationId ?? s.detail?.station ?? 'onbekend';
+    const naam = s.detail?.station ?? 'Onbekend station';
+    if (!groepen.has(sleutel)) groepen.set(sleutel, { naam, items: [] });
+    groepen.get(sleutel).items.push(s);
+  });
+  return [...groepen.entries()]
+    .map(([sleutel, groep]) => ({
+      sleutel,
+      station: groep.naam,
+      items: [...groep.items].sort(sorteerOpErnstEnTijd),
+      laatsteTijd: Math.max(...groep.items.map((s) => new Date(s.tijd ?? 0).getTime() || 0)),
+    }))
+    .sort((a, b) => b.laatsteTijd - a.laatsteTijd);
 }
 
 function sorteerOpErnstEnTijd(a, b) {
@@ -7847,6 +7886,35 @@ function maakLocatieGroepItem(cat, groep) {
   btn.addEventListener('click', () => {
     if (uitgeklapt) uitgeklapteLocaties.delete(sleutel);
     else uitgeklapteLocaties.add(sleutel);
+    renderMeldingen(laatsteMeldingenSignalen);
+  });
+  return { element: btn, uitgeklapt };
+}
+
+// 2026-09-05, zie groepeerPerStation()/STATION_GROEPERING_CATEGORIEEN
+// hierboven -- zelfde opzet als maakLocatieGroepItem(), met de groep-tijd
+// (groep.laatsteTijd, het puur-chronologische "laatst ontvangen") in de
+// subregel i.p.v. de tijd van "het meest recente item" (dat is bij deze
+// groepering niet per se hetzelfde item als groep.items[0], want dat staat
+// op ernst-dan-tijd, niet puur op tijd).
+function maakStationGroepItem(cat, groep) {
+  const meestUrgent = groep.items[0]; // groep.items is al ernst-dan-tijd gesorteerd, zie groepeerPerStation
+  const btn = document.createElement('button');
+  const sleutel = `${cat}::station::${groep.sleutel}`;
+  const uitgeklapt = uitgeklapteStations.has(sleutel);
+  btn.className = `melding-item melding-station-groep ernst-${meestUrgent.ernst} cat-${cat}`;
+  const tijdregel = Number.isFinite(groep.laatsteTijd) ? tijdstempelTekst(new Date(groep.laatsteTijd).toISOString()) : null;
+  btn.innerHTML = `
+    <span class="em">${hazardIconHtml(meestUrgent)}</span>
+    <span class="txt">
+      <div class="titel">${groep.station}</div>
+      <div class="sub">${groep.items.length} bericht${groep.items.length === 1 ? '' : 'en'}${tijdregel ? ` · laatst ontvangen ${tijdregel}` : ''}</div>
+    </span>
+    <span class="chev">${uitgeklapt ? '⌄' : '›'}</span>
+  `;
+  btn.addEventListener('click', () => {
+    if (uitgeklapt) uitgeklapteStations.delete(sleutel);
+    else uitgeklapteStations.add(sleutel);
     renderMeldingen(laatsteMeldingenSignalen);
   });
   return { element: btn, uitgeklapt };
@@ -8156,6 +8224,23 @@ function renderMeldingen(signalen) {
           if (LOCATIE_GROEPERING_CATEGORIEEN.has(cat)) {
             groepeerPerLocatie(rest).forEach((groep) => {
               const { element, uitgeklapt: groepUitgeklapt } = maakLocatieGroepItem(cat, groep);
+              MELDINGEN_LIJST_EL.appendChild(element);
+              if (groepUitgeklapt) {
+                groep.items.forEach((s) => {
+                  const item = maakMeldingItem(s);
+                  item.classList.add('melding-item-genest');
+                  MELDINGEN_LIJST_EL.appendChild(item);
+                });
+              }
+            });
+          } else if (STATION_GROEPERING_CATEGORIEEN.has(cat)) {
+            // 2026-09-05, zie STATION_GROEPERING_CATEGORIEEN hierboven: zelfde
+            // twee-niveaus-patroon als de aardbeving-locatiegroepering, maar op
+            // station i.p.v. locatie, en binnen een groep de gewone
+            // ernst-dan-tijd-regel (groep.items komt al zo uit
+            // groepeerPerStation) i.p.v. puur chronologisch.
+            groepeerPerStation(rest).forEach((groep) => {
+              const { element, uitgeklapt: groepUitgeklapt } = maakStationGroepItem(cat, groep);
               MELDINGEN_LIJST_EL.appendChild(element);
               if (groepUitgeklapt) {
                 groep.items.forEach((s) => {

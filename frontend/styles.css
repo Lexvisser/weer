@@ -1577,6 +1577,13 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .melding-item.melding-locatie-groep { background:rgba(255,255,255,0.02); }
 .melding-item.melding-locatie-groep .titel { display:flex; align-items:center; gap:5px; }
 .melding-item.melding-locatie-groep .titel::before { content:'📍'; font-size:11px; }
+/* 2026-09-05: stationsgroepering voor NAVTEX (zie maakStationGroepItem() in
+   app.js) -- zelfde tegelstijl als de locatiegroepering hierboven, alleen
+   eigen icoontje (antenne i.p.v. pin) zodat de twee groeperingsvormen ook
+   visueel uit elkaar te houden zijn. */
+.melding-item.melding-station-groep { background:rgba(255,255,255,0.02); }
+.melding-item.melding-station-groep .titel { display:flex; align-items:center; gap:5px; }
+.melding-item.melding-station-groep .titel::before { content:'📡'; font-size:11px; }
 .melding-item-genest { margin-left:20px; width:calc(100% - 20px); }
 .chip .tier-dot, .legenda-item .tier-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; display:inline-block; }
 .tier-dot.officieel { background:#3ec6ff; }
