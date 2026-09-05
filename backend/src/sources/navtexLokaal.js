@@ -446,9 +446,39 @@ function dedupSleutel(code, typeLetter) {
 //    zonder de coördinaten of de datumregel te raken, dus ook dát is een
 //    eigen, onafhankelijk kwaliteitssignaal: een body zonder achtergebleven
 //    "NNNN" wint van een verder even goede body mét.
+// 4. 2026-09-05-uitbreiding, op melding van Lex (screenshot na de eerste
+//    Airspy-dag: een boei midden in Normandië en een waaier lijnen vanaf
+//    Cherbourg, uit Niton-berichten met SUBTIELE bitfouten: "51!04,3'N",
+//    "49-46.73C", "U: '30 26"): een verminkt cijfer dat een punt 50-100 km
+//    verschuift blijft BINNEN de 350km-uitschieterdrempel en raakt dus de
+//    coördinaten-telling niet — twee versies scoorden gelijk en de tiebreak
+//    (nieuwste tekst wint) besliste, niet de kwaliteit. Daarom twee lichte,
+//    onafhankelijke signalen die alleen als TIEBREAK werken (samen < 2, dus
+//    nooit zwaarder dan de datum, laat staan dan één coördinaat):
+//    a. compactheid: hoe dicht de punten bij hun zwaartepunt liggen (kleine
+//       kustmeldingen liggen compact; een verschoven punt vergroot de spreiding);
+//    b. rommel: aantal tekens dat in SITOR-B/ITA2 überhaupt niet voorkomt
+//       (bv. '!', '"', '%', kleine letters) — die kunnen alleen uit bitfouten
+//       komen, dus elk exemplaar is een zekere ontvangstfout.
+//    Bewust geen kustlijn-/op-zee-check (geen kaartdata in de backend) en
+//    bewust GEEN harde afwijzing: een versie met rommel wordt nog steeds
+//    getoond zolang er geen betere is (afspraak: tonen, niet weigeren).
+const ITA2_VREEMD_REGEX = /[^A-Z0-9 \r\n.,:;()'\/+\-=?]/g;
+function compactheid(coords) {
+  if (coords.length < 2) return 1; // niets te spreiden: neutraal, gelijk voor elke versie
+  const cLat = coords.reduce((som, c) => som + c.lat, 0) / coords.length;
+  const cLon = coords.reduce((som, c) => som + c.lon, 0) / coords.length;
+  const spreiding = Math.max(...coords.map((c) => afstandKm(c.lat, c.lon, cLat, cLon)));
+  return 1 - Math.min(1, spreiding / UITSCHIETER_DREMPEL_KM);
+}
+function rommelGraad(body) {
+  const aantal = (body.match(ITA2_VREEMD_REGEX) || []).length;
+  return Math.min(1, aantal / 10);
+}
 function kwaliteitsScore(bericht) {
   const schoneAfsluiting = /NNNN/i.test(bericht.body) ? 0 : 1;
-  return bericht.coords.length * 4 + (bericht.datum ? 2 : 0) + schoneAfsluiting;
+  return bericht.coords.length * 4 + (bericht.datum ? 2 : 0) + schoneAfsluiting
+    + 0.9 * compactheid(bericht.coords) - 0.9 * rommelGraad(bericht.body);
 }
 
 // Module-scoped (niet per pollcyclus gereset) geheugen: dedup-sleutel naar de
