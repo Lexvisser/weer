@@ -64,7 +64,16 @@ const BACKOFF_MAX_MS = 60000;
 // hieronder vangt die range (>=1000) apart op.
 export function categoriseerScheepstype(typeCode) {
   if (typeof typeCode !== 'number' || typeCode <= 0) return null; // 0/ontbrekend: geen data, niet hetzelfde als "overig"
-  if (typeCode >= 1000) return categoriseerEriType(typeCode); // ERI/Inland-AIS, zie hieronder
+  // 2026-09-05-fix, op melding van Lex (MMSI met shiptype 1850 -- zichtbaar
+  // op de foto een plezierjacht -- werd getoond als "Schip (binnenvaart)"):
+  // deze check was `typeCode >= 1000`, veel breder dan de echte ERI-range
+  // (8000-8999, zie ERI_MIN/ERI_MAX hieronder en de eigen ERI-tabellen
+  // verderop, die ALLEMAAL in die range zitten). 1850 is wel >=1000 maar
+  // geen geldige ERI-code -- de brede check liet 'm toch als "binnenvaart"
+  // door, puur toeval van het getal, geen echte classificatie. Nu pas
+  // ERI_MIN/ERI_MAX gebruiken, zodat zoiets terugvalt op 'overig'
+  // (zie de rest van deze functie) i.p.v. een verkeerde gok te tonen.
+  if (typeCode >= ERI_MIN && typeCode <= ERI_MAX) return categoriseerEriType(typeCode); // ERI/Inland-AIS, zie hieronder
   if (typeCode === 30) return 'vissersboot';
   if (typeCode === 31 || typeCode === 32 || typeCode === 52) return 'sleepboot';
   if (typeCode === 36 || typeCode === 37) return 'plezierjacht'; // zeilboot + motorjacht op één hoop, zelfde "leuke" kleur
@@ -116,7 +125,9 @@ export function isSarVliegtuigMmsi(mmsi) {
 export function bepaalScheepssubtype(typeCode, mmsi = null) {
   if (isSarVliegtuigMmsi(mmsi)) return 'sar-vliegtuig';
   if (typeof typeCode !== 'number' || typeCode <= 0) return null;
-  if (typeCode >= 1000) return typeCode === 8000 ? null : 'binnenvaart';
+  // 2026-09-05-fix: zie categoriseerScheepstype() hierboven -- zelfde
+  // ERI_MIN/ERI_MAX-grens i.p.v. de te brede `>= 1000`.
+  if (typeCode >= ERI_MIN && typeCode <= ERI_MAX) return typeCode === 8000 ? null : 'binnenvaart';
   if (SUBTYPE_PER_CODE[typeCode]) return SUBTYPE_PER_CODE[typeCode];
   if (typeCode >= 20 && typeCode <= 29) return 'wig';
   const tiental = Math.floor(typeCode / 10);
@@ -152,6 +163,12 @@ export function bepaalScheepscategorie(mmsi, typeCode) {
 // over een code: laat 'm in 'overig' vallen, nooit gokken naar een "leukere"
 // categorie. 8000 ("Vessel, type unknown") wordt als "geen data" behandeld,
 // net als een ontbrekende ITU-R-code hierboven.
+// 2026-09-05: expliciete ondergrens/bovengrens (was eerder impliciet
+// "alles >= 1000" bij de aanroepers hierboven) -- de echte ERI-range is
+// 8000-8999, zie ook alle sets hieronder die stuk voor stuk in die range
+// vallen.
+const ERI_MIN = 8000;
+const ERI_MAX = 8999;
 const ERI_TANKER = new Set([8020, 8021, 8022, 8023, 8040, 8060, 8160, 8161, 8162, 8163, 8180, 8490, 8500]);
 const ERI_VRACHT = new Set([8010, 8030, 8050, 8070, 8080, 8090, 8100, 8150, 8170]);
 const ERI_SLEEPBOOT = new Set([8110, 8120, 8130, 8140, 8400, 8410, 8420, 8430]);
