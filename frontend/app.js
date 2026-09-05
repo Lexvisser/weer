@@ -5682,9 +5682,27 @@ function werkVaarTellingBij() {
 
 function vaarZoekGaNaar(s) {
   if (typeof s.lat !== 'number' || typeof s.lon !== 'number') return;
-  kaart.setView([s.lat, s.lon], Math.max(kaart.getZoom(), 14), { animate: true });
-  const marker = vaarMarkers.get(s.mmsi);
-  if (marker) kaart.once('moveend', () => marker.openPopup());
+  // 2026-09-05-bug-fix, op melding van Lex ("hij vindt hem wel maar
+  // selecteert hem niet"): tekenVaarSchepen() tekent alleen schepen BINNEN
+  // het huidige kaartbeeld (+ marge, zie tekenVaarSchepen hierboven) -- een
+  // zoekresultaat buiten beeld heeft dus nog GEEN marker in vaarMarkers op
+  // het moment van klikken. De oude code zocht 'm meteen op (kreeg
+  // undefined) en probeerde openPopup() pas na de pan-animatie aan te
+  // roepen op die (allang undefined) referentie. Nu wordt de marker pas
+  // opgezocht NA de pan, wanneer de bestaande moveend-handler hierboven
+  // (regel ~823) tekenVaarSchepen() al opnieuw heeft laten draaien en de
+  // marker dus wel bestaat. Als de kaart al op de juiste plek/zoom staat
+  // (geen moveend te verwachten) wordt meteen geprobeerd, met een korte
+  // fallback-timer voor het geval de marker toch nét nog niet bestond.
+  const openPopupVoorSchip = () => { vaarMarkers.get(s.mmsi)?.openPopup(); };
+  const doelZoom = Math.max(kaart.getZoom(), 14);
+  const staatAlGoed = kaart.getZoom() === doelZoom && kaart.getCenter().distanceTo([s.lat, s.lon]) < 5;
+  if (staatAlGoed) {
+    openPopupVoorSchip();
+  } else {
+    kaart.once('moveend', () => setTimeout(openPopupVoorSchip, 0));
+    kaart.setView([s.lat, s.lon], doelZoom, { animate: true });
+  }
 }
 if (vaarZoekVeldEl) {
   vaarZoekVeldEl.addEventListener('input', vaarZoekUitvoeren);
