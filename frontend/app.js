@@ -8110,11 +8110,10 @@ function maakLifelinerSectie() {
   toggle.className = 'melding-meer melding-meer-verlopen';
   const d = lifelinerVluchten;
   const aantalOpen = d?.open?.length ?? 0;
-  const aantal = aantalOpen + (d?.afgesloten?.length ?? 0);
   const budgetOp = Boolean(d?.status?.budgetOp);
   toggle.textContent = lifelinerUitgeklapt
     ? '– Lifeliner-vluchten verbergen'
-    : `🚁 Lifeliner-vluchten${aantalOpen ? ` · ${aantalOpen} in de lucht` : ''}${aantal ? ` (${aantal})` : ''}${budgetOp ? ' · ⛔ credits op' : ''}`;
+    : `🚁 Lifeliner-vluchten${aantalOpen ? ` · ${aantalOpen} in de lucht` : ''}${d?.afgesloten?.length ? ` (${d.afgesloten.length})` : ''}${budgetOp ? ' · ⛔ credits op' : ''}`;
   if (budgetOp) toggle.classList.add('lifeliner-budget-op');
   toggle.addEventListener('click', () => {
     lifelinerUitgeklapt = !lifelinerUitgeklapt;
@@ -8143,12 +8142,18 @@ function maakLifelinerSectie() {
   }
   uit.push(status);
   if (d) {
-    (d.open ?? []).forEach((v) => uit.push(maakLifelinerVluchtItem(v, true)));
-    (d.afgesloten ?? []).slice(0, 20).forEach((v) => uit.push(maakLifelinerVluchtItem(v, false)));
-    if (!aantal) {
+    // 2026-09-05 (Lex: "een actieve vlucht wil ik nog niet in het logboek
+    // zien"): een lopende vlucht staat al als live melding bovenaan de
+    // Meldingenlijst -- het logboek toont alleen afgesloten vluchten. De kop
+    // meldt wel "· N in de lucht", zodat je weet dat er straks iets bijkomt.
+    const afgesloten = d.afgesloten ?? [];
+    afgesloten.slice(0, 20).forEach((v) => uit.push(maakLifelinerVluchtItem(v, false)));
+    if (!afgesloten.length) {
       const leeg = document.createElement('div');
       leeg.className = 'lifeliner-status';
-      leeg.textContent = 'Nog geen vluchten vastgelegd sinds de laatste update.';
+      leeg.textContent = aantalOpen
+        ? `Nog geen afgesloten vluchten — ${aantalOpen === 1 ? 'de lopende vlucht' : `de ${aantalOpen} lopende vluchten`} zie je bovenaan bij de meldingen en ${aantalOpen === 1 ? 'komt' : 'komen'} hier na de landing.`
+        : 'Nog geen vluchten vastgelegd sinds de laatste update.';
       uit.push(leeg);
     }
   }
