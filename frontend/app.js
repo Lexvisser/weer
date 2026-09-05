@@ -8133,7 +8133,13 @@ function maakLifelinerSectie() {
     const opRegel = st.budgetOp
       ? `<br><span class="lifeliner-budget-op">⛔ Credits op — OpenSky weigert tot 02:00 NL${st.aantal429Vandaag ? ` (${st.aantal429Vandaag}× geweigerd vandaag)` : ''}</span>`
       : '';
-    status.innerHTML = `${LIFELINER_MODUS_TEKST[st.modus] ?? st.modus ?? ''}<br>🎟️ Credits vandaag: ${st.creditsVandaag ?? '?'} gebruikt van ${st.budget ?? '?'}${st.restCredits != null ? ` — OpenSky zegt ${st.restCredits} over` : ''}${opRegel}`;
+    // 2026-09-05 (Lex: "Hebben we er meer dan 4000?"): OpenSky's eigen
+    // restcredits (X-Rate-Limit-Remaining) zijn de echte rem, onze teller is
+    // schaduwboekhouding op een andere dagteller -- daarom OpenSky voorop.
+    const creditsRegel = st.restCredits != null
+      ? `🎟️ OpenSky: ${st.restCredits} van ${st.budget ?? '?'} credits over (eigen teller: ${st.creditsVandaag ?? '?'} polls sinds 02:00 NL)`
+      : `🎟️ Credits vandaag: ${st.creditsVandaag ?? '?'} gebruikt van ${st.budget ?? '?'}`;
+    status.innerHTML = `${LIFELINER_MODUS_TEKST[st.modus] ?? st.modus ?? ''}<br>${creditsRegel}${opRegel}`;
   }
   uit.push(status);
   if (d) {

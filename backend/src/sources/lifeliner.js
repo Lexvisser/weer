@@ -98,14 +98,16 @@ export function lifelinerRapportTekst() {
   const fouten = regels.filter((p) => p.uitkomst === '429' || p.uitkomst === 'fout');
 
   const perUur = new Map(); // "2026-08-23T14" -> aantal echte polls
+  const restPerUur = new Map(); // "2026-08-23T14" -> laatst gemelde OpenSky-restcredits in dat uur (2026-09-05)
   polls.forEach((p) => {
     const uurKey = new Date(p.tijdMs).toISOString().slice(0, 13);
     perUur.set(uurKey, (perUur.get(uurKey) ?? 0) + 1);
+    if (p.rest != null) restPerUur.set(uurKey, p.rest);
   });
   const histogram =
     [...perUur.entries()]
       .sort()
-      .map(([uur, n]) => `  ${uur}:00 UTC - ${n} poll(s)`)
+      .map(([uur, n]) => `  ${uur}:00 UTC - ${n} poll(s)${restPerUur.has(uur) ? ` (OpenSky: ${restPerUur.get(uur)} over aan het eind)` : ''}`)
       .join('\n') || '  (geen polls in dit venster)';
 
   // 2026-08-28, na Lex' vraag over het 401-getal: het rollende venster kan
@@ -467,7 +469,17 @@ function noteerRestCredits(res) {
     if (waarde <= 0 && (openskyRestCredits?.waarde ?? 1) > 0) {
       console.warn('[weer] lifeliner: OpenSky meldt 0 resterende credits voor vandaag');
     }
+    // 2026-09-05: OpenSky's teller liep ~700 vóór op de onze (2001 eigen polls,
+    // OpenSky zei 2705 over van 4000) terwijl er geen enkele fout was -- hun
+    // dag begint dus op een ander moment dan onze 00:00 UTC. Om te zien
+    // wanneer: de restwaarde aan de laatste poll-log-regel hangen (die is net
+    // door magPollenEnTeltMee geschreven), en een sprong omhoog expliciet loggen.
+    if (openskyRestCredits && waarde > openskyRestCredits.waarde + 100) {
+      console.log(`[weer] lifeliner: OpenSky-restcredits sprongen van ${openskyRestCredits.waarde} naar ${waarde} — hier reset OpenSky zijn dagteller (onze eigen teller staat op ${creditsVandaag})`);
+    }
     openskyRestCredits = { waarde, tijdMs: Date.now() };
+    const laatste = pollLog[pollLog.length - 1];
+    if (laatste && laatste.uitkomst === 'poll' && laatste.rest == null) laatste.rest = waarde;
   }
 }
 
