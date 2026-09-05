@@ -1744,8 +1744,24 @@ export async function fetchNavtexLokaal(env = {}) {
       // ATS Mini-decodering); de UKHO-bulletinbron (ukho.js) heeft geen
       // vergelijkbare lettercode en blijft dus altijd noodbericht:false. Zie
       // magAlarmeren() in app.js voor de daadwerkelijke alarmtrigger.
+      //
+      // 2026-09-05-fix, n.a.v. een fout noodalarm (Rogaland Radio, 780 km --
+      // ver voorbij NAVTEX' betrouwbare bereik van ~740 km): bij zulke zwaar
+      // verminkte ontvangst overleeft toevallig een geldig ogende
+      // [LETTER][LETTER][CIJFERS]-code de check in leesStationEnType(),
+      // terwijl de tweede letter zelf (het berichttype) net zo goed een
+      // bitfout kan zijn -- deze keer een B (Weerwaarschuwing, de tekst was
+      // gewoon een routine-weerbulletin) verminkt tot D (SAR/piraterij).
+      // Zo'n zwaar verminkt bericht mist typisch ook een leesbare datumregel
+      // (zie DATUM_REGEX/b.datum) -- vandaar nu een tweede eis: alleen nog
+      // een noodalarm bij een BEIDE herkende typeLetter D EN een geldige
+      // datum uit het bericht zelf. Voorkomt niet elke misclassificatie,
+      // maar wel precies dit geval (en scheelt meteen ook de herhaalde
+      // alarmen hieronder, want zonder geldige datum viel de dedup-id verderop
+      // terug op hashTekst(b.body), en gaf elke net iets anders gedecodeerde
+      // pollronde van hetzelfde bericht een nieuw alarm).
       typeLetter: b.typeLetter ?? null,
-      noodbericht: b.typeLetter === 'D',
+      noodbericht: b.typeLetter === 'D' && b.datum != null,
       bron: 'lokaal (ATS Mini + MLA-30+, testopstelling)',
       bestand,
     };
