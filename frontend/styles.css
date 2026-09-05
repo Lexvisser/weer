@@ -1415,6 +1415,11 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
   font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #6d7ff0; text-align: center;
   background: linear-gradient(to bottom, rgba(14,17,28,0) 0%, #0e111c 40%);
 }
+/* 2026-09-05: eigen wrapper voor de "Pos. geschat"-pil (zie
+   popupExtraHtml() in app.js) -- los margin-top bovenop de bestaande
+   .popup-extra-gap (6px), zodat dit badge-regeltje duidelijk als eigen
+   element leest i.p.v. vast te plakken aan het berichtblok erboven. */
+.popup-positie-geschat { margin-top: 4px; }
 .popup-surge { font-size: 10.5px; color: #ffb454; }
 .popup-link { display: block; font-size: 10.5px; color: #3ec6ff; text-decoration: none; }
 .popup-link:hover { text-decoration: underline; }

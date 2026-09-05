@@ -2953,7 +2953,14 @@ function popupExtraHtml(s) {
       // zin, nu een kort label -- de titel van het element (title-attribuut)
       // houdt de oorspronkelijke uitleg nog beschikbaar (bv. bij hover op
       // desktop), zonder de popup te vullen.
-      blokken.push('<div class="popup-sub" title="Geen coördinaat in het bericht zelf gevonden -- positie geschat via het zendstation">📍 Pos. geschat</div>');
+      // 2026-09-05-fix, op melding van Lex ("staat nog te verweven met het
+      // bericht... moet los staan en mag wat leesbaarder"): als kale
+      // .popup-sub-tekst stond dit vlak onder de (soms overlappende)
+      // "tik voor volledig bericht"-hint, zonder duidelijke eigen grens --
+      // nu een eigen pil (hergebruikt .pil/.grijs, zelfde badge-stijl als
+      // elders in de app) met een eigen margin-top, zodat het duidelijk als
+      // los element leesbaar is i.p.v. als onderdeel van de berichttekst.
+      blokken.push('<div class="popup-positie-geschat"><span class="pil grijs" title="Geen coördinaat in het bericht zelf gevonden -- positie geschat via het zendstation">📍 Pos. geschat</span></div>');
     }
   }
 
