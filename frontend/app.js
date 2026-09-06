@@ -3360,19 +3360,18 @@ const NAVTEX_BLACKOUT_SVG = `
 // langgerekte bel) met 4 rechte geluidslijnen i.p.v. boogjes, en een
 // felrode (#ff3b3b) diagonale streep. Visueel geverifieerd op 22/90px.
 // 2026-09-06, Lex ("we hadden al een (lelijk) icon voor kapotte misthoorn,
-// maak die meteen beter"): de slanke hoorn-cone las op kaartformaat als een
-// stift/lippenstift. Nu het universele "geluid uit"-glyph: een klassieke
-// luidspreker (blokje + uitlopende kegel) met twee geluidsboogjes en een
-// felrode diagonale streep -- op 22px direct herkenbaar als "geen geluid".
-// Visueel vergeleken met de oude versie op 22/48/96px.
+// maak die meteen beter"): eerste poging (luidspreker + boogjes) was "gewoon
+// de PC speaker". Lex' referentie: een klassieke toeter/bulb horn, "maar dan
+// zonder de ballon" -- dus: klein mondstuk-blokje, smalle buis die naar
+// rechts uitloopt in een holle (concave) trompetbeker met een rechte lip.
+// Felrode diagonale streep eroverheen. Visueel gecheckt op 22/48/96px.
 const NAVTEX_MISTHOORN_SVG = `
   <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-    <path d="M3,9.2 L7.2,9.2 L12.6,4.6 L12.6,19.4 L7.2,14.8 L3,14.8 Z" fill="#e8eaed"/>
-    <g stroke="#e8eaed" stroke-width="1.6" stroke-linecap="round" fill="none">
-      <path d="M15.4,8.6 Q17.6,12 15.4,15.4"/>
-      <path d="M18.2,6.2 Q21.6,12 18.2,17.8"/>
+    <g fill="#e8eaed">
+      <rect x="0.8" y="9.9" width="2.8" height="4.2" rx="0.5"/>
+      <path d="M3.6,10.4 L10.5,10.1 C15,9.9 18,6.8 20.8,3.9 L22.8,3.9 L22.8,20.1 L20.8,20.1 C18,17.2 15,14.1 10.5,13.9 L3.6,13.6 Z"/>
     </g>
-    <line x1="3.2" y1="20.4" x2="20.8" y2="3.6" stroke="#ff3b3b" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="2.4" y1="20.6" x2="21.6" y2="3.4" stroke="#ff3b3b" stroke-width="2" stroke-linecap="round"/>
   </svg>
 `.trim();
 
