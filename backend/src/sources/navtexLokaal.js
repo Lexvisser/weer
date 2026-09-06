@@ -878,7 +878,36 @@ const GEANNULEERDE_REFERENTIES = new Set();
 // zoals CANCEL NAVTEX..." — maar dat bericht komt niet altijd binnen bereik/
 // leesbaar binnen). 60 dagen is ruim gekozen om nooit een nog geldige
 // waarschuwing te vroeg weg te gooien.
-const VANGNET_MAX_OUDERDOM_MS = 60 * 24 * 60 * 60 * 1000;
+// 2026-09-06, op verzoek van Lex (TA12 van Oostende, MSI 131/26 van 26 maart,
+// nog steeds elke beurt uitgezonden maar door de 60-dagengrens onzichtbaar):
+// het vangnet is nu een noodrem van een jaar, en het echte vervalmechanisme
+// is "wordt niet meer herhaald" -- zie NIET_MEER_GEHOORD_MS hieronder.
+const VANGNET_MAX_OUDERDOM_MS = 365 * 24 * 60 * 60 * 1000;
+
+// Een NAVTEX-station herhaalt elk geldig bericht bij ELKE uitzendbeurt
+// (Oostende 'T': elke 4 uur); een CANCEL wordt maar een paar keer uitgezonden
+// en kan dus gemist worden -- de norm, niet de uitzondering. Het betrouwbare
+// signaal is dat het bericht niet meer herhaald wordt. Regel (Lex' keuze,
+// 72 uur = 18 beurten van Oostende): een bericht vervalt als het 72 uur niet
+// meer gehoord is TERWIJL het station in die periode wel hoorbaar was
+// (andere berichten van datzelfde station ontvangen). Zonder dat bewijs
+// (ontvanger uit, SDR++-server had de Airspy, storing) blijft alles staan.
+const NIET_MEER_GEHOORD_MS = 72 * 60 * 60 * 1000;
+
+function nietMeerHerhaald(b, laatstGehoordPerStation, registerStartMs) {
+  if (!b.stationId) return false;
+  const stationLaatstMs = laatstGehoordPerStation.get(b.stationId);
+  if (!stationLaatstMs) return false; // station nooit (recent) gehoord -> geen bewijs
+  if (b.laatstOntvangen) {
+    const eigenMs = new Date(b.laatstOntvangen).getTime();
+    return Number.isFinite(eigenMs) && stationLaatstMs - eigenMs > NIET_MEER_GEHOORD_MS;
+  }
+  // Geen blok-tijd bekend: het bericht ligt vóór het tijdenregister (ouder
+  // dan de laatste RUW_TIJDEN_MAX blokken). Alleen vervallen als het register
+  // zelf al meer dan 72 uur van dit station bestrijkt -- anders weten we het
+  // gewoon niet en houden we het.
+  return Number.isFinite(registerStartMs) && stationLaatstMs - registerStartMs > NIET_MEER_GEHOORD_MS;
+}
 
 // 2026-08-24, op verzoek van Lex: eerste, trefwoord-gebaseerde classificatie
 // van het soort navigatiewaarschuwing, voor een eigen icoon per eventtype op
@@ -1508,7 +1537,7 @@ function parseBlok(blok) {
   const datum = ruweDatum && ruweDatum.getTime() <= Date.now() + TOEKOMST_MARGE_MS ? ruweDatum : null;
   const coords = verwijderUitschieters(coordinatenIn(body));
 
-  return { code, station, typeLetter, datum, body, weergaveTekst, coords };
+  return { code, station, stationId, typeLetter, datum, body, weergaveTekst, coords }; // stationId sinds 2026-09-06, zie nietMeerHerhaald()
 }
 
 // 2026-08-27, op verzoek van Lex ("ik heb een systemd naar tail -f
@@ -1717,10 +1746,23 @@ export async function fetchNavtexLokaal(env = {}) {
   // maar wél de plausibiliteitsbox als hard vangnet: zonder de 450km-grens is
   // dit het enige dat corrupte coördinaten (94N, 204W, ...) nog tegenhoudt.
   const metPlek = metPositie.filter((b) => b.positie && positiePlausibel(b.positie));
+  // 2026-09-06, zie nietMeerHerhaald() hierboven: per station het laatste
+  // moment waarop we ÜBERHAUPT iets van dat station hoorden (over alle
+  // berichten, ook de ruwe duplicaten), plus het begin van het tijdenregister.
+  const laatstGehoordPerStation = new Map();
+  for (const rb of ruweBerichten) {
+    if (!rb.stationId || !rb.ontvangstTijd) continue;
+    const ms = new Date(rb.ontvangstTijd).getTime();
+    if (!Number.isFinite(ms)) continue;
+    if (ms > (laatstGehoordPerStation.get(rb.stationId) ?? 0)) laatstGehoordPerStation.set(rb.stationId, ms);
+  }
+  const registerStartMs = ruweBlokTijden.length ? new Date(ruweBlokTijden[0].tijd).getTime() : NaN;
+  let nietMeerHerhaaldTeller = 0;
   const nietVervallen = metPlek.filter((b) => {
     if (b.zelfVervalDatum && b.zelfVervalDatum.getTime() < nu) return false; // "CANCEL THIS MSG <datum>" al gepasseerd
     if (b.referentie && GEANNULEERDE_REFERENTIES.has(b.referentie)) return false; // door een later bericht ingetrokken
-    if (!b.zelfVervalDatum && b.datum && nu - b.datum.getTime() > VANGNET_MAX_OUDERDOM_MS) return false; // vangnet, geen primair mechanisme
+    if (nietMeerHerhaald(b, laatstGehoordPerStation, registerStartMs)) { nietMeerHerhaaldTeller += 1; return false; } // station hoorbaar, bericht 72u niet meer herhaald
+    if (!b.zelfVervalDatum && b.datum && nu - b.datum.getTime() > VANGNET_MAX_OUDERDOM_MS) return false; // noodrem (1 jaar), geen primair mechanisme
     return true;
   });
 
@@ -1733,7 +1775,7 @@ export async function fetchNavtexLokaal(env = {}) {
   console.log(
     `[weer] navtexLokaal: ${blokken.length} blok(ken) (${ruweBerichten.length} ruw, ${berichten.length} na dedup) in ${bestand}, ` +
       `${berichten.length} met leesbare code, ${zonderPositie} zonder bruikbare positie (corrupte/onbekende station-letter of geen coordinaat), ` +
-      `${metPlek.length} met positie (geen afstandsgrens), ${vervallen} vervallen/ingetrokken, ${nietVervallen.length} blijft over.`
+      `${metPlek.length} met positie (geen afstandsgrens), ${vervallen} vervallen/ingetrokken (waarvan ${nietMeerHerhaaldTeller} 72u niet meer herhaald), ${nietVervallen.length} blijft over.`
   );
 
   return meldNavtexNood(nietVervallen.flatMap((b) => {
