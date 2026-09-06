@@ -1981,7 +1981,9 @@ function tekenGebiedOmtrek(signal) {
       // opschuivende keten liggen die hoekpunten uit elkaar, en een label
       // op een hoek hoort ondubbelzinnig bij die ene stippellijn.
       if (verlopen && ringIndex === 0 && signal.detail?.verlopenSinds && Array.isArray(ring) && ring.length) {
-        const label = tijdstempelTekst(signal.detail.verlopenSinds);
+        // Altijd mét datum (nieuwSindsTekst), Lex: een keten over middernacht
+        // gaf "5 sep 23:53" naast een kaal "00:03" -- dan lijkt de datum weg.
+        const label = nieuwSindsTekst(signal.detail.verlopenSinds);
         const top = ring.reduce((best, p) => (Array.isArray(p) && (!best || p[0] > best[0] || (p[0] === best[0] && p[1] > best[1])) ? p : best), null);
         if (label && top) {
           // Stapelen bij botsing: elk eerder label binnen ~70px horizontaal en
