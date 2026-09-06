@@ -7745,9 +7745,17 @@ function sorteerOpErnstEnTijd(a, b) {
 // ernst-dan-recentheid, maar onweercomplexen zijn juist het duidelijkst
 // geordend op afstand (dichtbij eerst): de Blitzortung-connector levert die
 // afstand al mee in detail.afstandKm.
+// 2026-09-06, op verzoek van Lex: bij NAVTEX is de bovenste (primaire) kaart
+// puur het nieuwste bericht, niet het zwaarste -- sinds de ernst-op-inhoud
+// van 2026-09-04 bleef anders een oudere windwaarschuwing dagenlang bovenaan
+// staan terwijl er nieuwere berichten binnenkwamen. Binnen een stationsgroep
+// (uitgeklapt) blijft ernst-dan-tijd gelden, zie groepeerPerStation().
 function sorteerItemsInCategorie(cat, items) {
   if (cat === 'onweercomplex') {
     return [...items].sort((a, b) => (a.detail?.afstandKm ?? Infinity) - (b.detail?.afstandKm ?? Infinity));
+  }
+  if (cat === 'navtex') {
+    return [...items].sort(nieuwsteEerst);
   }
   return [...items].sort(sorteerOpErnstEnTijd);
 }
@@ -8234,8 +8242,8 @@ function renderMeldingen(signalen) {
         toggle.className = 'melding-meer';
         // 2026-08-24: bij navtex het aantal "nieuwe" berichten in de "rest"
         // erbij tonen (zie isNavtexNieuw hierboven) — de zichtbare primair-
-        // melding is bij navtex altijd de nieuwste (zie sorteerOpErnstEnTijd:
-        // navtex heeft overal dezelfde ernst, dus puur tijd-gesorteerd), dus
+        // melding is bij navtex altijd de nieuwste (zie sorteerItemsInCategorie:
+        // navtex wordt daar sinds 2026-09-06 puur op tijd gesorteerd), dus
         // als er meerdere nieuwe berichten zijn zitten de overige verstopt in
         // deze ingeklapte "rest" — vandaar hier expliciet benoemd i.p.v. pas
         // zichtbaar ná het uitklappen.
