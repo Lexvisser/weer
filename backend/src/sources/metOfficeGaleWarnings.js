@@ -125,6 +125,7 @@ export async function fetchMetOfficeGaleWarnings() {
       tijd: w.uitgegeven ?? paginaUitgegeven ?? new Date().toISOString(),
       detail: {
         gebied: w.gebied,
+        zeekaart: true, // alleen op de Zeekaart tonen, zie tekenSignalen() in app.js
         fenomeenTekst: 'wind',
         headline: `Gale warning ${w.gebied}`,
         omschrijving: w.tekst,
