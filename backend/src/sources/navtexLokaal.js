@@ -475,10 +475,19 @@ function rommelGraad(body) {
   const aantal = (body.match(ITA2_VREEMD_REGEX) || []).length;
   return Math.min(1, aantal / 10);
 }
-function kwaliteitsScore(bericht) {
+// 2026-09-06, op melding van Lex (KA69 Niton, 38x ontvangen, toch "datum
+// onzeker" met als gekozen versie regel 2 = "DOVER - '$9;34 '54-85" terwijl
+// 26 ontvangsten letterlijk identiek "DOVER - DOVER STRAIT" gaven): een
+// verminkte regel kan toevallig als coördinaat parsen en daarmee +4 scoren,
+// meer dan 26 schone kopieën samen. Daarom `aantalIdentiek`: hoeveel
+// ontvangsten in dit bestand EXACT dezelfde tekst hebben. Ruis is nooit twee
+// keer hetzelfde, dus veel identieke kopieën is het sterkste bewijs van een
+// schone versie -- afgetopt op 8 zodat het niet alles overstemt.
+function kwaliteitsScore(bericht, aantalIdentiek = 1) {
   const schoneAfsluiting = /NNNN/i.test(bericht.body) ? 0 : 1;
   return bericht.coords.length * 4 + (bericht.datum ? 2 : 0) + schoneAfsluiting
-    + 0.9 * compactheid(bericht.coords) - 0.9 * rommelGraad(bericht.body);
+    + 0.9 * compactheid(bericht.coords) - 0.9 * rommelGraad(bericht.body)
+    + 1.5 * Math.min(Math.max(aantalIdentiek, 1), 8);
 }
 
 // Module-scoped (niet per pollcyclus gereset) geheugen: dedup-sleutel naar de
@@ -569,13 +578,21 @@ function eersteOntvangst(id) {
 function smeltSamenOpBesteVersie(berichten) {
   const zonderSleutel = [];
   const besteDitBestand = new Map(); // sleutel -> { bericht, score }
+  // 2026-09-06, zie kwaliteitsScore(): identieke teksten per sleutel tellen.
+  const identiekPerSleutelEnBody = new Map();
+  for (const b of berichten) {
+    const sleutel = dedupSleutel(b.code, b.typeLetter);
+    if (!sleutel) continue;
+    const k = `${sleutel}\u0000${b.body}`;
+    identiekPerSleutelEnBody.set(k, (identiekPerSleutelEnBody.get(k) ?? 0) + 1);
+  }
   for (const b of berichten) {
     const sleutel = dedupSleutel(b.code, b.typeLetter);
     if (!sleutel) {
       zonderSleutel.push(b); // geen betrouwbare sleutel -- zoals voorheen: los behandelen
       continue;
     }
-    const score = kwaliteitsScore(b);
+    const score = kwaliteitsScore(b, identiekPerSleutelEnBody.get(`${sleutel}\u0000${b.body}`) ?? 1);
     const huidigBeste = besteDitBestand.get(sleutel);
     // 2026-08-25-fix, op melding van Lex (PA14 — kabelbericht, de gehavende
     // ATS Mini-ontvangst bleef getoond terwijl een latere, veel schonere
