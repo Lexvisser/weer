@@ -35,6 +35,7 @@
 // geen apart warning-type-blok) worden niet apart opgehaald.
 import * as cheerio from 'cheerio';
 import { makeSignal, afstandKm, navtexErnst } from '../normalize.js';
+import { splitsPuntenLijst } from './navtexLokaal.js'; // 2026-09-06: geletterde puntenlijst -> losse punten (zie daar)
 
 const UKHO_URL = 'https://msi.admiralty.co.uk/RadioNavigationalWarnings';
 const TOEGESTANE_TYPES = new Set(['navarea 1', 'uk coastal']);
@@ -510,6 +511,29 @@ export async function fetchUkho(env = {}) {
           detail: { ...gedeeldeDetail, afstandTotJouKm: rig.afstandTotJouKm, positie: rig, riglijstIndex: i, riglijstTotaal: rigs.length },
         })
       );
+    }
+
+    // 2026-09-06, zelfde als in navtexLokaal.js (WZ 537/26: "TURBINE FOG
+    // SIGNALS INOPERATIVE: A. C22, 52-17.0N ... B. F17, ..."): een
+    // geletterde/genummerde opsomming van posities is een lijst van punten,
+    // geen lijnstuk -- de UKHO-kopie van hetzelfde bericht tekende anders
+    // een stippellijn dwars over de twee eigen-ontvangst-punten heen.
+    if (w.coords.length >= 2 && !LIJN_TRIGGER.test(w.description) && !/\b(AREA|BOUNDED|BOUNDARIES|BETWEEN|RADIUS|CIRCLE)\b/i.test(w.description)) {
+      const punten = splitsPuntenLijst(w.description);
+      if (punten.length === w.coords.length) {
+        return punten.map((punt, i) =>
+          makeSignal({
+            id: `ukho-${idVeilig}-punt${i}`,
+            categorie: 'navtex',
+            titel: `${w.type} - ${w.eventInfo.label}${punt.naam ? ` - ${punt.naam}` : ''} - ${w.reference}`,
+            ernst: navtexErnst(w.description),
+            lat: punt.lat,
+            lon: punt.lon,
+            tijd: w.datum ? w.datum.toISOString() : eersteOntvangst(`ukho-${idVeilig}-punt${i}`),
+            detail: { ...gedeeldeDetail, positie: punt, puntNaam: punt.naam, puntIndex: i, puntTotaal: punten.length, geometrieType: 'punt' },
+          })
+        );
+      }
     }
 
     const geometrie = classificeerGeometrie(w.description, w.coords, w.eventInfo.type);
