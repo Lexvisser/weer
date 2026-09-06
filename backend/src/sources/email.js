@@ -156,6 +156,57 @@ export function kaartUrlVoor({ lat, lon, gebiedPolygon, gebiedPolygonTrail }) {
   return null;
 }
 
+// 2026-09-06, na Lex' mails van 5/6 sep (Brevard FL): heruitgave 2 kreeg
+// nog een kaartje, heruitgave 3 en 4 niet meer -- Geoapify gaf "status 400"
+// omdat de GET-URL met drie of vier NWS-polygonen (elk tientallen
+// hoekpunten) boven de 2048 tekens uitkwam. Geoapify accepteert dezelfde
+// kaart ook als POST met JSON-body, zonder die grens -- dat gebruikt de mail
+// nu. kaartUrlVoor() hierboven blijft bestaan voor webpush.js, dat de URL
+// als <img>-bron nodig heeft (één polygoon, past vrijwel altijd).
+// Geeft een Buffer (PNG) of null; gooit nooit.
+export async function haalKaartAfbeelding({ lat, lon, gebiedPolygon, gebiedPolygonTrail }) {
+  const apiKey = process.env.GEOAPIFY_API_KEY;
+  if (!apiKey) return null;
+  const ringen = (Array.isArray(gebiedPolygonTrail) ? gebiedPolygonTrail : [])
+    .map((polygon) => (Array.isArray(polygon) && polygon.length ? polygon[0] : null))
+    .filter((ring) => Array.isArray(ring) && ring.length >= 3);
+  const eersteRing = Array.isArray(gebiedPolygon) && gebiedPolygon.length ? gebiedPolygon[0] : null;
+  const gekozen = ringen.length > 1 ? ringen.slice(-TRAIL_MAX) : (Array.isArray(eersteRing) && eersteRing.length >= 3 ? [eersteRing] : []);
+  const body = { style: 'osm-carto', width: 640, height: 420 };
+  if (gekozen.length) {
+    body.geometries = gekozen.map((ring, i) => {
+      const isLaatste = i === gekozen.length - 1;
+      return {
+        type: 'polygon',
+        value: ring.map(([latP, lonP]) => ({ lat: latP, lon: lonP })),
+        linewidth: isLaatste || gekozen.length === 1 ? 3 : 2,
+        linecolor: '#ff2e6d',
+        fillcolor: '#ff2e6d',
+        lineopacity: isLaatste ? 0.9 : 0.4,
+        fillopacity: gekozen.length === 1 ? 0.15 : isLaatste ? 0.18 : 0.08,
+      };
+    });
+  } else if (lat != null && lon != null) {
+    body.center = { lat, lon };
+    body.zoom = 9;
+    body.markers = [{ lat, lon, color: '#ff2e6d', size: 'large' }];
+  } else {
+    return null;
+  }
+  try {
+    const res = await fetch(`https://maps.geoapify.com/v1/staticmap?apiKey=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    console.error('[weer] mail: kaartje ophalen mislukt, mail gaat gewoon door zonder kaartje —', err.message ?? err);
+    return null;
+  }
+}
+
 // 2026-08-23, op verzoek van Lex ("kan dat naar lexvisser@gmail.com ipv het
 // apple adres?", over het Lifeliner-poll-rapport specifiek) — optionele `to`-
 // override: zonder deze param blijft het gedrag exact zoals voorheen
@@ -293,16 +344,9 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   // hele alarm blokkeren — voor een tijd-kritieke waarschuwing onacceptabel
   // voor iets wat puur "aardig om te hebben" is.
   const attachments = [];
-  const kaartUrl = kaartUrlVoor({ lat, lon, gebiedPolygon, gebiedPolygonTrail });
-  if (kaartUrl) {
-    try {
-      const res = await fetch(kaartUrl);
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      attachments.push({ filename: 'gebied.png', content: Buffer.from(await res.arrayBuffer()), cid: 'gebiedkaart' });
-    } catch (err) {
-      console.error('[weer] mail: kaartje ophalen mislukt, mail gaat gewoon door zonder kaartje —', err.message ?? err);
-    }
-  }
+  // 2026-09-06: via POST (zie haalKaartAfbeelding), geen URL-lengtegrens meer.
+  const kaartPng = await haalKaartAfbeelding({ lat, lon, gebiedPolygon, gebiedPolygonTrail });
+  if (kaartPng) attachments.push({ filename: 'gebied.png', content: kaartPng, cid: 'gebiedkaart' });
   // 2026-08-28: de mail is nu ALTIJD ook HTML (voorheen alleen met kaartje)
   // zodat de tijdzone-pillen overal zichtbaar zijn; de platte-tekst-variant
   // krijgt dezelfde omgerekende tijden tussen haakjes als terugval voor
