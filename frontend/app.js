@@ -3359,19 +3359,20 @@ const NAVTEX_BLACKOUT_SVG = `
 // slanke, weinig geflareerde hoorn-cone (klein mondstuk-blokje + lage,
 // langgerekte bel) met 4 rechte geluidslijnen i.p.v. boogjes, en een
 // felrode (#ff3b3b) diagonale streep. Visueel geverifieerd op 22/90px.
+// 2026-09-06, Lex ("we hadden al een (lelijk) icon voor kapotte misthoorn,
+// maak die meteen beter"): de slanke hoorn-cone las op kaartformaat als een
+// stift/lippenstift. Nu het universele "geluid uit"-glyph: een klassieke
+// luidspreker (blokje + uitlopende kegel) met twee geluidsboogjes en een
+// felrode diagonale streep -- op 22px direct herkenbaar als "geen geluid".
+// Visueel vergeleken met de oude versie op 22/48/96px.
 const NAVTEX_MISTHOORN_SVG = `
   <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-    <g fill="#e8eaed">
-      <rect x="1" y="10.6" width="2.2" height="2.8" rx="0.35"/>
-      <path d="M3.2,9.7 L13.5,7.6 L13.5,16.4 L3.2,14.3 Z"/>
+    <path d="M3,9.2 L7.2,9.2 L12.6,4.6 L12.6,19.4 L7.2,14.8 L3,14.8 Z" fill="#e8eaed"/>
+    <g stroke="#e8eaed" stroke-width="1.6" stroke-linecap="round" fill="none">
+      <path d="M15.4,8.6 Q17.6,12 15.4,15.4"/>
+      <path d="M18.2,6.2 Q21.6,12 18.2,17.8"/>
     </g>
-    <g stroke="#e8eaed" stroke-width="1.1" stroke-linecap="round" fill="none">
-      <line x1="15.8" y1="7.4" x2="20.3" y2="4.6"/>
-      <line x1="16.3" y1="9.8" x2="21.6" y2="8.3"/>
-      <line x1="16.3" y1="14.2" x2="21.6" y2="15.7"/>
-      <line x1="15.8" y1="16.6" x2="20.3" y2="19.4"/>
-    </g>
-    <line x1="1.8" y1="19.2" x2="21.5" y2="4.8" stroke="#ff3b3b" stroke-width="1.9" stroke-linecap="round"/>
+    <line x1="3.2" y1="20.4" x2="20.8" y2="3.6" stroke="#ff3b3b" stroke-width="2.2" stroke-linecap="round"/>
   </svg>
 `.trim();
 

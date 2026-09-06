@@ -138,7 +138,7 @@ const EVENT_REGELS = [
   // ander soort gevaar voor een heel andere situatie. VOOR
   // 'licht-onbetrouwbaar' gezet (specifieker eerst) zodat "FOGHORN
   // INOPERATIVE" niet per ongeluk als lichtstoring wegvalt.
-  { type: 'foghorn', label: 'Misthoorn defect', re: /FOGHORN[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT)\b/i },
+  { type: 'foghorn', label: 'Misthoorn defect', re: /\bFOG\s*(?:HORNS?|SIGNALS?)\b[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT|UNRELIABLE)\b/i }, // 2026-09-06: ook "FOG SIGNAL(S)" (WZ 537/26 windturbines)
   { type: 'boei-nieuw', label: 'Boei geplaatst/gewijzigd', re: /(LIGHT)?BUOY[^.]{0,25}\bESTABLISHED\b|BUOY\s+DEPLOYED|WAVERIDER BUOY/i },
   { type: 'safety-zone', label: 'Veiligheidszone', re: /SAFETY ZONE|AREA PROHIBITED/i },
   { type: 'kabel', label: 'Kabelwerkzaamheden', re: /\bCABLE\b/i },

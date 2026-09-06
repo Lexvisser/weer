@@ -985,7 +985,7 @@ const EVENT_REGELS = [
   // ander soort gevaar voor een heel andere situatie. VOOR
   // 'licht-onbetrouwbaar' gezet (specifieker eerst) zodat "FOGHORN
   // INOPERATIVE" niet per ongeluk als lichtstoring wegvalt.
-  { type: 'foghorn', label: 'Misthoorn defect', re: /FOGHORN[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT)\b/i },
+  { type: 'foghorn', label: 'Misthoorn defect', re: /\bFOG\s*(?:HORNS?|SIGNALS?)\b[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT|UNRELIABLE)\b/i }, // 2026-09-06: ook "FOG SIGNAL(S)" (WZ 537/26 windturbines)
   { type: 'boei-nieuw', label: 'Boei geplaatst/gewijzigd', re: /(LIGHT)?BUOY[^.]{0,25}\bESTABLISHED\b|BUOY\s+DEPLOYED|WAVERIDER BUOY/i },
   { type: 'safety-zone', label: 'Veiligheidszone', re: /SAFETY ZONE|AREA PROHIBITED/i },
   { type: 'kabel', label: 'Kabelwerkzaamheden', re: /\bCABLE\b/i },
@@ -1109,7 +1109,7 @@ function classificeerGeometrie(body, coords, eventType) {
 // Onderscheid: als het woord vlak NA de EERSTE coördinaat een statuswoord
 // is, kan dat onmogelijk een platformnaam zijn — dus staat de naam in dat
 // geval vóór de coördinaat (dit format), anders erna (HAEVA-format).
-const RIGLIJST_STATUSWOORD_REGEX = /^\s*(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|FOGHORN|DEFECTIVE|NOT\s+WORKING|OUT\s+OF\s+ORDER|SILENT)\b/i;
+const RIGLIJST_STATUSWOORD_REGEX = /^\s*(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|FOGHORN|FOG\s+(?:HORN|SIGNAL)S?|DEFECTIVE|NOT\s+WORKING|OUT\s+OF\s+ORDER|SILENT)\b/i;
 
 // Los, per-platform statuslabel (UNLIT/FOGHORN INOPERATIVE/NAV AIDS
 // UNRELIABLE/...) — bewust NIET via de EVENT_REGELS hierboven: die
@@ -1123,7 +1123,7 @@ const RIGLIJST_STATUSWOORD_REGEX = /^\s*(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATI
 // inoperative zou ik aparte icons willen trouwens").
 function classificeerRiglijstStatus(statusTekst) {
   if (!statusTekst) return null;
-  if (/FOGHORN[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT)\b/i.test(statusTekst)) {
+  if (/\bFOG\s*(?:HORNS?|SIGNALS?)\b[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT|UNRELIABLE)\b/i.test(statusTekst)) {
     return { type: 'foghorn', label: 'Misthoorn defect' };
   }
   // 2026-08-27, op verzoek van Lex, na MSI 220/26 (platform K6DN: "TOTAL
