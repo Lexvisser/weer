@@ -1984,7 +1984,15 @@ function tekenGebiedOmtrek(signal) {
         const label = tijdstempelTekst(signal.detail.verlopenSinds);
         const top = ring.reduce((best, p) => (Array.isArray(p) && (!best || p[0] > best[0] || (p[0] === best[0] && p[1] > best[1])) ? p : best), null);
         if (label && top) {
-          L.tooltip({ permanent: true, direction: 'top', offset: [0, -2], className: 'verlopen-gebied-label', interactive: false })
+          // Stapelen bij botsing: elk eerder label binnen ~70px horizontaal en
+          // ~16px verticaal schuift dit label één regel (14px) verder omhoog.
+          const px = kaart.latLngToLayerPoint(L.latLng(top[0], top[1]));
+          let trede = 0;
+          verlopenLabelPunten.forEach((q) => {
+            if (Math.abs(q.x - px.x) < 70 && Math.abs(q.y - px.y) < 16) trede = Math.max(trede, q.trede + 1);
+          });
+          verlopenLabelPunten.push({ x: px.x, y: px.y, trede });
+          L.tooltip({ permanent: true, direction: 'top', offset: [0, -2 - trede * 14], className: 'verlopen-gebied-label', interactive: false })
             .setLatLng(top)
             .setContent(label)
             .addTo(gebiedLaag);
@@ -2011,10 +2019,18 @@ function tekenGebiedOmtrek(signal) {
 // ÉLK signaal met een gebiedPolygon/koerslijn tegelijk (niet alleen het
 // laatst aangetikte), zodat bv. twee gelijktijdige Severe Thunderstorm
 // Warnings allebei hun omtrek behouden.
+// 2026-09-06: geplaatste verlopen-tijdlabels in deze tekenbeurt (kaartpixels),
+// zodat labels van gebieden met (bijna) hetzelfde noordelijkste hoekpunt
+// boven elkaar gestapeld worden i.p.v. over elkaar heen -- zie tekenGebiedOmtrek().
+let verlopenLabelPunten = [];
 function tekenAlleGebiedOmtrekken(signalen) {
   if (!gebiedLaag) return;
   gebiedLaag.clearLayers();
-  signalen.forEach((s) => tekenGebiedOmtrek(s));
+  verlopenLabelPunten = [];
+  // Verlopen gebieden op tijd (oudste eerst), zodat gestapelde labels van
+  // onder naar boven chronologisch lopen.
+  const volgorde = [...signalen].sort((a, b) => new Date(a.detail?.verlopenSinds ?? 0) - new Date(b.detail?.verlopenSinds ?? 0));
+  volgorde.forEach((s) => tekenGebiedOmtrek(s));
 }
 
 // Kale bounds-berekening voor een los signaal (geen tekenen/clearen — dat
