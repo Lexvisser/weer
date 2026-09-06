@@ -1941,8 +1941,13 @@ function tekenGebiedOmtrek(signal) {
   // warning kan worden aangezien. Zelfde opzet (gestippelde rand + lichte
   // vulling), alleen kleur/dekking gedempt.
   const verlopen = Boolean(signal.detail?.verlopen);
+  // 2026-09-06, Lex ("de verlopen area's zijn erg slecht te zien"): grijs
+  // #9ea6b4 met opacity 0.4 en vulling 0.04 viel op de donkere kaart weg.
+  // Nu lichter grijs, dikkere/opaquere stippellijn en wat meer vulling --
+  // nog steeds grijs en gestippeld (dus onmiskenbaar geschiedenis), maar
+  // leesbaar; overlappende verlopen omtrekken stapelen zo ook zichtbaar op.
   const omtrekKleur = verlopen
-    ? '#9ea6b4'
+    ? '#c9cede'
     : (signal.categorie === 'weerwaarschuwing' && WEER_KLEUR_HEX[signal.detail?.kleur]) // 2026-09-04: code-kleur, zie WEER_KLEUR_HEX
       || (GEBIED_OMTREK_KLEUR_PER_CATEGORIE[signal.categorie] ?? GEBIED_OMTREK_KLEUR_STANDAARD);
   let ietsGetekend = false;
@@ -1957,11 +1962,11 @@ function tekenGebiedOmtrek(signal) {
       L.polygon(ring, {
         className: 'gebied-omtrek',
         color: omtrekKleur,
-        weight: prominent ? 3 : 1.5,
-        opacity: verlopen ? 0.4 : prominent ? 0.95 : 0.55,
-        dashArray: verlopen ? '3 7' : prominent ? '10 6' : '5 7',
+        weight: prominent ? 3 : verlopen ? 2 : 1.5,
+        opacity: verlopen ? 0.7 : prominent ? 0.95 : 0.55,
+        dashArray: verlopen ? '4 6' : prominent ? '10 6' : '5 7',
         fillColor: omtrekKleur,
-        fillOpacity: verlopen ? 0.04 : prominent ? 0.12 : 0.05,
+        fillOpacity: verlopen ? 0.1 : prominent ? 0.12 : 0.05,
         interactive: false,
       }).addTo(gebiedLaag);
     });
@@ -1970,9 +1975,9 @@ function tekenGebiedOmtrek(signal) {
   if (Array.isArray(koerslijnLatLon) && koerslijnLatLon.length >= 2) {
     L.polyline(koerslijnLatLon, {
       className: 'koers-lijn',
-      color: verlopen ? '#9ea6b4' : '#3ec6ff',
+      color: verlopen ? '#c9cede' : '#3ec6ff',
       weight: 2.5,
-      opacity: verlopen ? 0.4 : 0.85,
+      opacity: verlopen ? 0.65 : 0.85,
       dashArray: '2 6',
       interactive: false,
     }).addTo(gebiedLaag);
