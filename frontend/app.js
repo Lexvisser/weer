@@ -3364,10 +3364,12 @@ const NAVTEX_BLACKOUT_SVG = `
 // de PC speaker". Lex' referentie: een klassieke toeter/bulb horn, "maar dan
 // zonder de ballon" -- dus: klein mondstuk-blokje, smalle buis die naar
 // rechts uitloopt in een holle (concave) trompetbeker met een rechte lip.
-// Felrode diagonale streep eroverheen. Visueel gecheckt op 22/48/96px.
+// Felrode diagonale streep eroverheen. Lex: "niet in het wit" -> amber
+// (#f5b942, messing), valt op tegen de blauwe zeekaart en bijt de rode
+// streep niet. Visueel gecheckt op 22/48/96px.
 const NAVTEX_MISTHOORN_SVG = `
   <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-    <g fill="#e8eaed">
+    <g fill="#f5b942">
       <rect x="0.8" y="9.9" width="2.8" height="4.2" rx="0.5"/>
       <path d="M3.6,10.4 L10.5,10.1 C15,9.9 18,6.8 20.8,3.9 L22.8,3.9 L22.8,20.1 L20.8,20.1 C18,17.2 15,14.1 10.5,13.9 L3.6,13.6 Z"/>
     </g>
