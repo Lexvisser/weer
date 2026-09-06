@@ -544,7 +544,14 @@ function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
     // -- werd ten onrechte "leg 2". Daarom: NIET samenvoegen als de vorige
     // vlucht op zijn eigen startpunt eindigde (terug op de basis = inzet
     // klaar), alleen als 'ie ergens anders (bij het incident) bleef staan.
-    const terugOpStartpunt = vorige && afstandKm(vorige.startLat, vorige.startLon, vorige.laatstLat, vorige.laatstLon) <= HERVAT_AFSTAND_KM;
+    // Tweede ronde (zelfde avond): "eigen startpunt" bleek niet genoeg -- LL1
+    // was om 16:07 pas op 59 km (midden in de vlucht, rand van het zoekvak)
+    // voor het eerst gezien, dus zijn startpunt was niet de basis. Daarom nu
+    // hard: eindigde de vorige vlucht op een bekende thuisbasis, dan is de
+    // volgende opstijging altijd een nieuwe inzet.
+    const terugOpStartpunt = vorige && (
+      afstandKm(vorige.startLat, vorige.startLon, vorige.laatstLat, vorige.laatstLon) <= HERVAT_AFSTAND_KM
+      || THUISBASES.some(([bLat, bLon]) => afstandKm(bLat, bLon, vorige.laatstLat, vorige.laatstLon) <= HERVAT_AFSTAND_KM));
     if (vorige && !terugOpStartpunt && nu - vorige.eindMs <= HERVAT_VENSTER_MS
       && afstandKm(vorige.laatstLat, vorige.laatstLon, lat, lon) <= HERVAT_AFSTAND_KM) {
       vluchtLog.splice(idx, 1);
@@ -588,6 +595,14 @@ function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
 
 const HERVAT_VENSTER_MS = 90 * 60 * 1000; // max grondtijd bij het incident om nog als zelfde inzet te tellen
 const HERVAT_AFSTAND_KM = 3; // nieuwe start moet vlak bij het vorige eindpunt liggen
+// Thuisbases van de toestellen (Wikipedia/publieke luchtvaartgegevens, ~km-nauwkeurig is genoeg bij 3 km marge).
+const THUISBASES = [
+  [52.4133, 4.8042], // Amsterdam Heliport (EHHA) — Lifeliner 1
+  [51.9569, 4.4372], // Rotterdam The Hague Airport — Lifeliner 2
+  [51.6564, 5.7086], // Vliegbasis Volkel — Lifeliner 3
+  [53.1197, 6.5794], // Groningen Airport Eelde — Lifeliner 4
+  [53.2286, 5.7603], // Vliegbasis Leeuwarden — ambulancehelikopter
+];
 
 function sluitVlucht(icao24, v) {
   openVluchten.delete(icao24);
