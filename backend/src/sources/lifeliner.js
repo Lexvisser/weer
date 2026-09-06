@@ -529,6 +529,29 @@ function pollTempoMs(modus) {
 function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
   let v = openVluchten.get(icao24);
   if (v && nu - v.laatstMs > TRAIL_STALE_MS) { sluitVlucht(icao24, v); v = null; }
+  // 2026-09-06: heen- en terugleg samenvoegen tot één inzet. Uit het logboek
+  // van 5/6 sep bleek elke "start 38 km"-vlucht de terugweg te zijn van een
+  // vlucht die 20+ min eerder op exact die plek eindigde: de heli staat bij
+  // het incident aan de grond (of valt daar uit OpenSky's beeld), na
+  // TRAIL_STALE_MS sluit het logboek de vlucht, en de terugweg werd een
+  // "nieuwe" vlucht. Regel: begint een toestel binnen HERVAT_VENSTER_MS en
+  // binnen HERVAT_AFSTAND_KM van waar zijn vorige vlucht eindigde, dan wordt
+  // die vlucht heropend (legs++, grondtijd bijgehouden) i.p.v. een nieuwe.
+  if (!v) {
+    const idx = vluchtLog.findLastIndex((x) => x.icao24 === icao24);
+    const vorige = idx >= 0 ? vluchtLog[idx] : null;
+    if (vorige && nu - vorige.eindMs <= HERVAT_VENSTER_MS
+      && afstandKm(vorige.laatstLat, vorige.laatstLon, lat, lon) <= HERVAT_AFSTAND_KM) {
+      vluchtLog.splice(idx, 1);
+      v = vorige;
+      v.legs = (v.legs ?? 1) + 1;
+      v.grondMs = (v.grondMs ?? 0) + (nu - v.laatstMs);
+      delete v.eindMs; delete v.credits;
+      v._hervat = true; // deze waarneming niet als 'gat' tellen
+      openVluchten.set(icao24, v);
+      console.log(`[weer] lifeliner: vlucht hervat — ${naam}, leg ${v.legs}, na ${Math.round((nu - v.laatstMs) / 60000)} min aan de grond op ${afstand} km van huis`);
+    }
+  }
   if (!v) {
     v = {
       icao24, naam, startMs: nu, startLat: lat, startLon: lon, startAfstandKm: afstand,
@@ -544,9 +567,10 @@ function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
     };
     openVluchten.set(icao24, v);
     console.log(`[weer] lifeliner: vlucht gestart — ${naam} op ${afstand} km van huis`);
-  } else if (nu - v.laatstMs > 2 * MISSIE_POLL_MS + 5000) {
+  } else if (nu - v.laatstMs > 2 * MISSIE_POLL_MS + 5000 && !v._hervat) {
     v.gaten++;
   }
+  delete v._hervat;
   v.route ??= [];
   v.route.push([Number(lat.toFixed(5)), Number(lon.toFixed(5)), nu]);
   if (v.route.length > VLUCHT_ROUTE_MAX) v.route = v.route.filter((_, i) => i % 2 === 0 || i === v.route.length - 1);
@@ -556,6 +580,9 @@ function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
   if (baroAltM != null) v.maxHoogteM = Math.max(v.maxHoogteM ?? 0, Math.round(baroAltM));
   v.waarnemingen++;
 }
+
+const HERVAT_VENSTER_MS = 90 * 60 * 1000; // max grondtijd bij het incident om nog als zelfde inzet te tellen
+const HERVAT_AFSTAND_KM = 3; // nieuwe start moet vlak bij het vorige eindpunt liggen
 
 function sluitVlucht(icao24, v) {
   openVluchten.delete(icao24);
@@ -603,9 +630,10 @@ function vluchtRegel(v, open) {
   return [
     `  ${v.naam} — ${nlTijd(v.startMs)} t/m ${open ? 'nu' : nlTijd(v.eindMs)} NL (${duur} min${open ? ', LOOPT NOG' : ''})`,
     `    ${v.waarnemingen} waarneming(en)${gem != null ? `, gem. elke ${gem}s` : ''}${v.gaten ? `, ${v.gaten} gat(en) in de data` : ''}${v.credits != null ? `, ~${v.credits} credits` : ''}`,
+    v.legs > 1 ? `    ${v.legs} legs (heen/terug), ${Math.round(v.grondMs / 60000)} min aan de grond bij het incident` : null,
     `    afstand van huis: start ${v.startAfstandKm} km, laatst ${v.laatstAfstandKm} km (dichtstbij ${v.minAfstandKm} km, verst ${v.maxAfstandKm} km)${v.maxHoogteM != null ? `, max ${v.maxHoogteM} m hoogte` : ''}`,
     `    aanleiding: ${v.mmtTrigger ? 'MMT-P2000-melding in het uur ervoor' : 'geen MMT-P2000-melding gezien'}`,
-  ].join('\n');
+  ].filter((r) => r != null).join('\n');
 }
 function nu0() { return Date.now(); }
 
@@ -707,6 +735,13 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
       // erná, zodat een landing/doorstart niet gemist wordt.
       actiefTotMs = nu + ACTIEF_NA_VLUCHT_MS;
       vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand: afstandKm(homeLat, homeLon, lat, lon), nu });
+      // 2026-09-06: bij een hervatte vlucht (zie vluchtBijwerken) is het
+      // kaartspoor vaak al gewist (>20 min niet gezien) — de heenweg terug
+      // opbouwen uit de bewaarde route, zodat de hele inzet op de kaart staat.
+      const vlucht = openVluchten.get(icao24);
+      if (trail.punten.length === 0 && vlucht?.route?.length > 1) {
+        trail.punten = vlucht.route.map(([la, lo, t]) => ({ lat: la, lon: lo, tijdMs: t })).slice(0, -1);
+      }
       trail.punten.push({ lat, lon, tijdMs: nu });
       trail.punten = trail.punten
         .filter((p) => nu - p.tijdMs <= TRAIL_VENSTER_MS)
