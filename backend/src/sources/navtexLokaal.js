@@ -1301,6 +1301,32 @@ function cardinaalRichtingUit(tekst) {
 }
 
 const BOEI_NAAM_REGEX = /\b([A-Z])\s*-\s*([\s\S]{1,90}?)\s+ESTABLISHED\s+IN\s+POS(?:ITION)?\s*:?\s*$/i;
+// 2026-09-06, zie de aanroep in fetchNavtexLokaal(): geletterde/genummerde
+// puntenlijst. Elke coördinaat moet in zijn eigen stuk tekst (sinds de vorige
+// coördinaat) een lijstteken hebben -- "A." / "B." (losse hoofdletter + punt)
+// of "1." / "(2)" -- anders is het geen opsomming en geeft dit [] terug.
+// Naam = tekst tussen dat lijstteken en de coördinaat, opgeschoond ("C22").
+const PUNT_LIJSTTEKEN_REGEX = /(?:^|[\s.;:])(?:([A-Z])\.|\(?(\d{1,2})[.)])\s+([^]*?)$/;
+export function splitsPuntenLijst(body) {
+  const entries = [];
+  const regex = new RegExp(COORD_REGEX.source, 'gi');
+  const matches = [...body.matchAll(regex)];
+  let vanaf = 0;
+  for (const match of matches) {
+    const stuk = body.slice(vanaf, match.index);
+    const m = PUNT_LIJSTTEKEN_REGEX.exec(stuk);
+    if (!m) return [];
+    const naam = (m[3] ?? '').replace(/[\s,.:;-]+$/g, '').replace(/\s+/g, ' ').trim();
+    if (naam.length > 40) return []; // te veel tekst tussen lijstteken en coördinaat -- geen kale puntenlijst
+    const lat = (Number(match[1]) + Number(normaliseerMinuten(match[2])) / 60) * (match[3].toUpperCase() === 'S' ? -1 : 1);
+    const lon = (Number(match[4]) + Number(normaliseerMinuten(match[5])) / 60) * (match[6].toUpperCase() === 'W' ? -1 : 1);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+    entries.push({ naam: naam || null, lat: +lat.toFixed(6), lon: +lon.toFixed(6) });
+    vanaf = match.index + match[0].length;
+  }
+  return entries;
+}
+
 function splitsBoeiLijst(body) {
   const entries = [];
   const regex = new RegExp(COORD_REGEX.source, 'gi');
@@ -1932,6 +1958,33 @@ export async function fetchNavtexLokaal(env = {}) {
           detail: { ...gedeeldeDetail, positie: boei, boeiNaam: boei.naam, boeiRichting: boei.richting, boeiIndex: i, boeiTotaal: boeien.length },
         })
       );
+    }
+
+    // 2026-09-06, op verzoek van Lex (VA17 / WZ 537/26: "EAST ANGLIA ONE
+    // OFFSHORE WIND FARM. TURBINE FOG SIGNALS INOPERATIVE: A. C22, 52-17.0N
+    // 002-27.3E. B. F17, 52-15.7N 002-33.7E." -- "we zouden deze 2 kunnen
+    // plotten"): een geletterde/genummerde opsomming van losse posities
+    // (A. ... B. ... of 1. ... 2. ...) zonder lijn-/gebiedswoorden is een
+    // lijst van PUNTEN, geen lijnstuk of polygoon. Zelfde patroon als de
+    // boei-lijst hierboven, maar generiek: elk punt een eigen signaal met
+    // de naam uit de tekst tussen het lijstteken en de coördinaat ("C22").
+    // Verdwijnen gaat mee met het moederbericht (zelfde referentie/72u-regel).
+    if (b.coords.length >= 2 && !LIJN_TRIGGER.test(b.body) && !/\b(AREA|BOUNDED|BOUNDARIES|BETWEEN|RADIUS|CIRCLE)\b/i.test(b.body)) {
+      const punten = splitsPuntenLijst(b.body);
+      if (punten.length === b.coords.length) {
+        return punten.map((punt, i) =>
+          makeSignal({
+            id: `${baseId}-punt${i}`,
+            categorie: 'navtex',
+            titel: `NAVTEX - ${b.eventInfo.label}${punt.naam ? ` - ${punt.naam}` : ''} - ${stationNaam}`,
+            ernst: navtexErnst(b.body, b.typeLetter),
+            lat: punt.lat,
+            lon: punt.lon,
+            tijd: b.datum ? b.datum.toISOString() : tijdZonderDatum(b, `${baseId}-punt${i}`),
+            detail: { ...gedeeldeDetail, positie: punt, puntNaam: punt.naam, puntIndex: i, puntTotaal: punten.length, geometrieType: 'punt' },
+          })
+        );
+      }
     }
 
     const geometrie = classificeerGeometrie(b.body, b.coords, b.eventInfo.type);
