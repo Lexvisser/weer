@@ -4383,6 +4383,17 @@ function polygoonZwaartepunt(ringLatLon) {
   return L.latLng(cy / (3 * a2), cx / (3 * a2));
 }
 
+// Drie vormen: "8→6" (gale nu, zakt af — 'at first'), "7→8" (gale op komst)
+// en kaal "8"/"8↘" als er geen tweede getal te vinden was. Gedeeld door de
+// zeekaart-vanen en de Met Office-gale-vaantjes (renderMap, 2026-09-06).
+function galeKrachtTekst(info) {
+  return info.naKracht != null
+    ? `${info.kracht}→${info.naKracht}`
+    : info.trend === '↗' && info.huidigeKracht != null
+      ? `${info.huidigeKracht}→${info.kracht}`
+      : `${info.kracht}${info.trend}`;
+}
+
 let windvaanLaag = null;
 
 function verversWindvanen() {
@@ -4467,11 +4478,7 @@ function verversWindvanen() {
     // misleidend kaal "8↗" — dat las als "nu al 8".
     // Drie vormen: "8→6" (gale nu, zakt af — 'at first'), "7→8" (gale op
     // komst) en kaal "8"/"8↘" als er geen tweede getal te vinden was.
-    const krachtTekst = info.naKracht != null
-      ? `${info.kracht}→${info.naKracht}`
-      : info.trend === '↗' && info.huidigeKracht != null
-        ? `${info.huidigeKracht}→${info.kracht}`
-        : `${info.kracht}${info.trend}`;
+    const krachtTekst = galeKrachtTekst(info);
     const marker = L.marker(midden, {
       icon: L.divIcon({
         className: '',
@@ -7644,6 +7651,30 @@ function renderMap(signalen) {
         .bindPopup(() => popupHtml(s), { maxWidth: popupBreedte });
       markersPerId.set(s.id, marker);
       if (Array.isArray(s._groepMeer)) s._groepMeer.forEach((extra) => markersPerId.set(extra.id, marker));
+      // 2026-09-06, op verzoek van Lex ("de pijlen en de rode cijfers er
+      // gewoon naast bij de Met Office gales"): dezelfde windvaan + kracht
+      // als op de Zeekaart, rechts naast de pin, afgeleid uit de
+      // waarschuwingstekst zelf ("Southwesterly gale force 8 expected
+      // later"). Niet klikbaar — de pin heeft de popup al. In Zee-modus
+      // overgeslagen voor de 10 eigen zeegebieden, daar staat de vaan al
+      // in het zwaartepunt (verversWindvanen).
+      if (s.id.startsWith('metoffice-gale-') && !s.detail?.verlopen) {
+        const eigenGebied = zeeModusActief && ZEE_GEBIEDEN.features.some((f) => f.properties.name === s.detail?.gebied);
+        const info = eigenGebied ? null : galeInfoUitTekst(s.detail?.omschrijving, s.detail?.gebied);
+        if (info) {
+          const icoonSvg = info.richting ? windVaanPijlSvg(info.richting.graden) : WIND_VAAN_SVG;
+          L.marker([s.lat, s.lon], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div class="wind-vaan">${icoonSvg}<span class="wind-vaan-kracht">${galeKrachtTekst(info)}</span></div>`,
+              iconSize: [64, 44],
+              iconAnchor: [-18, 22], // negatieve x = rechts van de pin (pin is 30px breed)
+            }),
+            interactive: false,
+            keyboard: false,
+          }).addTo(signaalLaag);
+        }
+      }
     });
   // 2026-08-20, op verzoek van Lex ("2 gebieden in Raleigh maar maar 1
   // outline bij beide apart") — ALLE actieve gebied-omtrekken (tornado-
