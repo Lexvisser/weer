@@ -1958,8 +1958,8 @@ function tekenGebiedOmtrek(signal) {
   const prominent = !verlopen && (DOPPLER_CATEGORIEEN.has(signal.categorie) // tornado, tornado-watch, tornado-bevestigd, severe-outlook
     || (signal.categorie === 'weerwaarschuwing' && (signal.detail?.kleur === 'Oranje' || signal.detail?.kleur === 'Rood'))); // 2026-09-04, Lex: oranje/rood weeralarm-gebied net zo prominent als tornado
   if (Array.isArray(ringenLatLon) && ringenLatLon.length) {
-    ringenLatLon.forEach((ring) => {
-      L.polygon(ring, {
+    ringenLatLon.forEach((ring, ringIndex) => {
+      const poly = L.polygon(ring, {
         className: 'gebied-omtrek',
         color: omtrekKleur,
         weight: prominent ? 3 : verlopen ? 2 : 1.5,
@@ -1969,6 +1969,17 @@ function tekenGebiedOmtrek(signal) {
         fillOpacity: verlopen ? 0.1 : prominent ? 0.12 : 0.05,
         interactive: false,
       }).addTo(gebiedLaag);
+      // 2026-09-06, Lex ("is aan de area zichtbaar te maken welke volgorde
+      // het was?"): bij een verlopen omtrek een klein vast label met het
+      // moment van verlopen in het midden van het gebied -- bij een keten
+      // van heruitgaves lees je zo de volgorde (23:49 -> 23:53 -> 00:03 ...)
+      // direct van de kaart af. Alleen op de eerste ring, één label per gebied.
+      if (verlopen && ringIndex === 0 && signal.detail?.verlopenSinds) {
+        const label = tijdstempelTekst(signal.detail.verlopenSinds);
+        if (label) {
+          poly.bindTooltip(label, { permanent: true, direction: 'center', className: 'verlopen-gebied-label', interactive: false });
+        }
+      }
     });
     ietsGetekend = true;
   }

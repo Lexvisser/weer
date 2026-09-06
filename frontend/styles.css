@@ -1336,6 +1336,11 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    rode gestippelde lijn, bewust ingetogener dan de flitsen-stipjes: dit is
    een gebiedsaanduiding, geen los datapunt, dus mag niet domineren. */
 .gebied-omtrek { filter: drop-shadow(0 0 3px rgba(255,46,109,0.3)); pointer-events:none; }
+/* 2026-09-06: tijdlabel midden in een verlopen gebied-omtrek (zie
+   tekenGebiedOmtrek in app.js) -- zelfde kale monospace-stijl als de
+   zeegebied-labels, in het grijs van de verlopen omtrek zelf. */
+.verlopen-gebied-label { background:none; border:none; box-shadow:none; padding:0; color:#c9cede; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.02em; text-shadow:0 1px 3px rgba(0,0,0,0.9); pointer-events:none; opacity:0.85; }
+.verlopen-gebied-label::before { display:none; }
 
 /* NHC-voorspelde-koerslijn van een orkaan (2026-08-17) — elektrisch blauw
    i.p.v. het kritieke rood van de gebied-omtrek hierboven: dit is een
