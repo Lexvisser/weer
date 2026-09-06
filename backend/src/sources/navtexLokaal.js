@@ -535,6 +535,19 @@ function bewaarEersteOntvangst() {
   }
 }
 
+// 2026-09-06, op melding van Lex (Rogaland LE76: popup zei "ontvangen 03:51",
+// de NIEUW-pil en de lijstvolgorde zeiden 08:30): bij een bericht zonder
+// leesbare eigen datum is het echte antenne-ontvangstmoment (laatstOntvangen,
+// uit het blok-tijdenregister) een betere tijd dan het moment waarop de app
+// het bericht voor het eerst zag -- dat laatste verschuift zodra de tekst
+// door een nieuwe ontvangst nét anders binnenkomt (andere hash -> nieuw ID).
+// eersteOntvangst() blijft de terugval als er geen blok-tijd bekend is.
+function tijdZonderDatum(b, id) {
+  const ontv = b.laatstOntvangen instanceof Date ? b.laatstOntvangen : (b.laatstOntvangen ? new Date(b.laatstOntvangen) : null);
+  if (ontv && !Number.isNaN(ontv.getTime())) return ontv.toISOString();
+  return eersteOntvangst(id);
+}
+
 function eersteOntvangst(id) {
   const bestaand = EERSTE_ONTVANGST_PER_ID.get(id);
   if (bestaand) return bestaand;
@@ -1812,7 +1825,7 @@ export async function fetchNavtexLokaal(env = {}) {
           ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04
           lat: rig.lat,
           lon: rig.lon,
-          tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(`${baseId}-rig${i}`),
+          tijd: b.datum ? b.datum.toISOString() : tijdZonderDatum(b, `${baseId}-rig${i}`),
           detail: {
             ...gedeeldeDetail,
             positie: rig,
@@ -1844,7 +1857,7 @@ export async function fetchNavtexLokaal(env = {}) {
           ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04
           lat: boei.lat,
           lon: boei.lon,
-          tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(`${baseId}-boei${i}`),
+          tijd: b.datum ? b.datum.toISOString() : tijdZonderDatum(b, `${baseId}-boei${i}`),
           detail: { ...gedeeldeDetail, positie: boei, boeiNaam: boei.naam, boeiRichting: boei.richting, boeiIndex: i, boeiTotaal: boeien.length },
         })
       );
@@ -1866,7 +1879,7 @@ export async function fetchNavtexLokaal(env = {}) {
         ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04
         lat: b.positie.lat,
         lon: b.positie.lon,
-        tijd: b.datum ? b.datum.toISOString() : eersteOntvangst(baseId),
+        tijd: b.datum ? b.datum.toISOString() : tijdZonderDatum(b, baseId),
         detail: {
           ...gedeeldeDetail,
           geometrieType: geometrie.type,

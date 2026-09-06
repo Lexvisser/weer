@@ -279,8 +279,13 @@ function verrijkSignalenMetNlTijd(signalen) {
 // niet is. Streepjes i.p.v. weglaten (Lex' eigen "of streepjes"-optie) -- zo
 // blijft zichtbaar dat er een tijdveld hoort te zijn, alleen onbekend, net
 // als de DATUM ONZEKER-pil elders al aangeeft.
+// 2026-09-06: als het echte antenne-ontvangstmoment wel bekend is, dat tonen
+// (met "ontv." ervoor zodat duidelijk is dat het geen berichttijd is).
 function tijdregelVoorSignaal(s) {
-  if (s.detail?.datumOnbetrouwbaar) return '—';
+  if (s.detail?.datumOnbetrouwbaar) {
+    const ontv = s.detail?.laatstOntvangen ? tijdstempelTekst(s.detail.laatstOntvangen) : null;
+    return ontv ? `ontv. ${ontv}` : '—';
+  }
   return tijdstempelTekst(s.tijd);
 }
 
@@ -7718,6 +7723,15 @@ function groepeerPerLocatie(items) {
 // op het laatst ontvangen tijdstip in de groep (los van ernst) -- Lex' eigen
 // expliciete keuze, i.p.v. de ernst-dan-tijd-regel die binnen een groep wel
 // geldt ook door te trekken naar de groepsvolgorde zelf.
+// 2026-09-06, op verzoek van Lex: berichten met DATUM ONZEKER staan altijd
+// helemaal onderaan (laagste prioriteit), daarboven gewoon nieuwste eerst.
+// Geldt voor de primaire kaart, de losse lijst én binnen een stationsgroep.
+function navtexVolgorde(a, b) {
+  const oa = a.detail?.datumOnbetrouwbaar ? 1 : 0;
+  const ob = b.detail?.datumOnbetrouwbaar ? 1 : 0;
+  return oa !== ob ? oa - ob : nieuwsteEerst(a, b);
+}
+
 function groepeerPerStation(items) {
   const groepen = new Map(); // stationsleutel -> { naam, items[] }
   items.forEach((s) => {
@@ -7730,7 +7744,7 @@ function groepeerPerStation(items) {
     .map(([sleutel, groep]) => ({
       sleutel,
       station: groep.naam,
-      items: [...groep.items].sort(sorteerOpErnstEnTijd),
+      items: [...groep.items].sort(navtexVolgorde), // 2026-09-06: datum-onzeker onderaan, verder nieuwste eerst
       laatsteTijd: Math.max(...groep.items.map((s) => new Date(s.tijd ?? 0).getTime() || 0)),
     }))
     .sort((a, b) => b.laatsteTijd - a.laatsteTijd);
@@ -7755,7 +7769,7 @@ function sorteerItemsInCategorie(cat, items) {
     return [...items].sort((a, b) => (a.detail?.afstandKm ?? Infinity) - (b.detail?.afstandKm ?? Infinity));
   }
   if (cat === 'navtex') {
-    return [...items].sort(nieuwsteEerst);
+    return [...items].sort(navtexVolgorde);
   }
   return [...items].sort(sorteerOpErnstEnTijd);
 }
