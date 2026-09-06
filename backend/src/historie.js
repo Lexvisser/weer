@@ -1,4 +1,4 @@
-// historie.js — houdt recent-verlopen signalen nog even vast (48 uur) zodat
+// historie.js — houdt recent-verlopen signalen nog even vast (24 uur) zodat
 // je op de kaart kunt zien waar een waarschuwing was, ook nadat de bron 'm
 // niet meer als actief teruggeeft. Op verzoek van Lex, 2026-08-20 ("die
 // historie is handig om te hebben zodat je kan zien waar je was") — geïnspi-
@@ -31,7 +31,8 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HISTORIE_BESTAND = join(__dirname, '..', 'data', 'historie.json');
 
-const VENSTER_MS = 48 * 60 * 60 * 1000;
+// 2026-09-06, Lex: "24h is zat" -- was 48 uur (naar tornadopath.com).
+const VENSTER_MS = 24 * 60 * 60 * 1000;
 
 const caches = new Map(); // sleutel -> Map<signaal-id, { signaal, laatstGezien }>
 

@@ -2760,7 +2760,7 @@ function popupHtml(s) {
       ? subDelen.map((deel) => `<div class="popup-sub">${deel}</div>`).join('')
       : `<div class="popup-sub">${subDelen.join(' · ')}</div>`;
   // 2026-08-20: detail.verlopen (zie historie.js) — dit is geen actuele
-  // melding meer, alleen een tot 48u terug bewaarde trail op de kaart. Dat
+  // melding meer, alleen een tot 24u terug bewaarde trail op de kaart. Dat
   // moet meteen duidelijk zijn in de popup, anders lijkt een verlopen
   // waarschuwing zomaar weer een actuele.
   const verlopenHtml = s.detail?.verlopen
@@ -7541,7 +7541,7 @@ function renderMap(signalen) {
       // -- zie .hazard-pin.kleur-geel/-oranje/-rood in styles.css.
       const weerKleurKlasse = s.categorie === 'weerwaarschuwing' ? WEER_KLEUR_KLASSE[s.detail?.kleur] : null;
       const pinKlasse = isLifeliner(s) ? 'is-lifeliner' : weerKleurKlasse ? `ernst-${s.ernst} ${weerKleurKlasse}` : `ernst-${s.ernst}`;
-      // 2026-08-20: detail.verlopen (zie historie.js) — tot 48u terug bewaarde
+      // 2026-08-20: detail.verlopen (zie historie.js) — tot 24u terug bewaarde
       // waarschuwingen die niet meer actief zijn, puur als lichte trail op de
       // kaart ("waar was het") i.p.v. een volwaardige actieve melding (die
       // staan niet meer in de Meldingen-lijst, zie renderMeldingen).
@@ -8029,7 +8029,7 @@ function maakStationGroepItem(cat, groep) {
 // (geen data getoond) i.p.v. bewust "niets aan de hand".
 // 2026-08-20: tweede parameter (laatsteVerlopen) op verzoek van Lex — puur
 // informatief: als er voor deze categorie geen actieve melding is, maar wél
-// nog een recent (binnen 48u, zie historie.js) verlopen signaal, komt er een
+// nog een recent (binnen 24u, zie historie.js) verlopen signaal, komt er een
 // hint-regel bij ("laatste verlopen ..."). Het kaartje zelf is bewust NIET
 // klikbaar (dat leidde tot verwarring toen er meerdere, ver-uit-elkaar-
 // liggende verlopen meldingen tegelijk waren — welke van de twee zou een
@@ -8234,7 +8234,7 @@ function maakLifelinerSectie() {
 function renderMeldingen(signalen) {
   laatsteMeldingenSignalen = signalen;
   if (huidigeView === 'meldingen' && lifelinerUitgeklapt) laadLifelinerVluchten();
-  // 2026-08-20: detail.verlopen (zie historie.js, backend) — tot 48u terug
+  // 2026-08-20: detail.verlopen (zie historie.js, backend) — tot 24u terug
   // bewaarde, inmiddels niet meer actieve waarschuwingen, puur bedoeld als
   // lichte trail op de KAART (zie renderMap) zodat je kunt zien waar een
   // waarschuwing was. Horen niet thuis in de Meldingen-lijst (die is voor
@@ -8255,7 +8255,7 @@ function renderMeldingen(signalen) {
 
   // 2026-08-20, op verzoek van Lex: elke categorie (actief of leeg) krijgt er
   // een losse, uitklapbare "🕓 verlopen"-sectie bij als er nog recent (binnen
-  // 48u, zie historie.js) verlopen signalen voor die categorie zijn — naast
+  // 24u, zie historie.js) verlopen signalen voor die categorie zijn — naast
   // (niet i.p.v.) de gedimde pinnetjes die de kaart daar sowieso al voor
   // toont. Reden: bij meerdere losse verlopen meldingen die ver uit elkaar
   // liggen (bv. county's aan tegenovergestelde kanten van de VS) vallen die
