@@ -420,6 +420,20 @@ export const SOURCES = [
     note: 'Officiële UKHO/Admiralty MSI-portal (msi.admiralty.co.uk), 450km-straal rond huis (NAVTEX_STRAAL_KM in .env, gedeeld met navtex.js) — zie sources/ukho.js voor het volledige voorbehoud.',
   },
   {
+    id: 'metOfficeGale',
+    categorie: 'weerwaarschuwing',
+    naam: 'Met Office gale warnings (Shipping Forecast)',
+    tier: 'officieel',
+    pollIntervalMs: 20 * 60 * 1000,
+    staleAfterMs: 3 * 60 * 60 * 1000,
+    implemented: true,
+    // 2026-09-06, op verzoek van Lex: de "Gale warnings"-sectie van dezelfde
+    // Met Office-printpagina die metOfficeZeeForecast.js al ophaalt, als
+    // echte meldingen -- de NAVTEX-variant (Cullercoats 'G') is te ver weg
+    // voor eigen ontvangst. Zie sources/metOfficeGaleWarnings.js.
+    note: 'Gale warnings per UK Shipping Forecast-zeegebied, 4x per dag bijgewerkt door de Met Office. Oranje = gale 8/severe gale 9, rood = storm 10+.',
+  },
+  {
     id: 'navtexLokaal',
     categorie: 'navtex',
     naam: 'NAVTEX — eigen testontvangst (ATS Mini + MLA-30+)',

@@ -39,7 +39,7 @@ const BRON_URL = 'https://weather.metoffice.gov.uk/specialist-forecasts/coast-an
 // De 31 officiële Shipping Forecast-zeegebieden, in de vaste (altijd
 // gelijke) uitzendvolgorde — hier alleen gebruikt om kop-teksten te
 // herkennen, niet om op te knippen.
-const GEBIEDSNAMEN = [
+export const GEBIEDSNAMEN = [
   'Viking', 'North Utsire', 'South Utsire', 'Forties', 'Cromarty', 'Forth',
   'Tyne', 'Dogger', 'Fisher', 'German Bight', 'Humber', 'Thames', 'Dover',
   'Wight', 'Portland', 'Plymouth', 'Biscay', 'Trafalgar', 'FitzRoy', 'Sole',
@@ -48,7 +48,7 @@ const GEBIEDSNAMEN = [
 ];
 const GEBIEDSNAMEN_SET = new Set(GEBIEDSNAMEN.map((n) => n.toUpperCase()));
 
-async function haalHtml() {
+export async function haalHtml() {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
@@ -139,7 +139,7 @@ function alsGebiedsnamen(kopTekst) {
 // ongeacht of de forecasttekst in een aparte <p> zit, los tussen de koppen
 // staat, of ergens anders binnen dezelfde ouder — alleen "tot de volgende
 // kop" is de aanname.
-function tekstTotVolgendeKop($, kopNode) {
+export function tekstTotVolgendeKop($, kopNode) {
   let tekst = '';
   let node = kopNode.next;
   while (node) {
@@ -219,7 +219,7 @@ export async function fetchMetOfficeZeeForecast() {
 // staat er letterlijk bij, dus die wordt gewoon afgetrokken -- geen aanname
 // over Britse zomertijd nodig. null bij een afwijkende opmaak.
 const MAANDEN_KORT = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
-function uitgifteTijdIn(html) {
+export function uitgifteTijdIn(html) {
   const platteTekst = cheerio.load(html)('body').text().replace(/\s+/g, ' ');
   const m = platteTekst.match(/Issued by the Met Office[^.]*?at\s+(\d{1,2}):(\d{2})\s*\(UTC([+-]\d{1,2})\)\s+on\s+[A-Za-z]{3}\s+(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/);
   if (!m) return null;

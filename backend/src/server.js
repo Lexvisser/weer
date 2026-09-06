@@ -40,6 +40,7 @@ import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruwe
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
+import { fetchMetOfficeGaleWarnings } from './sources/metOfficeGaleWarnings.js';
 import { fetchDwdFronten, huidigeFronten } from './sources/dwdFronten.js';
 import { fetchIsobaren, huidigeIsobaren, huidigeIsobarenStatus, noteerIsobarenFout, laadVeldVanSchijf as laadIsobarenVanSchijf, VERVERS_INTERVAL_MS as ISOBAREN_INTERVAL_MS } from './sources/isobaren.js';
 import { fetchVliegradar } from './sources/vliegradar.js';
@@ -85,6 +86,7 @@ const FETCHERS = {
   getij: (env) => fetchGetij(env),
   navtex: (env) => fetchNavtex(env),
   ukho: (env) => fetchUkho(env),
+  metOfficeGale: () => fetchMetOfficeGaleWarnings(),
   navtexLokaal: (env) => fetchNavtexLokaal(env),
   stormvloedkering: () => fetchStormvloedkering(),
   // 2026-08-27: wereldwijde tsunami's — PTWC (Stille Oceaan, officieel);
