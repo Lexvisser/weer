@@ -551,10 +551,19 @@ function bewaarEersteOntvangst() {
 // het bericht voor het eerst zag -- dat laatste verschuift zodra de tekst
 // door een nieuwe ontvangst nét anders binnenkomt (andere hash -> nieuw ID).
 // eersteOntvangst() blijft de terugval als er geen blok-tijd bekend is.
+// 2026-09-06, tweede ronde: NIET het laatste maar het EERSTE antenne-moment,
+// en daarvan het oudste t.o.v. het app-eerst-gezien-moment. Met "laatst"
+// schoof de tijd van een dagelijks herhaald bericht (Niton, geen DTG) elke
+// dag mee -> elke dag opnieuw "NIEUW" en bovenaan, precies de bug van
+// 2026-08-24 in een nieuw jasje (Lex' screenshot: hele Niton-groep "NIEUW OP
+// 6 SEP 11:49"). Het oudste bekende moment is stabiel: het bloktijdenregister
+// levert de echte antennetijd zolang het bericht daarin staat, en
+// eersteOntvangst(id) (op schijf) vangt op als de oudste blokken eruit vallen.
 function tijdZonderDatum(b, id) {
-  const ontv = b.laatstOntvangen instanceof Date ? b.laatstOntvangen : (b.laatstOntvangen ? new Date(b.laatstOntvangen) : null);
-  if (ontv && !Number.isNaN(ontv.getTime())) return ontv.toISOString();
-  return eersteOntvangst(id);
+  const app = eersteOntvangst(id);
+  const blok = b.eerstOntvangen ? new Date(b.eerstOntvangen) : null;
+  if (blok && !Number.isNaN(blok.getTime()) && blok.toISOString() < app) return blok.toISOString();
+  return app;
 }
 
 function eersteOntvangst(id) {
@@ -787,6 +796,7 @@ function ontvangstStatsVoorBericht(bericht, ruweBerichten) {
   // duplicaten heen — de blok-begintijd uit het viewer-register (zie
   // fetchNavtexLokaal), niet de DTG. ISO-strings, dus kaal vergelijkbaar.
   let laatsteOntvangst = null;
+  let eersteOntvangstBlok = null; // 2026-09-06: oudste blok-tijd, zie tijdZonderDatum()
   for (const rb of ruweBerichten) {
     const hoortErbij = inhoudSleutel
       ? inhoudsSleutel(rb) === inhoudSleutel
@@ -795,6 +805,7 @@ function ontvangstStatsVoorBericht(bericht, ruweBerichten) {
     aantalOntvangsten += 1;
     if (rb.datum && (!laatsteDatum || rb.datum.getTime() > laatsteDatum.getTime())) laatsteDatum = rb.datum;
     if (rb.ontvangstTijd && (!laatsteOntvangst || rb.ontvangstTijd > laatsteOntvangst)) laatsteOntvangst = rb.ontvangstTijd;
+    if (rb.ontvangstTijd && (!eersteOntvangstBlok || rb.ontvangstTijd < eersteOntvangstBlok)) eersteOntvangstBlok = rb.ontvangstTijd;
   }
   // Geen inhouds- of code-sleutel (te vage station/type-lezing, zie
   // dedupSleutel()/inhoudsSleutel() hierboven) -- dan is er niets om tegen te
@@ -803,8 +814,9 @@ function ontvangstStatsVoorBericht(bericht, ruweBerichten) {
   if (aantalOntvangsten === 0) {
     aantalOntvangsten = 1;
     laatsteOntvangst = bericht.ontvangstTijd ?? null;
+    eersteOntvangstBlok = bericht.ontvangstTijd ?? null;
   }
-  return { aantalOntvangsten, laatsteDatum, laatsteOntvangst };
+  return { aantalOntvangsten, laatsteDatum, laatsteOntvangst, eersteOntvangstBlok };
 }
 
 // 2026-08-24, op verzoek van Lex ("er staat best vaak cancel in een bericht
@@ -1742,12 +1754,12 @@ export async function fetchNavtexLokaal(env = {}) {
     const referentie = referentieIn(b.body);
     const zelfVervalDatum = zelfVervalDatumIn(b.body);
     // 2026-08-26, zie ontvangstStatsVoorBericht() hierboven.
-    const { aantalOntvangsten, laatsteDatum, laatsteOntvangst } = ontvangstStatsVoorBericht(b, ruweBerichten);
+    const { aantalOntvangsten, laatsteDatum, laatsteOntvangst, eersteOntvangstBlok } = ontvangstStatsVoorBericht(b, ruweBerichten);
     // "laatst gezien" alleen doorgeven als het ECHT een latere waarde is dan
     // de toch al getoonde b.datum -- op Lex' verzoek ("dubbele info anders"
     // naast de bestaande tijdregel), zie tijdregelVoorSignaal() in app.js.
     const laatstGezien = b.datum && laatsteDatum && laatsteDatum.getTime() > b.datum.getTime() ? laatsteDatum : null;
-    return { ...b, eventInfo, positie, positieIsStation, afstandTotJouKm, positieBinnenBereik, referentie, zelfVervalDatum, aantalOntvangsten, laatstGezien, laatstOntvangen: laatsteOntvangst ?? null };
+    return { ...b, eventInfo, positie, positieIsStation, afstandTotJouKm, positieBinnenBereik, referentie, zelfVervalDatum, aantalOntvangsten, laatstGezien, laatstOntvangen: laatsteOntvangst ?? null, eerstOntvangen: eersteOntvangstBlok ?? null };
   });
 
   // Elk bericht (ongeacht bereik/positie) kan een ANDER bericht intrekken —
