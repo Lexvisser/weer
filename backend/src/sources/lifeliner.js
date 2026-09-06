@@ -242,6 +242,7 @@ function huidigeUtcDatum() {
 // mislukte stil, het logboek startte leeg en werd daarna leeg over het
 // bestand geschreven, waardoor vastgelegde vluchten bij elke herstart/deploy
 // verdwenen (Lex: "Lifeliner zou toch de vluchten opslaan? Niet gelukt hoor").
+let openskyRestCredits = null; // { waarde, tijdMs } -- laatst geziene X-Rate-Limit-Remaining (hoort bij noteerRestCredits, verderop)
 const VLUCHTLOG_MAX = 50;
 const VLUCHT_ROUTE_MAX = 600; // ~100 min op 10s-tempo
 let vluchtLog = []; // afgesloten vluchten, oud -> nieuw
@@ -262,6 +263,11 @@ try {
     if (ruw.openVluchten && typeof ruw.openVluchten === 'object') {
       for (const [k, v] of Object.entries(ruw.openVluchten)) openVluchten.set(k, v);
     }
+    // 2026-09-06 (Lex: "ik ben de telling van OpenSky kwijt" na drie syncs
+    // op een avond): het laatst geziene restcredits-getal ook terugladen,
+    // anders staat de status na elke herstart zonder OpenSky-getal tot de
+    // eerstvolgende echte poll (op hartslag kan dat minuten duren).
+    if (ruw.openskyRestCredits && typeof ruw.openskyRestCredits.waarde === 'number') openskyRestCredits = ruw.openskyRestCredits;
     console.log(
       `[weer] lifeliner: staat teruggeladen van schijf (${pollLog.length} poll-log-regel(s), ${creditsVandaag}/${openskyDagBudget()} credits vandaag al verbruikt) — overleeft nu een herstart/deploy.`
     );
@@ -274,7 +280,7 @@ try {
 // het pollen/rapporteren zelf nooit blokkeren, dan blijft het gewoon (net als
 // vóór deze toevoeging) puur in het geheugen werken tot de volgende herstart.
 function schrijfStaatNaarSchijf() {
-  const data = { pollLog, budgetDatumUtc, creditsVandaag, rapportVerstuurdOpUtcDatum, vluchtLog, openVluchten: Object.fromEntries(openVluchten) };
+  const data = { pollLog, budgetDatumUtc, creditsVandaag, rapportVerstuurdOpUtcDatum, vluchtLog, openVluchten: Object.fromEntries(openVluchten), openskyRestCredits };
   writeFile(STAAT_BESTAND, JSON.stringify(data), (err) => {
     if (err) console.error('[weer] lifeliner: staat wegschrijven naar schijf mislukt —', err.message ?? err);
   });
@@ -464,7 +470,7 @@ async function openskyAuthHeaders() {
 // onze eigen teller is maar een schaduwboekhouding. We onthouden de laatst
 // geziene waarde voor het rapport; zakt 'ie naar 0, dan loggen we dat
 // expliciet (de eigen dagbudget-rem hieronder blijft de echte handrem).
-let openskyRestCredits = null; // { waarde, tijdMs }
+// (declaratie van openskyRestCredits staat bovenaan bij het inlaadblok -- TDZ, zie daar)
 
 function noteerRestCredits(res) {
   const ruw = res.headers?.get?.('x-rate-limit-remaining');
