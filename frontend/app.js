@@ -1959,7 +1959,7 @@ function tekenGebiedOmtrek(signal) {
     || (signal.categorie === 'weerwaarschuwing' && (signal.detail?.kleur === 'Oranje' || signal.detail?.kleur === 'Rood'))); // 2026-09-04, Lex: oranje/rood weeralarm-gebied net zo prominent als tornado
   if (Array.isArray(ringenLatLon) && ringenLatLon.length) {
     ringenLatLon.forEach((ring, ringIndex) => {
-      const poly = L.polygon(ring, {
+      L.polygon(ring, {
         className: 'gebied-omtrek',
         color: omtrekKleur,
         weight: prominent ? 3 : verlopen ? 2 : 1.5,
@@ -1974,10 +1974,20 @@ function tekenGebiedOmtrek(signal) {
       // moment van verlopen in het midden van het gebied -- bij een keten
       // van heruitgaves lees je zo de volgorde (23:49 -> 23:53 -> 00:03 ...)
       // direct van de kaart af. Alleen op de eerste ring, één label per gebied.
-      if (verlopen && ringIndex === 0 && signal.detail?.verlopenSinds) {
+      // 2026-09-06, tweede ronde (Lex: "dit gaat alleen werken als ze aan
+      // de rand staan -- hier is geen chocola van te maken"): in het midden
+      // vielen de labels van vier overlappende gebieden op een kluitje. Nu
+      // op het NOORDELIJKSTE hoekpunt van elk gebied, net erboven -- bij een
+      // opschuivende keten liggen die hoekpunten uit elkaar, en een label
+      // op een hoek hoort ondubbelzinnig bij die ene stippellijn.
+      if (verlopen && ringIndex === 0 && signal.detail?.verlopenSinds && Array.isArray(ring) && ring.length) {
         const label = tijdstempelTekst(signal.detail.verlopenSinds);
-        if (label) {
-          poly.bindTooltip(label, { permanent: true, direction: 'center', className: 'verlopen-gebied-label', interactive: false });
+        const top = ring.reduce((best, p) => (Array.isArray(p) && (!best || p[0] > best[0] || (p[0] === best[0] && p[1] > best[1])) ? p : best), null);
+        if (label && top) {
+          L.tooltip({ permanent: true, direction: 'top', offset: [0, -2], className: 'verlopen-gebied-label', interactive: false })
+            .setLatLng(top)
+            .setContent(label)
+            .addTo(gebiedLaag);
         }
       }
     });
