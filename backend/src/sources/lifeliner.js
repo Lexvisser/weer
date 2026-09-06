@@ -540,7 +540,12 @@ function vluchtBijwerken({ icao24, naam, lat, lon, baroAltM, afstand, nu }) {
   if (!v) {
     const idx = vluchtLog.findLastIndex((x) => x.icao24 === icao24);
     const vorige = idx >= 0 ? vluchtLog[idx] : null;
-    if (vorige && nu - vorige.eindMs <= HERVAT_VENSTER_MS
+    // Live gezien (LL1, 6 sep): geland op de basis 16:25, nieuwe inzet 17:38
+    // -- werd ten onrechte "leg 2". Daarom: NIET samenvoegen als de vorige
+    // vlucht op zijn eigen startpunt eindigde (terug op de basis = inzet
+    // klaar), alleen als 'ie ergens anders (bij het incident) bleef staan.
+    const terugOpStartpunt = vorige && afstandKm(vorige.startLat, vorige.startLon, vorige.laatstLat, vorige.laatstLon) <= HERVAT_AFSTAND_KM;
+    if (vorige && !terugOpStartpunt && nu - vorige.eindMs <= HERVAT_VENSTER_MS
       && afstandKm(vorige.laatstLat, vorige.laatstLon, lat, lon) <= HERVAT_AFSTAND_KM) {
       vluchtLog.splice(idx, 1);
       v = vorige;
