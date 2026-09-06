@@ -7465,12 +7465,12 @@ function renderMap(signalen) {
   // het grijze icoontje komt terug, geen omtrek die actief zou kunnen lijken.
   const teTonenSignalen = vliegModusActief || kaartVolgType
     ? []
-    // 2026-09-06: Met Office gale warnings (detail.zeekaart, zie
-    // metOfficeGaleWarnings.js) horen bij de Zeekaart, net als NAVTEX --
-    // op de gewone kaart liggen die zeegebieden toch grotendeels buiten beeld.
+    // 2026-09-06, Lex: Met Office gale warnings (detail.zeekaart, zie
+    // metOfficeGaleWarnings.js) op BEIDE kaarten -- op de Zeekaart erbij
+    // naast NAVTEX, en gewoon ook op de gewone kaart.
     : zeeModusActief
       ? signalen.filter((s) => s.categorie === 'navtex' || s.detail?.zeekaart)
-      : signalen.filter((s) => s.categorie !== 'navtex' && !s.detail?.zeekaart);
+      : signalen.filter((s) => s.categorie !== 'navtex');
   groepeerStationSignalen(teTonenSignalen.filter((s) => s.lat != null && s.lon != null))
     .forEach((s) => {
       // Gevlogen spoor eerst tekenen (onder de marker) — zelf opgebouwd door
