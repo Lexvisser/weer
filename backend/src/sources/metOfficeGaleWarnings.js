@@ -23,6 +23,7 @@
 // KNMI-weeralarm (detail.kleur, zie maakMeldingItem() in app.js).
 import * as cheerio from 'cheerio';
 import { makeSignal } from '../normalize.js';
+import { metHistorie } from '../historie.js';
 import { haalHtml, tekstTotVolgendeKop, GEBIEDSNAMEN, uitgifteTijdIn } from './metOfficeZeeForecast.js';
 
 const BRON_URL = 'https://weather.metoffice.gov.uk/specialist-forecasts/coast-and-sea/print/shipping-forecast';
@@ -109,7 +110,15 @@ export async function fetchMetOfficeGaleWarnings() {
   const geparsed = parseGaleWarnings(html);
   if (!geparsed) throw new Error('kop "Gale warnings" niet gevonden op de Met Office-pagina — structuur mogelijk gewijzigd');
   const paginaUitgegeven = uitgifteTijdIn(html);
-  const signalen = geparsed.warnings.flatMap((w) => {
+  // 2026-09-06, Lex ("mag ook 24 u grijs, dat is consistent"): een
+  // afmelding ("... now ceased") is geen actieve waarschuwing meer. Die gaat
+  // niet als live signaal mee maar als verlopen (grijs, zelfde 24u-laag als
+  // tornado/Meteoalarm via metHistorie). Twee routes naar grijs: (a) de
+  // waarschuwing verdwijnt van de pagina -> metHistorie houdt 'm 24u vast;
+  // (b) de pagina toont expliciet "ceased" -> hier zelf als verlopen
+  // gemarkeerd, met de uitgiftetijd van de afmelding als verlopen-moment.
+  const afgemeld = (w) => /\b(?:now\s+)?ceased\b|\bno\s+longer\b/i.test(w.tekst);
+  const maakSignaal = (w, verlopen) => {
     const punt = MIDDELPUNT[w.gebied];
     if (!punt) return [];
     const kracht = windkrachtIn(w.tekst);
@@ -134,10 +143,17 @@ export async function fetchMetOfficeGaleWarnings() {
         geldigVan: w.uitgegeven,
         subtitel: `Met Office Shipping Forecast · zeegebied ${w.gebied}${kracht ? ` · windkracht ${kracht}` : ''}`,
         bronUrl: BRON_URL,
+        ...(verlopen ? { verlopen: true, verlopenSinds: w.uitgegeven ?? paginaUitgegeven ?? new Date().toISOString() } : {}),
       },
     })];
-  });
-  const zonderPunt = geparsed.warnings.length - signalen.length;
-  console.log(`[weer] metoffice-gale: ${geparsed.warnings.length} gale warning(s) op de pagina${zonderPunt ? ` (${zonderPunt} zonder bekend gebied overgeslagen)` : ''}${geparsed.warnings.length ? ': ' + geparsed.warnings.map((w) => w.gebied).join(', ') : ''}.`);
+  };
+  const live = geparsed.warnings.filter((w) => !afgemeld(w)).flatMap((w) => maakSignaal(w, false));
+  const metVerlopen = metHistorie('metoffice-gale', live);
+  const alIds = new Set(metVerlopen.map((s) => s.id));
+  const ceased = geparsed.warnings.filter(afgemeld).flatMap((w) => maakSignaal(w, true))
+    .filter((s) => !alIds.has(s.id) && Date.now() - new Date(s.detail.verlopenSinds).getTime() <= 24 * 60 * 60 * 1000);
+  const signalen = [...metVerlopen, ...ceased];
+  const zonderPunt = geparsed.warnings.length - live.length - geparsed.warnings.filter(afgemeld).length;
+  console.log(`[weer] metoffice-gale: ${geparsed.warnings.length} gale warning(s) op de pagina (${live.length} actief, ${geparsed.warnings.filter(afgemeld).length} afgemeld, ${metVerlopen.length - live.length} uit historie)${zonderPunt ? ` (${zonderPunt} zonder bekend gebied overgeslagen)` : ''}${geparsed.warnings.length ? ': ' + geparsed.warnings.map((w) => w.gebied).join(', ') : ''}.`);
   return signalen;
 }
