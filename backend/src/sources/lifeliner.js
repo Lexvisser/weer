@@ -316,7 +316,11 @@ function magPollenEnTeltMee() {
 // (zie config.js), specifiek om een bruikbaar spoor te krijgen.
 const TRAIL_VENSTER_MS = 90 * 60 * 1000; // hoe lang geleden een punt nog meetelt (dekt een enkele vlucht heen+terug)
 const TRAIL_STALE_MS = 20 * 60 * 1000; // zo lang niet meer gezien = spoor wissen (nieuwe vlucht begint vers)
-const TRAIL_MAX_PUNTEN = 60; // extra vangnet naast het tijdvenster
+// 2026-09-06: was 60 -- gekozen bij 30s-pollen (= 30 min spoor). Sinds het
+// missietempo van 10s (2026-09-04) was dat nog maar 10 min spoor op de kaart,
+// terwijl het vluchtlogboek de hele route wel had (Lex: "weinig vanaf het
+// begin kunnen volgen"). 600 = het 90-minutenvenster op 10s-tempo.
+const TRAIL_MAX_PUNTEN = 600; // extra vangnet naast het tijdvenster
 const trails = new Map(); // icao24 -> { punten: [{lat,lon,tijdMs}], laatstGezienMs }
 
 // 2026-08-19: Lex zag een vliegend toestel (spoor werd opgebouwd) zonder
