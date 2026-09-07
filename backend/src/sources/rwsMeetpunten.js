@@ -48,6 +48,15 @@ const STRAAL_MAX_KM = 400;
 let catalogusCache = null; // { tijdMs, locaties: [{ code, naam, lat, lon, grootheden: Set }] }
 let metingenCache = null; // { tijdMs, straalKm, meetpunten }
 let metingenInFlight = null;
+// 2026-09-07-fix (na Lex' eerste live-test: 29 van de 120 dichtstbijzijnde
+// locaties leverden iets -- de catalogus bevat ook honderden locaties die
+// ooit een waterstand hadden maar nu niets meer meten, en die verdrongen de
+// kustpunten met wind/golven). Locaties die een ronde lang niets leveren
+// worden DOOD_MS overgeslagen, zodat de lijst elke ronde opschuift naar
+// locaties die wel live zijn; en locaties met wind of golven (de kust) doen
+// altijd mee, los van de MAX_LOCATIES-afkap voor de peilschalen.
+const DOOD_MS = 6 * 60 * 60 * 1000;
+const doodTot = new Map(); // code -> tijdMs tot wanneer overslaan
 
 async function haalCatalogus() {
   const nu = Date.now();
@@ -163,13 +172,18 @@ export async function fetchRwsMeetpunten({ homeLat, homeLon, straalKm }) {
   metingenInFlight = (async () => {
     try {
       const alle = await haalCatalogus();
-      const binnen = alle
+      const nuMs = Date.now();
+      const kandidaten = alle
         .map((l) => ({ ...l, afstandKm: afstandKm(homeLat, homeLon, l.lat, l.lon) }))
-        .filter((l) => l.afstandKm <= straal)
-        .sort((a, b) => a.afstandKm - b.afstandKm)
-        .slice(0, MAX_LOCATIES);
-      const meetpunten = (await haalAlle(binnen)).filter((p) => p.meting); // alleen punten die NU iets meten
-      console.log(`[weer] rws-meetpunten: ${meetpunten.length}/${binnen.length} meetpunten binnen ${straal} km met actuele meting`);
+        .filter((l) => l.afstandKm <= straal && !(doodTot.get(l.code) > nuMs))
+        .sort((a, b) => a.afstandKm - b.afstandKm);
+      const metWindOfGolven = kandidaten.filter((l) => l.grootheden.has('WINDSHD') || l.grootheden.has('Hm0'));
+      const alleenPeil = kandidaten.filter((l) => !metWindOfGolven.includes(l)).slice(0, MAX_LOCATIES);
+      const binnen = [...metWindOfGolven, ...alleenPeil];
+      const resultaten = await haalAlle(binnen);
+      resultaten.filter((p) => !p.meting).forEach((p) => doodTot.set(p.code, nuMs + DOOD_MS));
+      const meetpunten = resultaten.filter((p) => p.meting); // alleen punten die NU iets meten
+      console.log(`[weer] rws-meetpunten: ${meetpunten.length}/${binnen.length} meetpunten binnen ${straal} km met actuele meting (${metWindOfGolven.length} kandidaten met wind/golven; ${doodTot.size} locaties tijdelijk overgeslagen)`);
       metingenCache = { tijdMs: Date.now(), straalKm: straal, meetpunten };
       return { straalKm: straal, bijgewerkt: new Date(metingenCache.tijdMs).toISOString(), meetpunten };
     } finally {

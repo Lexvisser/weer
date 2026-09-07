@@ -152,7 +152,8 @@ export async function fetchKnmiStations({ homeLat, homeLon, apiKey, straalKm }) 
         .sort((a, b) => a.afstandKm - b.afstandKm);
       const stations = await haalAlleMetingen(binnen, apiKey);
       const gelukt = stations.filter((s) => s.meting).length;
-      console.log(`[weer] weerstations: ${gelukt}/${stations.length} stations binnen ${straal} km met meting`);
+      const missers = stations.filter((s) => !s.meting).map((s) => `${s.naam} [${s.type}]: ${s.fout}`);
+      console.log(`[weer] weerstations: ${gelukt}/${stations.length} stations binnen ${straal} km met meting${missers.length ? ` -- zonder: ${missers.join('; ')}` : ''}`);
       metingenCache = { tijdMs: Date.now(), straalKm: straal, stations };
       return { straalKm: straal, bijgewerkt: new Date(metingenCache.tijdMs).toISOString(), stations };
     } finally {
