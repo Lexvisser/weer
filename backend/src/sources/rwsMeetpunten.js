@@ -25,6 +25,9 @@
 // (m/s), WINDRTG = windrichting (graden), Hm0 = significante golfhoogte
 // (cm), Tm02 = gemiddelde golfperiode (s). De veldnamen in de respons zijn
 // defensief uitgelezen (zelfde reden als in getij.js).
+import { readFileSync, mkdirSync, writeFile } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afstandKm } from '../normalize.js';
 
 const BASE_URL = 'https://ddapi20-waterwebservices.rijkswaterstaat.nl';
@@ -55,8 +58,32 @@ let metingenInFlight = null;
 // worden DOOD_MS overgeslagen, zodat de lijst elke ronde opschuift naar
 // locaties die wel live zijn; en locaties met wind of golven (de kust) doen
 // altijd mee, los van de MAX_LOCATIES-afkap voor de peilschalen.
-const DOOD_MS = 6 * 60 * 60 * 1000;
-const doodTot = new Map(); // code -> tijdMs tot wanneer overslaan
+// 2026-09-07 (tweede live-test: 668 kandidaten in de eerste ronde, 15 s en
+// ruim duizend kleine verzoeken -- daarna 529 overgeslagen). Om die eerste
+// zware ronde niet na élke herstart opnieuw te doen, wordt de "dood"-lijst
+// op schijf bewaard (zelfde opzet als lifeliner-staat.json: klein JSON-
+// bestand in data/, fire-and-forget, mag nooit crashen).
+const DOOD_MS = 24 * 60 * 60 * 1000;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const STAAT_BESTAND = join(__dirname, '..', '..', 'data', 'rws-meetpunten-staat.json');
+const doodTot = laadDoodLijst(); // code -> tijdMs tot wanneer overslaan
+
+function laadDoodLijst() {
+  try {
+    const ruw = JSON.parse(readFileSync(STAAT_BESTAND, 'utf-8'));
+    const nu = Date.now();
+    return new Map(Object.entries(ruw.doodTot ?? {}).filter(([, t]) => t > nu));
+  } catch {
+    return new Map();
+  }
+}
+
+function bewaarDoodLijst() {
+  try {
+    mkdirSync(dirname(STAAT_BESTAND), { recursive: true });
+    writeFile(STAAT_BESTAND, JSON.stringify({ doodTot: Object.fromEntries(doodTot) }), () => {});
+  } catch { /* niet fataal */ }
+}
 
 async function haalCatalogus() {
   const nu = Date.now();
@@ -182,6 +209,8 @@ export async function fetchRwsMeetpunten({ homeLat, homeLon, straalKm }) {
       const binnen = [...metWindOfGolven, ...alleenPeil];
       const resultaten = await haalAlle(binnen);
       resultaten.filter((p) => !p.meting).forEach((p) => doodTot.set(p.code, nuMs + DOOD_MS));
+      for (const [code, t] of doodTot) if (t <= nuMs) doodTot.delete(code);
+      bewaarDoodLijst();
       const meetpunten = resultaten.filter((p) => p.meting); // alleen punten die NU iets meten
       console.log(`[weer] rws-meetpunten: ${meetpunten.length}/${binnen.length} meetpunten binnen ${straal} km met actuele meting (${metWindOfGolven.length} kandidaten met wind/golven; ${doodTot.size} locaties tijdelijk overgeslagen)`);
       metingenCache = { tijdMs: Date.now(), straalKm: straal, meetpunten };

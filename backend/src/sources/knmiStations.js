@@ -154,8 +154,13 @@ export async function fetchKnmiStations({ homeLat, homeLon, apiKey, straalKm }) 
       const gelukt = stations.filter((s) => s.meting).length;
       const missers = stations.filter((s) => !s.meting).map((s) => `${s.naam} [${s.type}]: ${s.fout}`);
       console.log(`[weer] weerstations: ${gelukt}/${stations.length} stations binnen ${straal} km met meting${missers.length ? ` -- zonder: ${missers.join('; ')}` : ''}`);
-      metingenCache = { tijdMs: Date.now(), straalKm: straal, stations };
-      return { straalKm: straal, bijgewerkt: new Date(metingenCache.tijdMs).toISOString(), stations };
+      // 2026-09-07: stations met een 404 (opgeheven of leveren niet, bv.
+      // Valkenburg/Soesterberg/Hoorn-A/F16-A) niet naar de kaart sturen --
+      // een gedimde pin zonder getal voegt niets toe. Andere fouten (tijdelijk
+      // 5xx) blijven wel zichtbaar als "geen recente meting".
+      const zichtbaar = stations.filter((s) => s.meting || !/status 404/.test(s.fout ?? ''));
+      metingenCache = { tijdMs: Date.now(), straalKm: straal, stations: zichtbaar };
+      return { straalKm: straal, bijgewerkt: new Date(metingenCache.tijdMs).toISOString(), stations: zichtbaar };
     } finally {
       metingenInFlight = null;
     }
