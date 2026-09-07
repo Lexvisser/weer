@@ -172,6 +172,7 @@ export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t
   const [zuid, west, noord, oost] = BBOX.split(',').map(Number);
   const alle = [];
   const gezien = new Set();
+  const mislukteTegels = []; // 2026-09-07, Lex: een mislukte tegel overslaan i.p.v. alles weggooien
   let tegels = 0;
   for (let lat = zuid; lat < noord; lat += TEGEL_GRADEN) {
     for (let lon = west; lon < oost; lon += TEGEL_GRADEN) {
@@ -187,7 +188,11 @@ export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t
           await new Promise((k) => setTimeout(k, 15000));
         }
       }
-      if (!body) throw new Error(`tegel ${bbox} bleef mislukken`);
+      if (!body) {
+        mislukteTegels.push(bbox);
+        log(`tegel ${bbox} OVERGESLAGEN na herhaalde mislukking`);
+        continue;
+      }
       for (const e of body.elements ?? []) {
         const sleutel = `${e.type}/${e.id}`;
         if (gezien.has(sleutel)) continue; // objecten op een tegelgrens komen dubbel terug
@@ -201,9 +206,20 @@ export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t
   const lijst = alle
     .map((e) => markeringUitTags(e.tags ?? {}, e.lat ?? e.center?.lat, e.lon ?? e.center?.lon))
     .filter((m) => m && Number.isFinite(m.lat) && Number.isFinite(m.lon));
+  if (mislukteTegels.length === tegels) throw new Error('alle tegels mislukt -- niets geschreven');
+  // Bij ontbrekende tegels: wél schrijven (de rest is bruikbaar), maar de
+  // bestaande markeringen uit die tegels overnemen uit de vorige set, zodat
+  // een tijdelijke Overpass-storing geen gaten in de kaart slaat.
+  if (mislukteTegels.length && markeringen === null) laadZeemarkeringen();
+  if (mislukteTegels.length && markeringen?.length) {
+    const inMislukteTegel = (m) => mislukteTegels.some((b) => { const [z, w, n, o] = b.split(',').map(Number); return m.lat >= z && m.lat < n && m.lon >= w && m.lon < o; });
+    const overgenomen = markeringen.filter(inMislukteTegel);
+    lijst.push(...overgenomen);
+    log(`${overgenomen.length} markeringen uit de vorige set overgenomen voor de overgeslagen tegel(s)`);
+  }
   mkdirSync(dirname(doel), { recursive: true });
-  writeFileSync(doel, JSON.stringify({ bron: 'OpenStreetMap/OpenSeaMap via Overpass (ODbL)', opgehaald: new Date().toISOString(), bbox: BBOX, aantal: lijst.length, markeringen: lijst }));
-  log(`${alle.length} seamark-objecten opgehaald, ${lijst.length} met licht/misthoorn/racon/AIS -> ${doel}`);
+  writeFileSync(doel, JSON.stringify({ bron: 'OpenStreetMap/OpenSeaMap via Overpass (ODbL)', opgehaald: new Date().toISOString(), bbox: BBOX, aantal: lijst.length, mislukteTegels, markeringen: lijst }));
+  log(`${alle.length} seamark-objecten opgehaald, ${lijst.length} met licht/misthoorn/racon/AIS -> ${doel}${mislukteTegels.length ? ` (LET OP: ${mislukteTegels.length} tegel(s) overgeslagen: ${mislukteTegels.join(' ; ')})` : ''}`);
   markeringen = null; // volgende fetchZeemarkering() laadt opnieuw (nieuwste bestand wint)
-  return { aantal: lijst.length, doel };
+  return { aantal: lijst.length, doel, mislukteTegels };
 }
