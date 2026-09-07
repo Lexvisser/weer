@@ -138,7 +138,7 @@ function markeringUitTags(tags, lat, lon) {
   };
 }
 
-async function vraagOverpass(q, log) {
+async function vraagOverpass(q, log, timeoutMs = 240000) {
   let laatsteFout = null;
   for (const url of OVERPASS_URLS) {
     try {
@@ -147,7 +147,7 @@ async function vraagOverpass(q, log) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
         body: `data=${encodeURIComponent(q)}`,
-        signal: AbortSignal.timeout(240000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       if (!res.ok) throw new Error(`${new URL(url).host} gaf status ${res.status}`);
       return await res.json();
@@ -181,7 +181,7 @@ export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t
       let body = null;
       for (let poging = 1; poging <= 2 && !body; poging++) {
         try {
-          body = await vraagOverpass(q, () => {});
+          body = await vraagOverpass(q, log, 60000);
         } catch (err) {
           log(`tegel ${bbox} poging ${poging} mislukt: ${err.message ?? err}`);
           await new Promise((k) => setTimeout(k, 15000));
