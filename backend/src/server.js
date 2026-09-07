@@ -20,7 +20,7 @@ import { fetchOpenMeteo } from './sources/openmeteo.js';
 import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
-import { fetchZeemarkering } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
+import { fetchZeemarkering, voorverwarmZeemarkering } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
 import { startBlitzortungStream } from './sources/blitzortung.js';
@@ -935,6 +935,30 @@ export function createApp(env) {
     timers.push(setInterval(ververMetOfficeForecast, 3 * 60 * 60 * 1000));
     ververDwdFronten();
     timers.push(setInterval(ververDwdFronten, 30 * 60 * 1000));
+
+    // 2026-09-07: zeemarkering-cache voorverwarmen voor de Stations-laag (zie
+    // sources/zeemarkering.js). Twee minuten na opstarten, zodat de gewone
+    // bronnen eerst aan de beurt zijn; daarna 1x/dag opnieuw (vangt nieuwe
+    // punten en verlopen cache op). Punten: KNMI-platforms (3 km),
+    // KNMI-windstations (1 km) en RWS-punten met golven/wind (1 km).
+    const voorverwarmZeemarkeringen = async () => {
+      try {
+        const [knmi, rws] = await Promise.all([
+          fetchKnmiStations({ homeLat: env.homeLat, homeLon: env.homeLon, apiKey: env.knmiApiKey, straalKm: 300 }).catch(() => ({ stations: [] })),
+          fetchRwsMeetpunten({ homeLat: env.homeLat, homeLon: env.homeLon, straalKm: 300 }).catch(() => ({ meetpunten: [] })),
+        ]);
+        const punten = [
+          ...knmi.stations.filter((s) => /platform/i.test(s.type ?? '')).map((s) => ({ naam: s.naam, lat: s.lat, lon: s.lon, straalM: 3000 })),
+          ...knmi.stations.filter((s) => /wind/i.test(s.type ?? '')).map((s) => ({ naam: s.naam, lat: s.lat, lon: s.lon, straalM: 1000 })),
+          ...rws.meetpunten.filter((p) => p.meting?.golfhoogteCm != null || p.meting?.windMs != null).map((p) => ({ naam: p.naam, lat: p.lat, lon: p.lon, straalM: 1000 })),
+        ];
+        await voorverwarmZeemarkering(punten);
+      } catch (err) {
+        console.warn('[weer] zeemarkering voorverwarmen mislukt:', err.message ?? err);
+      }
+    };
+    timers.push(setTimeout(voorverwarmZeemarkeringen, 2 * 60 * 1000));
+    timers.push(setInterval(voorverwarmZeemarkeringen, 24 * 60 * 60 * 1000));
     // Eerst de schijfcache (zie laadVeldVanSchijf in isobaren.js): een vers
     // veld telt als geslaagde ronde, dan haalt ververIsobaren() niets op.
     laadIsobarenVanSchijf().then((tijdMs) => { isobarenLaatstGeslaagd = tijdMs; return ververIsobaren(); });

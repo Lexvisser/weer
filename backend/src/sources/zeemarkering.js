@@ -130,6 +130,29 @@ async function vraagOverpass(lat, lon, straalM) {
     .filter(Boolean);
 }
 
+// 2026-09-07, op verzoek van Lex: cache vóórwarmen bij opstarten, zodat een
+// popup meteen gevuld is en het log laat zien hoeveel punten iets hebben.
+// Rustig tempo (één verzoek per PAUZE_MS) uit respect voor Overpass; punten
+// die al (geslaagd) in de cache staan worden overgeslagen. Aanroeper geeft
+// [{ naam, lat, lon, straalM }].
+const PAUZE_MS = 10 * 1000;
+export async function voorverwarmZeemarkering(punten) {
+  let metIets = 0; let leeg = 0; let mislukt = 0; let overgeslagen = 0;
+  for (const p of punten) {
+    const straal = Math.min(STRAAL_MAX_M, Math.max(100, Number(p.straalM) || STRAAL_M));
+    const bestaand = cache.get(`${p.lat.toFixed(3)},${p.lon.toFixed(3)},${straal}`);
+    if (bestaand?.markeringen && Date.now() - bestaand.tijdMs < CACHE_MS) {
+      overgeslagen += 1;
+      if (bestaand.markeringen.length) metIets += 1; else leeg += 1;
+      continue;
+    }
+    const r = await fetchZeemarkering({ lat: p.lat, lon: p.lon, straalM: straal });
+    if (r.fout) mislukt += 1; else if (r.markeringen.length) metIets += 1; else leeg += 1;
+    await new Promise((klaar) => setTimeout(klaar, PAUZE_MS));
+  }
+  console.log(`[weer] zeemarkering voorverwarmd: ${punten.length} zee-/kustpunten -- ${metIets} met markering, ${leeg} zonder, ${mislukt} mislukt (${overgeslagen} al in cache)`);
+}
+
 export async function fetchZeemarkering({ lat, lon, straalM }) {
   const straal = Math.min(STRAAL_MAX_M, Math.max(100, Number(straalM) || STRAAL_M));
   const sleutel = `${lat.toFixed(3)},${lon.toFixed(3)},${straal}`;
