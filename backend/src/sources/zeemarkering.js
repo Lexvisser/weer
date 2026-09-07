@@ -87,7 +87,8 @@ function markeringUitTags(tags, lat, lon) {
   }
   // AIS-baken (fysiek of virtueel AtoN) -- de paarse "AIS"-cirkel op de zeekaart.
   const radioCat = tags['seamark:radio_station:category'] ?? '';
-  const ais = /ais/.test(radioCat) ? (/virtual/.test(tags['seamark:radio_station:category'] ?? '') || tags['seamark:virtual_aton:category'] ? 'AIS (virtueel)' : 'AIS') : null;
+  const virtueel = tags['seamark:type'] === 'virtual_aton' || !!tags['seamark:virtual_aton:category'];
+  const ais = virtueel ? 'AIS (virtueel)' : /ais/.test(radioCat) ? 'AIS' : null;
   if (!lichten.length && !mist && !racon && !ais) return null;
   const naam = tags['seamark:name'] ?? tags.name ?? null;
   const type = tags['seamark:type'] ?? null;
@@ -98,8 +99,12 @@ async function vraagOverpass(lat, lon, straalM) {
   // Ook objecten zonder seamark:type maar mét lichtkarakter, misthoorn of
   // racon (komt voor bij platforms die alleen als man_made=offshore_platform
   // getagd zijn).
+  // 2026-09-07-fix: de eerdere vorm (5 losse takken met nwr = incl. relaties)
+  // liep op alle Overpass-servers in een timeout. Nu één sleutel-patroon op
+  // alleen nodes en ways -- zeemarkeringen zijn nooit relaties.
   const rond = `(around:${straalM},${lat},${lon})`;
-  const q = `[out:json][timeout:15];(nwr${rond}["seamark:type"];nwr${rond}["seamark:light:character"];nwr${rond}["seamark:fog_signal:category"];nwr${rond}["seamark:radar_transponder:category"];nwr${rond}["seamark:radio_station:category"];);out center tags;`;
+  const sleutels = '[~"^seamark:(type|light:character|fog_signal:category|radar_transponder:category|radio_station:category)$"~"."]';
+  const q = `[out:json][timeout:20];(node${rond}${sleutels};way${rond}${sleutels};);out center tags;`;
   let laatsteFout = null;
   let body = null;
   for (const url of OVERPASS_URLS) {
@@ -108,7 +113,7 @@ async function vraagOverpass(lat, lon, straalM) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
         body: `data=${encodeURIComponent(q)}`,
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(25000),
       });
       if (!res.ok) throw new Error(`${new URL(url).host} gaf status ${res.status}`);
       body = await res.json();
