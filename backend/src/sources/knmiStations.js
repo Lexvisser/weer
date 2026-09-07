@@ -66,30 +66,43 @@ async function haalMeting(station, apiKey) {
   const res = await fetch(url, { headers: { Authorization: apiKey, accept: 'application/prs.coverage+json' } });
   if (!res.ok) throw new Error(`status ${res.status}`);
   const body = await res.json();
-  const coverages = (body.coverages ?? [])
-    .map((c) => ({ c, tMs: new Date(c.domain?.axes?.t?.values?.[0] ?? 0).getTime() }))
-    .filter((x) => Number.isFinite(x.tMs) && x.tMs > 0)
-    .sort((a, b) => a.tMs - b.tMs);
-  const coverage = coverages.at(-1)?.c;
-  if (!coverage) throw new Error('geen coverages');
-  const waarde = (sleutel) => coverage.ranges?.[sleutel]?.values?.[0] ?? null;
-  // Druktendens: druk nu minus druk ~3 uur geleden (de coverage die het
+  // 2026-09-07-fix (Lex: geen tendens zichtbaar bij Vlissingen, terwijl de
+  // druk er wel stond): de EDR API kan het interval teruggeven als MEERDERE
+  // coverages met elk één tijdstip, óf als ÉÉN coverage met een t-as van
+  // meerdere waarden (en per range evenveel values). De eerste versie las
+  // alleen values[0] per coverage en zag dus nooit een oudere meting. Nu
+  // worden beide vormen platgeslagen tot losse meetmomenten { tMs, waarde() }.
+  const momenten = [];
+  for (const c of body.coverages ?? []) {
+    const tijden = c.domain?.axes?.t?.values ?? [];
+    tijden.forEach((t, i) => {
+      const tMs = new Date(t).getTime();
+      if (!Number.isFinite(tMs)) return;
+      momenten.push({ tMs, waarde: (sleutel) => c.ranges?.[sleutel]?.values?.[i] ?? null });
+    });
+  }
+  momenten.sort((a, b) => a.tMs - b.tMs);
+  const laatste = momenten.at(-1);
+  if (!laatste) throw new Error('geen coverages');
+  const waarde = laatste.waarde;
+  // Druktendens: druk nu minus druk ~3 uur geleden (het meetmoment dat het
   // dichtst bij "nieuwste - 3u" ligt, mits minstens 2,5 uur oud -- anders is
   // de reeks te kort en laten we de tendens weg i.p.v. iets misleidends).
-  const drukNu = waarde('pp') ?? waarde('qnh');
+  const drukVan = (mo) => mo.waarde('pp') ?? mo.waarde('qnh');
+  const drukNu = drukVan(laatste);
   let drukTendens3uHpa = null;
-  if (drukNu != null && coverages.length > 1) {
-    const doelMs = coverages.at(-1).tMs - 3 * 60 * 60 * 1000;
-    const oud = coverages.reduce((beste, x) => (Math.abs(x.tMs - doelMs) < Math.abs(beste.tMs - doelMs) ? x : beste));
-    const drukOud = oud.c.ranges?.pp?.values?.[0] ?? oud.c.ranges?.qnh?.values?.[0] ?? null;
-    if (drukOud != null && coverages.at(-1).tMs - oud.tMs >= 2.5 * 60 * 60 * 1000) {
+  if (drukNu != null && momenten.length > 1) {
+    const doelMs = laatste.tMs - 3 * 60 * 60 * 1000;
+    const oud = momenten.reduce((beste, x) => (Math.abs(x.tMs - doelMs) < Math.abs(beste.tMs - doelMs) ? x : beste));
+    const drukOud = drukVan(oud);
+    if (drukOud != null && laatste.tMs - oud.tMs >= 2.5 * 60 * 60 * 1000) {
       drukTendens3uHpa = Math.round((drukNu - drukOud) * 10) / 10;
     }
   }
   const windMs = waarde('ff');
   const windstootMs = waarde('fx');
   return {
-    tijd: coverage.domain?.axes?.t?.values?.[0] ?? nu.toISOString(),
+    tijd: new Date(laatste.tMs).toISOString(),
     temperatuurC: waarde('ta'),
     dauwpuntC: waarde('td'),
     luchtvochtigheidPct: waarde('rh'),

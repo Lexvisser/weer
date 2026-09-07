@@ -7032,13 +7032,13 @@ function stationPopupHtml(s) {
   if (!m) {
     regels.push(`<div class="popup-sub">Geen recente meting${s.fout ? ` (${escapeHtml(s.fout)})` : ''}</div>`);
   } else {
-    const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="popup-stat"><span class="popup-stat-label">${label}</span><span class="popup-stat-waarde">${waarde}</span></div>`); };
+    const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}:</span> <span class="station-stat-waarde">${waarde}</span></div>`); };
     r('Temperatuur', m.temperatuurC != null ? `${m.temperatuurC} °C` : null);
     r('Dauwpunt', m.dauwpuntC != null ? `${m.dauwpuntC} °C` : null);
     r('Vochtigheid', m.luchtvochtigheidPct != null ? `${Math.round(m.luchtvochtigheidPct)} %` : null);
     if (m.windMs != null) {
       const richting = m.windRichtingGraden != null ? `${Math.round(m.windRichtingGraden)}° ` : '';
-      r('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${m.windMs} m/s)`);
+      r('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${Math.round(m.windMs * 10) / 10} m/s)`);
     }
     r('Windstoten', m.windstotenKn != null ? `${m.windstotenKn} kn` : null);
     const tendens = stationTendens(m);
@@ -7056,13 +7056,13 @@ function stationPopupHtml(s) {
 function rwsMeetpuntPopupHtml(p) {
   const m = p.meting;
   const regels = [];
-  const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}</span><span class="station-stat-waarde">${waarde}</span></div>`); };
+  const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}:</span> <span class="station-stat-waarde">${waarde}</span></div>`); };
   r('Waterstand', m.waterstandCm != null ? `${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)} cm NAP` : null);
   r('Golfhoogte (Hm0)', m.golfhoogteCm != null ? `${Math.round(m.golfhoogteCm)} cm` : null);
   r('Golfperiode', m.golfperiodeS != null ? `${Math.round(m.golfperiodeS * 10) / 10} s` : null);
   if (m.windMs != null) {
     const richting = m.windRichtingGraden != null ? `${Math.round(m.windRichtingGraden)}° ` : '';
-    r('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${m.windMs} m/s)`);
+    r('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${Math.round(m.windMs * 10) / 10} m/s)`);
   }
   if (m.tijd) {
     const t = new Date(m.tijd);
