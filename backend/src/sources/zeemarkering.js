@@ -17,11 +17,13 @@ import { readFileSync, mkdirSync, writeFile } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+// Meerdere publieke Overpass-servers; bij een 5xx/timeout op de eerste wordt
+// de volgende geprobeerd (2026-09-07, na een 504 bij K13-A).
+const OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 const STRAAL_M = 1000; // standaard; de aanroeper mag tot STRAAL_MAX_M vragen (KNMI-platforms op open zee: 3 km, zie frontend)
 const STRAAL_MAX_M = 5000;
 const CACHE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dagen
-const FOUT_CACHE_MS = 60 * 60 * 1000; // na een mislukking een uur niet opnieuw proberen
+const FOUT_CACHE_MS = 5 * 60 * 1000; // na een mislukking 5 min niet opnieuw proberen (was een uur; Overpass-504's zijn meestal kort)
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STAAT_BESTAND = join(__dirname, '..', '..', 'data', 'zeemarkering-cache.json');
 
@@ -98,14 +100,24 @@ async function vraagOverpass(lat, lon, straalM) {
   // getagd zijn).
   const rond = `(around:${straalM},${lat},${lon})`;
   const q = `[out:json][timeout:15];(nwr${rond}["seamark:type"];nwr${rond}["seamark:light:character"];nwr${rond}["seamark:fog_signal:category"];nwr${rond}["seamark:radar_transponder:category"];nwr${rond}["seamark:radio_station:category"];);out center tags;`;
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
-    body: `data=${encodeURIComponent(q)}`,
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!res.ok) throw new Error(`Overpass gaf status ${res.status}`);
-  const body = await res.json();
+  let laatsteFout = null;
+  let body = null;
+  for (const url of OVERPASS_URLS) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
+        body: `data=${encodeURIComponent(q)}`,
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) throw new Error(`${new URL(url).host} gaf status ${res.status}`);
+      body = await res.json();
+      break;
+    } catch (err) {
+      laatsteFout = err;
+    }
+  }
+  if (!body) throw laatsteFout ?? new Error('Overpass onbereikbaar');
   return (body.elements ?? [])
     .map((e) => markeringUitTags(e.tags ?? {}, e.lat ?? e.center?.lat ?? null, e.lon ?? e.center?.lon ?? null))
     .filter(Boolean);
