@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-const STRAAL_M = 500;
+const STRAAL_M = 1000; // 2026-09-07: 500 -> 1000 (P11-B viel erbuiten of is anders getagd)
 const CACHE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dagen
 const FOUT_CACHE_MS = 60 * 60 * 1000; // na een mislukking een uur niet opnieuw proberen
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -89,7 +89,11 @@ function markeringUitTags(tags, lat, lon) {
 }
 
 async function vraagOverpass(lat, lon) {
-  const q = `[out:json][timeout:15];(node(around:${STRAAL_M},${lat},${lon})["seamark:type"];way(around:${STRAAL_M},${lat},${lon})["seamark:type"];);out center tags;`;
+  // Ook objecten zonder seamark:type maar mét lichtkarakter, misthoorn of
+  // racon (komt voor bij platforms die alleen als man_made=offshore_platform
+  // getagd zijn).
+  const rond = `(around:${STRAAL_M},${lat},${lon})`;
+  const q = `[out:json][timeout:15];(nwr${rond}["seamark:type"];nwr${rond}["seamark:light:character"];nwr${rond}["seamark:fog_signal:category"];nwr${rond}["seamark:radar_transponder:category"];);out center tags;`;
   const res = await fetch(OVERPASS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
