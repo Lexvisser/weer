@@ -7106,7 +7106,7 @@ function knmiVakHtml(s) {
   const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
   const tendens = stationTendens(m);
   // 2026-09-07, Lex: de tendens ook als getal in de pil ("+0.3/3u"), in het blauw.
-  const tendensHtml = tendens ? `<span class="station-tendens" title="Druk ${tendens.tekst} hPa in 3 uur">${tendens.pijl}${tendens.tekst}<small>/3u</small></span>` : ''; // in de pil mét pijltje; in de popup zonder (Lex, 2026-09-07)
+  const tendensHtml = tendens ? `<span class="station-tendens" title="Druk ${tendens.tekst} hPa in 3 uur">${tendens.tekst}<small>/3u</small></span>` : ''; // zonder pijltje, in pil én popup (Lex, 2026-09-07): het teken zegt genoeg
   return `<span class="station-vak is-knmi${m ? '' : ' is-geen-meting'}">${stationTempTekst(m)}${bft}${tendensHtml}</span>`;
 }
 
