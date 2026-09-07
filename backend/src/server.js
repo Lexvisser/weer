@@ -1275,7 +1275,7 @@ export function createApp(env) {
       const lon = Number(params.get('lon'));
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return sendJson(res, 400, { fout: 'lat en lon zijn verplicht', markeringen: [] });
       try {
-        return sendJson(res, 200, await fetchZeemarkering({ lat, lon }));
+        return sendJson(res, 200, await fetchZeemarkering({ lat, lon, straalM: params.get('straal') }));
       } catch (err) {
         console.error('[weer] zeemarkering-verzoek mislukt:', err.message ?? err);
         return sendJson(res, 502, { fout: 'Zeemarkering tijdelijk niet beschikbaar', markeringen: [] });

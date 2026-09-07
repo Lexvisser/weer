@@ -7141,12 +7141,12 @@ function stationsPijlHtml(knmi, rwsPunten, samengevoegd = false) {
 // 2026-09-07, op verzoek van Lex: samengevoegde meetpalen (KNMI + RWS binnen
 // SAMENVOEG_KM) krijgen een derde kleur, violet -- rand om de hele pil en de
 // windpijl -- terwijl de vakjes binnenin hun partijkleur houden.
-function plaatsStationsMarker(lat, lon, naam, vakken, pijl, popupFn, samengevoegd = false) {
+function plaatsStationsMarker(lat, lon, naam, vakken, pijl, popupFn, samengevoegd = false, zoekStraalM = 1000) {
   const html = `<div class="station-pin${samengevoegd ? ' is-samengevoegd' : ''}" title="${escapeHtml(naam)}">${pijl}<span class="station-label">${vakken.join('')}</span></div>`;
   const marker = L.marker([lat, lon], {
     icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
   }).bindPopup(popupFn, { maxWidth: 280 });
-  marker.on('popupopen', (e) => vulZeemarkeringIn(e.popup, lat, lon));
+  marker.on('popupopen', (e) => vulZeemarkeringIn(e.popup, lat, lon, zoekStraalM));
   stationsLaag.addLayer(marker);
 }
 
@@ -7155,10 +7155,10 @@ function plaatsStationsMarker(lat, lon, naam, vakken, pijl, popupFn, samengevoeg
 // zeemarkeringen binnen 500 m ophalen (/api/zeemarkering, OpenSeaMap) en in
 // het blauw onder de naam zetten. Lazy: alleen bij een klik, en de backend
 // cachet 30 dagen, dus dit kost vrijwel niets. Geen markering = geen regel.
-async function vulZeemarkeringIn(popup, lat, lon) {
+async function vulZeemarkeringIn(popup, lat, lon, straalM = 1000) {
   let data;
   try {
-    data = await fetch(`/api/zeemarkering?lat=${lat}&lon=${lon}`).then((r) => r.json());
+    data = await fetch(`/api/zeemarkering?lat=${lat}&lon=${lon}&straal=${straalM}`).then((r) => r.json());
   } catch (_) {
     return;
   }
@@ -7167,7 +7167,7 @@ async function vulZeemarkeringIn(popup, lat, lon) {
   const titel = el.querySelector('.popup-titel');
   if (!titel || el.querySelector('.station-zeemarkering')) return;
   const regels = (data.markeringen ?? []).map((m) => {
-    const delen = [...(m.lichten ?? []), m.mist, m.racon].filter(Boolean);
+    const delen = [...(m.lichten ?? []), m.mist, m.racon, m.ais].filter(Boolean);
     const naam = m.naam && m.naam !== '' ? `<span class="station-zeemarkering-naam">${escapeHtml(m.naam)}</span> ` : '';
     return `<div>${naam}${delen.map(escapeHtml).join(' · ')}</div>`;
   });
@@ -7205,7 +7205,11 @@ function tekenStations({ stations, meetpunten }) {
     plaatsStationsMarker(s.lat, s.lon, naam, vakken, pijl, () => [
       stationsDelen.knmi ? stationPopupHtml(s) : '',
       ...zichtbareBuren.map((p) => `${rwsMeetpuntPopupHtml(p)}<div class="popup-sub">${Math.round(stationsAfstandKm(s, p) * 1000)} m van het KNMI-punt</div>`),
-    ].filter(Boolean).join('<hr class="station-popup-scheiding">'), samengevoegd);
+    ].filter(Boolean).join('<hr class="station-popup-scheiding">'), samengevoegd,
+    // KNMI-platforms op open zee: ruimer zoeken (3 km) -- de KNMI-coördinaat
+    // ligt soms een stuk van het OSM-object af (K13-A vs "K13 Alpha") en er
+    // staat daar toch niets anders. Kust/land: 1 km.
+    /platform/i.test(s.type ?? '') ? 3000 : 1000);
   });
 
   rwsOver.forEach((p) => {

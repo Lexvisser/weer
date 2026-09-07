@@ -18,7 +18,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-const STRAAL_M = 1000; // 2026-09-07: 500 -> 1000 (P11-B viel erbuiten of is anders getagd)
+const STRAAL_M = 1000; // standaard; de aanroeper mag tot STRAAL_MAX_M vragen (KNMI-platforms op open zee: 3 km, zie frontend)
+const STRAAL_MAX_M = 5000;
 const CACHE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dagen
 const FOUT_CACHE_MS = 60 * 60 * 1000; // na een mislukking een uur niet opnieuw proberen
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -82,18 +83,21 @@ function markeringUitTags(tags, lat, lon) {
     const groep = tags['seamark:radar_transponder:group'] ? `(${tags['seamark:radar_transponder:group']})` : '';
     racon = `${rtCat === 'racon' ? 'Racon' : rtCat}${groep}`;
   }
-  if (!lichten.length && !mist && !racon) return null;
+  // AIS-baken (fysiek of virtueel AtoN) -- de paarse "AIS"-cirkel op de zeekaart.
+  const radioCat = tags['seamark:radio_station:category'] ?? '';
+  const ais = /ais/.test(radioCat) ? (/virtual/.test(tags['seamark:radio_station:category'] ?? '') || tags['seamark:virtual_aton:category'] ? 'AIS (virtueel)' : 'AIS') : null;
+  if (!lichten.length && !mist && !racon && !ais) return null;
   const naam = tags['seamark:name'] ?? tags.name ?? null;
   const type = tags['seamark:type'] ?? null;
-  return { naam, type, lichten, mist, racon, lat, lon };
+  return { naam, type, lichten, mist, racon, ais, lat, lon };
 }
 
-async function vraagOverpass(lat, lon) {
+async function vraagOverpass(lat, lon, straalM) {
   // Ook objecten zonder seamark:type maar mét lichtkarakter, misthoorn of
   // racon (komt voor bij platforms die alleen als man_made=offshore_platform
   // getagd zijn).
-  const rond = `(around:${STRAAL_M},${lat},${lon})`;
-  const q = `[out:json][timeout:15];(nwr${rond}["seamark:type"];nwr${rond}["seamark:light:character"];nwr${rond}["seamark:fog_signal:category"];nwr${rond}["seamark:radar_transponder:category"];);out center tags;`;
+  const rond = `(around:${straalM},${lat},${lon})`;
+  const q = `[out:json][timeout:15];(nwr${rond}["seamark:type"];nwr${rond}["seamark:light:character"];nwr${rond}["seamark:fog_signal:category"];nwr${rond}["seamark:radar_transponder:category"];nwr${rond}["seamark:radio_station:category"];);out center tags;`;
   const res = await fetch(OVERPASS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
@@ -107,8 +111,9 @@ async function vraagOverpass(lat, lon) {
     .filter(Boolean);
 }
 
-export async function fetchZeemarkering({ lat, lon }) {
-  const sleutel = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+export async function fetchZeemarkering({ lat, lon, straalM }) {
+  const straal = Math.min(STRAAL_MAX_M, Math.max(100, Number(straalM) || STRAAL_M));
+  const sleutel = `${lat.toFixed(3)},${lon.toFixed(3)},${straal}`;
   const nu = Date.now();
   const bestaand = cache.get(sleutel);
   if (bestaand && nu - bestaand.tijdMs < (bestaand.markeringen ? CACHE_MS : FOUT_CACHE_MS)) {
@@ -117,7 +122,7 @@ export async function fetchZeemarkering({ lat, lon }) {
   while (inFlight) await inFlight.catch(() => {});
   inFlight = (async () => {
     try {
-      const markeringen = await vraagOverpass(lat, lon);
+      const markeringen = await vraagOverpass(lat, lon, straal);
       cache.set(sleutel, { tijdMs: Date.now(), markeringen });
       bewaarCache();
       return { markeringen, uitCache: false };
