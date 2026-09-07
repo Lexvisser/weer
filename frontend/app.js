@@ -7128,7 +7128,7 @@ function stationsPijlHtml(knmi, rwsPunten) {
   const k = knmi?.meting;
   if (k?.windRichtingGraden != null && k.windMs != null && k.windMs >= 0.3) return windVaanPijlSvg(k.windRichtingGraden, '#3ec6ff', '#0b4a63');
   const r = rwsPunten.find((p) => p.meting.windRichtingGraden != null && p.meting.windMs != null && p.meting.windMs >= 0.3);
-  if (r) return windVaanPijlSvg(r.meting.windRichtingGraden, '#38d9c8', '#0b5f56');
+  if (r) return windVaanPijlSvg(r.meting.windRichtingGraden, '#ffb020', '#7a5200'); // RWS = amber (2026-09-07: duidelijk anders dan KNMI-blauw)
   return knmi ? '<span class="station-stil">○</span>' : '';
 }
 

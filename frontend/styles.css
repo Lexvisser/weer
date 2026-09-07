@@ -2078,5 +2078,7 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 /* 2026-09-07: één RWS-stijl (zeegroen) voor alle RWS-vakjes, ongeacht soort
    meting -- onderscheid alleen per publicerende partij (KNMI blauw, RWS
    zeegroen). */
-.station-vak.is-rws { border-color:rgba(31,181,165,0.7); color:#c9fff8; }
-.station-vak.is-rws .station-bron, .station-vak.is-rws .rws-waterstand, .station-vak.is-rws .station-bft { color:#38d9c8; }
+/* 2026-09-07: RWS in amber -- zeegroen lag te dicht bij KNMI-blauw (Lex:
+   "je moet wel de partijen qua kleur uit elkaar houden"). */
+.station-vak.is-rws { border-color:rgba(255,176,32,0.8); color:#ffe2a8; }
+.station-vak.is-rws .station-bron, .station-vak.is-rws .rws-waterstand, .station-vak.is-rws .station-bft { color:#ffb020; }
