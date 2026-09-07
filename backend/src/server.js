@@ -19,6 +19,7 @@ import { fetchNws } from './sources/nws.js';
 import { fetchOpenMeteo } from './sources/openmeteo.js';
 import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
+import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
 import { startBlitzortungStream } from './sources/blitzortung.js';
@@ -1260,6 +1261,20 @@ export function createApp(env) {
     // laatste 10-minuten-meting per station -- zie sources/knmiStations.js.
     // Zelfde losse-live-route-opzet als /api/iss-live hieronder; de cache
     // (10 min) zit in de bron zelf, dus de frontend mag gerust vaker vragen.
+    // 2026-09-07 (vervolg): RWS-meetpunten op het water (waterstand, wind,
+    // golfhoogte) -- zie sources/rwsMeetpunten.js. Zelfde kaartlaag als de
+    // KNMI-stations in de frontend, eigen route zodat een RWS-storing de
+    // KNMI-stations niet meesleept (en andersom).
+    if (url === '/api/rws-meetpunten') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      try {
+        const data = await fetchRwsMeetpunten({ homeLat: env.homeLat, homeLon: env.homeLon, straalKm: params.get('straal') });
+        return sendJson(res, 200, data);
+      } catch (err) {
+        console.error('[weer] rws-meetpunten-verzoek mislukt:', err.message ?? err);
+        return sendJson(res, 502, { fout: 'RWS-meetpunten tijdelijk niet beschikbaar', meetpunten: [] });
+      }
+    }
     if (url === '/api/weerstations') {
       const params = new URL(req.url, 'http://localhost').searchParams;
       try {

@@ -2045,3 +2045,10 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .station-tendens { font-size:12px; font-weight:700; color:#9199b5; }
 .station-tendens.is-stijgend { color:#3ee08a; }
 .station-tendens.is-dalend { color:#ff6a3d; }
+/* RWS-meetpunten in dezelfde Stations-laag: zeegroen i.p.v. blauw, waterstand
+   (cm NAP, met teken) groot, golfhoogte kleiner ernaast. */
+.station-pin.is-water .station-label { color:#c9fff8; }
+.station-water-icoon { color:#38d9c8; font-size:16px; }
+.rws-waterstand { color:#38d9c8; }
+.rws-golf { font-size:10px; font-weight:600; color:#c9fff8; opacity:0.85; }
+.station-bft.is-water { color:#38d9c8; }

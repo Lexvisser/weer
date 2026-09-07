@@ -7027,19 +7027,54 @@ function stationPopupHtml(s) {
   return `<div class="popup-titel">🌡️ ${escapeHtml(s.naam)}</div><div class="popup-sub">${s.afstandKm} km van huis${type}</div><div class="popup-stats">${regels.join('')}</div>`;
 }
 
+function rwsMeetpuntPopupHtml(p) {
+  const m = p.meting;
+  const regels = [];
+  const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}</span><span class="station-stat-waarde">${waarde}</span></div>`); };
+  r('Waterstand', m.waterstandCm != null ? `${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)} cm NAP` : null);
+  r('Golfhoogte (Hm0)', m.golfhoogteCm != null ? `${Math.round(m.golfhoogteCm)} cm` : null);
+  r('Golfperiode', m.golfperiodeS != null ? `${Math.round(m.golfperiodeS * 10) / 10} s` : null);
+  if (m.windMs != null) {
+    const richting = m.windRichtingGraden != null ? `${Math.round(m.windRichtingGraden)}° ` : '';
+    r('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${m.windMs} m/s)`);
+  }
+  if (m.tijd) {
+    const t = new Date(m.tijd);
+    regels.push(`<div class="popup-sub">Meting ${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })} · Rijkswaterstaat</div>`);
+  }
+  return `<div class="popup-titel">🌊 ${escapeHtml(p.naam)}</div><div class="popup-sub">${p.afstandKm} km van huis · RWS-meetpunt</div><div class="popup-stats">${regels.join('')}</div>`;
+}
+
 async function ververStations() {
   if (!stationsActief || !kaart) return;
   const verzoekId = ++stationsVerzoekTeller;
-  let data;
-  try {
-    data = await fetch(`/api/weerstations?straal=${STATIONS_STRAAL_KM}`).then((r) => r.json());
-  } catch (err) {
-    console.warn('[weer] weerstations ophalen mislukt:', err);
-    return;
-  }
+  // 2026-09-07 (vervolg): KNMI-stations én RWS-meetpunten (waterstand/wind/
+  // golven, /api/rws-meetpunten) in dezelfde laag; elk apart opgehaald zodat
+  // de een niet wegvalt als de ander hapert.
+  const veilig = (url, sleutel) => fetch(url).then((r) => r.json()).then((d) => d[sleutel] ?? []).catch((err) => { console.warn(`[weer] ${sleutel} ophalen mislukt:`, err); return []; });
+  const [stations, meetpunten] = await Promise.all([
+    veilig(`/api/weerstations?straal=${STATIONS_STRAAL_KM}`, 'stations'),
+    veilig(`/api/rws-meetpunten?straal=${STATIONS_STRAAL_KM}`, 'meetpunten'),
+  ]);
+  const data = { stations };
   if (verzoekId !== stationsVerzoekTeller || !stationsActief || !kaart) return; // ondertussen uitgezet of ingehaald door een nieuwer verzoek
   if (!stationsLaag) stationsLaag = L.layerGroup().addTo(kaart);
   stationsLaag.clearLayers();
+  meetpunten.forEach((p) => {
+    const m = p.meting;
+    const pijl = m.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
+      ? windVaanPijlSvg(m.windRichtingGraden, '#38d9c8', '#0b5f56')
+      : '<span class="station-stil station-water-icoon">〜</span>';
+    const delen = [];
+    if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}</span>`);
+    if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
+    if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
+    const html = `<div class="station-pin is-water" title="${escapeHtml(p.naam)}">${pijl}<span class="station-label">${delen.join('')}</span></div>`;
+    const marker = L.marker([p.lat, p.lon], {
+      icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
+    }).bindPopup(() => rwsMeetpuntPopupHtml(p), { maxWidth: 260 });
+    stationsLaag.addLayer(marker);
+  });
   (data.stations ?? []).forEach((s) => {
     const m = s.meting;
     const pijl = m?.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
