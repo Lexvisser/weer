@@ -166,7 +166,7 @@ async function vraagOverpass(q, log, timeoutMs = 240000) {
 // in tegels van ~1 graad (4 x 6 = 24 tegels; zee-tegels zijn snel), één voor
 // één met een korte pauze en per tegel een tweede kans.
 const TEGEL_GRADEN = 1;
-const TEGEL_PAUZE_MS = 10000; // overpass-api.de geeft 429 bij te snel achter elkaar vragen
+const TEGEL_PAUZE_MS = 3000;
 
 export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t) => console.log(`[weer] zeemarkeringen: ${t}`) } = {}) {
   const [zuid, west, noord, oost] = BBOX.split(',').map(Number);
@@ -179,13 +179,12 @@ export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t
       const bbox = `${lat},${lon},${Math.min(noord, lat + TEGEL_GRADEN)},${Math.min(oost, lon + TEGEL_GRADEN)}`;
       const q = `[out:json][timeout:90][bbox:${bbox}];(node["seamark:type"];way["seamark:type"];);out center tags;`;
       let body = null;
-      for (let poging = 1; poging <= 4 && !body; poging++) {
+      for (let poging = 1; poging <= 2 && !body; poging++) {
         try {
           body = await vraagOverpass(q, log, 60000);
         } catch (err) {
-          const is429 = /429/.test(String(err.message ?? err));
-          log(`tegel ${bbox} poging ${poging} mislukt: ${err.message ?? err}${is429 ? ' -- 60 s wachten (rate limit)' : ''}`);
-          await new Promise((k) => setTimeout(k, is429 ? 60000 : 15000));
+          log(`tegel ${bbox} poging ${poging} mislukt: ${err.message ?? err}`);
+          await new Promise((k) => setTimeout(k, 15000));
         }
       }
       if (!body) throw new Error(`tegel ${bbox} bleef mislukken`);
