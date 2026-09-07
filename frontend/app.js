@@ -7049,7 +7049,8 @@ function stationPopupHtml(s) {
     regels.push(`<div class="popup-sub">Meting ${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })} · KNMI 10-min</div>`);
   }
   const type = s.type ? ` · ${escapeHtml(s.type)}` : '';
-  return `<div class="popup-titel">🌡️ ${escapeHtml(s.naam)}</div><div class="popup-sub">${s.afstandKm} km van huis${type}</div><div class="popup-stats">${regels.join('')}</div>`;
+  const herkomst = knmiWindIsVanRws(s) ? ' · RWS-meetpaal, wind via KNMI-net' : '';
+  return `<div class="popup-titel">🌡️ ${escapeHtml(s.naam)}</div><div class="popup-sub">${s.afstandKm} km van huis${type}${herkomst}</div><div class="popup-stats">${regels.join('')}</div>`;
 }
 
 function rwsMeetpuntPopupHtml(p) {
@@ -7100,12 +7101,30 @@ function stationsAfstandKm(a, b) {
   return Math.hypot((a.lat - b.lat) * 111, (a.lon - b.lon) * 111 * Math.cos((a.lat * Math.PI) / 180));
 }
 
-function knmiVakHtml(s) {
+// 2026-09-07, op verzoek van Lex ("alle metingen moeten worden toegeschreven
+// aan de partij die ze doet, geen metingen lenen"): een KNMI-station van het
+// type "Wind station"/"Windmast" is een RWS-meetpaal waarvan KNMI de wind
+// overneemt. Die wind hoort dus bij RWS: staat er een RWS-vak met wind naast,
+// dan laat het KNMI-vak de wind weg (en vervalt het KNMI-vak helemaal als er
+// dan niets overblijft); staat er geen RWS-vak naast, dan wordt het vak in
+// RWS-kleur getoond met label "RWS via KNMI". Echte KNMI-stations (Meteo
+// site, Aerodrome, Platform met eigen sensorset) blijven gewoon KNMI.
+function knmiWindIsVanRws(s) {
+  return /wind/i.test(s.type ?? '');
+}
+
+// Geeft null terug als er geen vak overblijft.
+function knmiVakHtml(s, { rwsWindErnaast = false } = {}) {
   const m = s.meting;
-  const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
+  const vanRws = knmiWindIsVanRws(s);
+  const windTonen = m?.windBft != null && !(vanRws && rwsWindErnaast);
+  const bft = windTonen ? `<span class="station-bft">${m.windBft}</span>` : '';
   const tendens = stationTendens(m);
   const tendensHtml = tendens ? `<span class="station-tendens ${tendens.klasse}" title="Druk ${tendens.tekst} hPa in 3 uur">${tendens.pijl}</span>` : '';
-  return `<span class="station-vak is-knmi${m ? '' : ' is-geen-meting'}"><span class="station-bron">KNMI</span>${stationTempTekst(m)}${bft}${tendensHtml}</span>`;
+  const temp = stationTempTekst(m);
+  if (m && !temp && !bft && !tendensHtml) return null; // niets eigens meer te tonen
+  const bron = vanRws ? 'RWS <small>via KNMI</small>' : 'KNMI';
+  return `<span class="station-vak ${vanRws ? 'is-kust' : 'is-knmi'}${m ? '' : ' is-geen-meting'}"><span class="station-bron">${bron}</span>${temp}${bft}${tendensHtml}</span>`;
 }
 
 function rwsIsZee(p) {
@@ -7130,9 +7149,13 @@ function rwsZichtbaar(p) {
 // RWS-wind van een kustpunt. Kleur volgt de bron van de pijl.
 function stationsPijlHtml(knmi, rwsPunten) {
   const k = knmi?.meting;
-  if (k?.windRichtingGraden != null && k.windMs != null && k.windMs >= 0.3) return windVaanPijlSvg(k.windRichtingGraden, '#3ec6ff', '#0b4a63');
   const r = rwsPunten.find((p) => p.meting.windRichtingGraden != null && p.meting.windMs != null && p.meting.windMs >= 0.3);
+  // Pijl in de kleur van de partij die de wind meet: RWS-meetpaal = amber,
+  // ook als de waarde via KNMI binnenkomt.
   if (r) return windVaanPijlSvg(r.meting.windRichtingGraden, '#ffb020', '#7a5200');
+  if (k?.windRichtingGraden != null && k.windMs != null && k.windMs >= 0.3) {
+    return knmiWindIsVanRws(knmi) ? windVaanPijlSvg(k.windRichtingGraden, '#ffb020', '#7a5200') : windVaanPijlSvg(k.windRichtingGraden, '#3ec6ff', '#0b4a63');
+  }
   return knmi ? '<span class="station-stil">○</span>' : '';
 }
 
@@ -7153,17 +7176,22 @@ function tekenStations({ stations, meetpunten }) {
   stations.forEach((s) => {
     const buren = meetpunten.filter((p) => rwsOver.has(p) && stationsAfstandKm(s, p) <= SAMENVOEG_KM);
     buren.forEach((p) => rwsOver.delete(p));
-    const vakken = [];
-    if (stationsDelen.knmi) vakken.push(knmiVakHtml(s));
     const zichtbareBuren = buren.filter(rwsZichtbaar);
+    const rwsWindErnaast = zichtbareBuren.some((p) => p.meting.windBft != null);
+    // Een "RWS via KNMI"-vak (windmast zonder RWS-vak ernaast) valt onder het
+    // Kust-filter, niet onder KNMI -- het is immers een RWS-meting.
+    const knmiTonen = knmiWindIsVanRws(s) ? stationsDelen.kust : stationsDelen.knmi;
+    const vakken = [];
+    const knmiVak = knmiTonen ? knmiVakHtml(s, { rwsWindErnaast }) : null;
+    if (knmiVak) vakken.push(knmiVak);
     zichtbareBuren.forEach((p) => vakken.push(rwsVakHtml(p)));
     if (!vakken.length) return;
-    const pijl = stationsPijlHtml(stationsDelen.knmi ? s : null, zichtbareBuren);
+    const pijl = stationsPijlHtml(knmiTonen ? s : null, zichtbareBuren);
     const naam = [s.naam, ...zichtbareBuren.map((p) => p.naam)].join(' + ');
     // Afstand KNMI-punt <-> RWS-punt in de popup (in meters), zodat je per
     // paar ziet hoe dicht ze werkelijk bij elkaar zitten.
     plaatsStationsMarker(s.lat, s.lon, naam, vakken, pijl, () => [
-      stationsDelen.knmi ? stationPopupHtml(s) : '',
+      knmiTonen ? stationPopupHtml(s) : '',
       ...zichtbareBuren.map((p) => `${rwsMeetpuntPopupHtml(p)}<div class="popup-sub">${Math.round(stationsAfstandKm(s, p) * 1000)} m van het KNMI-punt</div>`),
     ].filter(Boolean).join('<hr class="station-popup-scheiding">'));
   });
