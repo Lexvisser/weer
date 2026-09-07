@@ -4,3 +4,7 @@ node_modules/
 # 2026-08-20: verlopen-historie (zie src/historie.js) — puur runtime-state
 # van de lopende server, hoort niet in git, net als .env hierboven.
 data/
+
+# 2026-09-07: src/data/ bevat statische, gecommitte bestanden (zeemarkeringen-nl.json);
+# het patroon data/ hierboven is voor de runtime-map backend/data/.
+!src/data/
