@@ -2042,9 +2042,9 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .station-pin.is-geen-meting { opacity:0.45; }
 .station-stat { display:flex; justify-content:space-between; gap:10px; }
 .station-stat-label { color:#9199b5; }
-.station-tendens { font-size:12px; font-weight:700; color:#9199b5; }
-.station-tendens.is-stijgend { color:#3ee08a; }
-.station-tendens.is-dalend { color:#ff6a3d; }
+/* Druktendens in de KNMI-pil: pijl + getal, in KNMI-blauw (2026-09-07, Lex). */
+.station-tendens { font-size:11px; font-weight:700; color:#3ec6ff; white-space:nowrap; }
+.station-tendens small { font-size:8px; font-weight:500; opacity:0.8; }
 /* RWS-meetpunten in dezelfde Stations-laag (2026-09-07, na Lex' opmerking
    "onderscheidt zich visueel niet"): een GEVULDE zeegroene schijf met een
    peilschaal-streepje als icoon (i.p.v. een los golfje in bijna dezelfde
