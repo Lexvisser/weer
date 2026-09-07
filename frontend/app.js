@@ -7146,7 +7146,37 @@ function plaatsStationsMarker(lat, lon, naam, vakken, pijl, popupFn, samengevoeg
   const marker = L.marker([lat, lon], {
     icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
   }).bindPopup(popupFn, { maxWidth: 280 });
+  marker.on('popupopen', (e) => vulZeemarkeringIn(e.popup, lat, lon));
   stationsLaag.addLayer(marker);
+}
+
+// 2026-09-07, op verzoek van Lex (na "wat betekent Fl(4)W.20s32m28M"): bij het
+// openen van een Stations-popup het lichtkarakter/misthoorn/racon van
+// zeemarkeringen binnen 500 m ophalen (/api/zeemarkering, OpenSeaMap) en in
+// het blauw onder de naam zetten. Lazy: alleen bij een klik, en de backend
+// cachet 30 dagen, dus dit kost vrijwel niets. Geen markering = geen regel.
+async function vulZeemarkeringIn(popup, lat, lon) {
+  let data;
+  try {
+    data = await fetch(`/api/zeemarkering?lat=${lat}&lon=${lon}`).then((r) => r.json());
+  } catch (_) {
+    return;
+  }
+  const el = popup.getElement?.();
+  if (!el || !popup.isOpen()) return; // ondertussen dichtgeklikt
+  const titel = el.querySelector('.popup-titel');
+  if (!titel || el.querySelector('.station-zeemarkering')) return;
+  const regels = (data.markeringen ?? []).map((m) => {
+    const delen = [...(m.lichten ?? []), m.mist, m.racon].filter(Boolean);
+    const naam = m.naam && m.naam !== '' ? `<span class="station-zeemarkering-naam">${escapeHtml(m.naam)}</span> ` : '';
+    return `<div>${naam}${delen.map(escapeHtml).join(' · ')}</div>`;
+  });
+  if (!regels.length) return;
+  const blok = document.createElement('div');
+  blok.className = 'station-zeemarkering';
+  blok.innerHTML = regels.join('');
+  titel.insertAdjacentElement('afterend', blok);
+  popup.update(); // popup-hoogte is veranderd
 }
 
 function tekenStations({ stations, meetpunten }) {

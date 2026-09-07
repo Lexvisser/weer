@@ -20,6 +20,7 @@ import { fetchOpenMeteo } from './sources/openmeteo.js';
 import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
+import { fetchZeemarkering } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
 import { startBlitzortungStream } from './sources/blitzortung.js';
@@ -1265,6 +1266,21 @@ export function createApp(env) {
     // golfhoogte) -- zie sources/rwsMeetpunten.js. Zelfde kaartlaag als de
     // KNMI-stations in de frontend, eigen route zodat een RWS-storing de
     // KNMI-stations niet meesleept (en andersom).
+    // 2026-09-07: zeemarkeringen (lichtkarakter, misthoorn, racon uit
+    // OpenSeaMap) binnen 500 m van een positie -- lazy, pas als een Stations-
+    // popup opengaat; zie sources/zeemarkering.js (30-dagen-cache op schijf).
+    if (url === '/api/zeemarkering') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const lat = Number(params.get('lat'));
+      const lon = Number(params.get('lon'));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return sendJson(res, 400, { fout: 'lat en lon zijn verplicht', markeringen: [] });
+      try {
+        return sendJson(res, 200, await fetchZeemarkering({ lat, lon }));
+      } catch (err) {
+        console.error('[weer] zeemarkering-verzoek mislukt:', err.message ?? err);
+        return sendJson(res, 502, { fout: 'Zeemarkering tijdelijk niet beschikbaar', markeringen: [] });
+      }
+    }
     if (url === '/api/rws-meetpunten') {
       const params = new URL(req.url, 'http://localhost').searchParams;
       try {

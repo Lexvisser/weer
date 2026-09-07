@@ -2093,3 +2093,7 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .radar-controls .stations-subknop[data-deel="rws"] { border-color:rgba(255,176,32,0.8); color:#ffb020; }
 .radar-controls .stations-subknop.actief { background:rgba(5,6,10,0.78); }
 .radar-controls .stations-subknop:not(.actief) { opacity:0.4; text-decoration:line-through; }
+/* Zeemarkering (lichtkarakter/misthoorn/racon, OpenSeaMap) onder de naam in
+   de Stations-popup, in het blauw (2026-09-07, Lex). */
+.station-zeemarkering { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#3ec6ff; margin-top:2px; }
+.station-zeemarkering-naam { color:#8fdcff; opacity:0.85; }
