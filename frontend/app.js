@@ -7094,7 +7094,7 @@ async function ververStations() {
 // met de vakjes naast elkaar, zodat je per plek ziet wie wat meet. De
 // subknoppen KNMI/Peil/Kust filteren per vakje; valt het laatste vakje weg,
 // dan verdwijnt de marker.
-const SAMENVOEG_KM = 1;
+const SAMENVOEG_KM = 0.3; // 2026-09-07: van 1 km naar 300 m -- 'dezelfde paal', geen buren (Lex, na de foutmarge-vraag)
 
 function stationsAfstandKm(a, b) {
   return Math.hypot((a.lat - b.lat) * 111, (a.lon - b.lon) * 111 * Math.cos((a.lat * Math.PI) / 180));
@@ -7160,7 +7160,12 @@ function tekenStations({ stations, meetpunten }) {
     if (!vakken.length) return;
     const pijl = stationsPijlHtml(stationsDelen.knmi ? s : null, zichtbareBuren);
     const naam = [s.naam, ...zichtbareBuren.map((p) => p.naam)].join(' + ');
-    plaatsStationsMarker(s.lat, s.lon, naam, vakken, pijl, () => [stationsDelen.knmi ? stationPopupHtml(s) : '', ...zichtbareBuren.map(rwsMeetpuntPopupHtml)].filter(Boolean).join('<hr class="station-popup-scheiding">'));
+    // Afstand KNMI-punt <-> RWS-punt in de popup (in meters), zodat je per
+    // paar ziet hoe dicht ze werkelijk bij elkaar zitten.
+    plaatsStationsMarker(s.lat, s.lon, naam, vakken, pijl, () => [
+      stationsDelen.knmi ? stationPopupHtml(s) : '',
+      ...zichtbareBuren.map((p) => `${rwsMeetpuntPopupHtml(p)}<div class="popup-sub">${Math.round(stationsAfstandKm(s, p) * 1000)} m van het KNMI-punt</div>`),
+    ].filter(Boolean).join('<hr class="station-popup-scheiding">'));
   });
 
   rwsOver.forEach((p) => {
