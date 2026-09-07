@@ -4384,14 +4384,16 @@ function polygoonZwaartepunt(ringLatLon) {
 }
 
 // Drie vormen: "8→6" (gale nu, zakt af — 'at first'), "7→8" (gale op komst)
-// en kaal "8"/"8↘" als er geen tweede getal te vinden was. Gedeeld door de
+// en kaal "8"/"↘8" als er geen tweede getal te vinden was. Gedeeld door de
 // zeekaart-vanen en de Met Office-gale-vaantjes (renderMap, 2026-09-06).
+// 2026-09-07 (Lex): trendpijl VÓÓR het cijfer — "9↗" las als "na 9 nog
+// verder omhoog", "↗9" leest als "op weg naar 9".
 function galeKrachtTekst(info) {
   return info.naKracht != null
     ? `${info.kracht}→${info.naKracht}`
     : info.trend === '↗' && info.huidigeKracht != null
       ? `${info.huidigeKracht}→${info.kracht}`
-      : `${info.kracht}${info.trend}`;
+      : `${info.trend}${info.kracht}`;
 }
 
 let windvaanLaag = null;
