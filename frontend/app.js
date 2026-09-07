@@ -7124,16 +7124,24 @@ function rwsZichtbaar() {
 
 // Windpijl: één pijl per marker; KNMI-wind eerst (als KNMI-vak zichtbaar
 // is), anders de RWS-wind. Kleur volgt de partij die de pijl levert.
-function stationsPijlHtml(knmi, rwsPunten) {
+function stationsPijlHtml(knmi, rwsPunten, samengevoegd = false) {
   const k = knmi?.meting;
+  if (samengevoegd) {
+    const rw = rwsPunten.find((p) => p.meting.windRichtingGraden != null && p.meting.windMs != null && p.meting.windMs >= 0.3);
+    const graden = k?.windRichtingGraden != null && k.windMs >= 0.3 ? k.windRichtingGraden : rw?.meting.windRichtingGraden;
+    if (graden != null) return windVaanPijlSvg(graden, '#c77dff', '#4b1a7a');
+  }
   if (k?.windRichtingGraden != null && k.windMs != null && k.windMs >= 0.3) return windVaanPijlSvg(k.windRichtingGraden, '#3ec6ff', '#0b4a63');
   const r = rwsPunten.find((p) => p.meting.windRichtingGraden != null && p.meting.windMs != null && p.meting.windMs >= 0.3);
   if (r) return windVaanPijlSvg(r.meting.windRichtingGraden, '#ffb020', '#7a5200'); // RWS = amber (2026-09-07: duidelijk anders dan KNMI-blauw)
   return knmi ? '<span class="station-stil">○</span>' : '';
 }
 
-function plaatsStationsMarker(lat, lon, naam, vakken, pijl, popupFn) {
-  const html = `<div class="station-pin" title="${escapeHtml(naam)}">${pijl}<span class="station-label">${vakken.join('')}</span></div>`;
+// 2026-09-07, op verzoek van Lex: samengevoegde meetpalen (KNMI + RWS binnen
+// SAMENVOEG_KM) krijgen een derde kleur, violet -- rand om de hele pil en de
+// windpijl -- terwijl de vakjes binnenin hun partijkleur houden.
+function plaatsStationsMarker(lat, lon, naam, vakken, pijl, popupFn, samengevoegd = false) {
+  const html = `<div class="station-pin${samengevoegd ? ' is-samengevoegd' : ''}" title="${escapeHtml(naam)}">${pijl}<span class="station-label">${vakken.join('')}</span></div>`;
   const marker = L.marker([lat, lon], {
     icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
   }).bindPopup(popupFn, { maxWidth: 280 });
@@ -7154,14 +7162,15 @@ function tekenStations({ stations, meetpunten }) {
     const zichtbareBuren = buren.filter(rwsZichtbaar);
     zichtbareBuren.forEach((p) => vakken.push(rwsVakHtml(p)));
     if (!vakken.length) return;
-    const pijl = stationsPijlHtml(stationsDelen.knmi ? s : null, zichtbareBuren);
+    const samengevoegd = vakken.length > 1;
+    const pijl = stationsPijlHtml(stationsDelen.knmi ? s : null, zichtbareBuren, samengevoegd);
     const naam = [s.naam, ...zichtbareBuren.map((p) => p.naam)].join(' + ');
     // Afstand KNMI-punt <-> RWS-punt in de popup (in meters), zodat je per
     // paar ziet hoe dicht ze werkelijk bij elkaar zitten.
     plaatsStationsMarker(s.lat, s.lon, naam, vakken, pijl, () => [
       stationsDelen.knmi ? stationPopupHtml(s) : '',
       ...zichtbareBuren.map((p) => `${rwsMeetpuntPopupHtml(p)}<div class="popup-sub">${Math.round(stationsAfstandKm(s, p) * 1000)} m van het KNMI-punt</div>`),
-    ].filter(Boolean).join('<hr class="station-popup-scheiding">'));
+    ].filter(Boolean).join('<hr class="station-popup-scheiding">'), samengevoegd);
   });
 
   rwsOver.forEach((p) => {

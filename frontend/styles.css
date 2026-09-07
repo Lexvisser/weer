@@ -2082,3 +2082,5 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    "je moet wel de partijen qua kleur uit elkaar houden"). */
 .station-vak.is-rws { border-color:rgba(255,176,32,0.8); color:#ffe2a8; }
 .station-vak.is-rws .station-bron, .station-vak.is-rws .rws-waterstand, .station-vak.is-rws .station-bft { color:#ffb020; }
+/* Samengevoegde meetpaal (KNMI + RWS): violette rand om de hele pil. */
+.station-pin.is-samengevoegd .station-label { outline:2px solid #c77dff; outline-offset:1px; border-radius:9px; box-shadow:0 0 6px rgba(199,125,255,0.6); }
