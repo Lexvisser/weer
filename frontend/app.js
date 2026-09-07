@@ -7062,14 +7062,19 @@ async function ververStations() {
   stationsLaag.clearLayers();
   meetpunten.forEach((p) => {
     const m = p.meting;
+    // 2026-09-07, op verzoek van Lex: RWS-punten met golven en/of wind (de
+    // kust) in een eigen kleur (amber) t.o.v. de zuivere waterstand-
+    // peilschalen (zeegroen), zodat je op de kaart meteen ziet waar de
+    // zee-informatie zit.
+    const isZee = m.golfhoogteCm != null || m.windMs != null;
     const pijl = m.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
-      ? windVaanPijlSvg(m.windRichtingGraden, '#38d9c8', '#0b5f56')
+      ? windVaanPijlSvg(m.windRichtingGraden, isZee ? '#ffb020' : '#38d9c8', isZee ? '#7a5200' : '#0b5f56')
       : ''; // 2026-09-07: geen los icoon bij stil weer/geen wind -- "overkill" volgens Lex; het zeegroene pilletje is onderscheid genoeg
     const delen = [];
     if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
     if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
     if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
-    const html = `<div class="station-pin is-water" title="${escapeHtml(p.naam)}">${pijl}<span class="station-label">${delen.join('')}</span></div>`;
+    const html = `<div class="station-pin is-water${isZee ? ' is-zee' : ''}" title="${escapeHtml(p.naam)}">${pijl}<span class="station-label">${delen.join('')}</span></div>`;
     const marker = L.marker([p.lat, p.lon], {
       icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
     }).bindPopup(() => rwsMeetpuntPopupHtml(p), { maxWidth: 260 });

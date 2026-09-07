@@ -2056,3 +2056,9 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .rws-waterstand small { font-size:9px; font-weight:500; margin-left:1px; opacity:0.8; }
 .rws-golf { font-size:10px; font-weight:600; color:#c9fff8; opacity:0.85; }
 .station-bft.is-water { color:#38d9c8; }
+/* RWS-kustpunten (golven/wind) in amber, peilschalen blijven zeegroen
+   (2026-09-07, Lex: "de overige meldingen een andere kleur"). */
+.station-pin.is-water.is-zee .station-label { border-color:rgba(255,176,32,0.8); color:#ffe2a8; }
+.station-pin.is-zee .rws-waterstand { color:#ffb020; }
+.station-pin.is-zee .rws-golf { color:#ffe2a8; font-size:12px; font-weight:700; opacity:1; }
+.station-pin.is-zee .station-bft.is-water { color:#ffb020; }
