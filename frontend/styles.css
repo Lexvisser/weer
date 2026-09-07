@@ -2050,7 +2050,7 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    peilschaal-streepje als icoon (i.p.v. een los golfje in bijna dezelfde
    kleur als de KNMI-pijlen), en de waterstand in een donker pilletje met
    "cm" erachter. Windpijl alleen bij kustpunten die ook wind meten. */
-.station-water-icoon { width:22px; height:22px; margin:4px; border-radius:50%; background:#1fb5a5; border:2px solid #c9fff8; color:#05060a; font-size:11px; line-height:1; display:flex; align-items:center; justify-content:center; flex:none; box-shadow:0 0 0 2px rgba(31,181,165,0.35); }
+/* .station-water-icoon vervallen 2026-09-07 (Lex: "overkill") -- alleen het pilletje blijft. */
 .station-pin.is-water .station-label { background:rgba(5,6,10,0.78); border:1px solid rgba(31,181,165,0.7); border-radius:8px; padding:2px 6px; color:#c9fff8; font-size:12px; }
 .rws-waterstand { color:#7ff5e6; }
 .rws-waterstand small { font-size:9px; font-weight:500; margin-left:1px; opacity:0.8; }

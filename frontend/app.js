@@ -7064,7 +7064,7 @@ async function ververStations() {
     const m = p.meting;
     const pijl = m.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
       ? windVaanPijlSvg(m.windRichtingGraden, '#38d9c8', '#0b5f56')
-      : '<span class="station-water-icoon" aria-hidden="true">▮</span>';
+      : ''; // 2026-09-07: geen los icoon bij stil weer/geen wind -- "overkill" volgens Lex; het zeegroene pilletje is onderscheid genoeg
     const delen = [];
     if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
     if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
