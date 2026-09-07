@@ -210,13 +210,14 @@
            waarneemstations binnen 100 km als laag -- windpijl + temperatuur
            per station, zie toggleStations() in app.js. -->
       <button id="toggleStations" class="satelliet-toggle" title="Meetstations in heel Nederland: KNMI (wind, temperatuur, druktendens) en RWS-meetpunten op het water (waterstand, golfhoogte, wind), elke 10 min">🌡️<span class="knop-tekst"> Stations</span></button>
-      <!-- 2026-09-07, op verzoek van Lex: drie subknoppen, alleen zichtbaar
-           zolang Stations aanstaat -- KNMI / waterstanden / kust (golven+wind)
-           apart aan/uit. Zie stationsSubToggle() in app.js. -->
+      <!-- 2026-09-07, op verzoek van Lex: subknoppen, alleen zichtbaar zolang
+           Stations aanstaat -- per PUBLICERENDE PARTIJ (KNMI / RWS) apart
+           aan/uit. Eerder was er ook een Peil/Kust-splitsing naar soort meting;
+           die is vervallen (Lex: "de metingen neutraal, alleen onderscheid
+           tussen de partij"). Zie stationsSubToggle() in app.js. -->
       <span id="stationsSub" class="stations-sub verborgen">
         <button id="stationsSubKnmi" class="satelliet-toggle stations-subknop" data-deel="knmi" title="KNMI-weerstations">KNMI</button>
-        <button id="stationsSubPeil" class="satelliet-toggle stations-subknop" data-deel="peil" title="RWS-waterstanden (peilschalen)">Peil</button>
-        <button id="stationsSubKust" class="satelliet-toggle stations-subknop" data-deel="kust" title="RWS-kustpunten: golven en wind">Kust</button>
+        <button id="stationsSubRws" class="satelliet-toggle stations-subknop" data-deel="rws" title="Rijkswaterstaat-meetpunten">RWS</button>
       </span>
       <button id="radarSpeel">▶</button>
       <span id="radarTijd">—</span>

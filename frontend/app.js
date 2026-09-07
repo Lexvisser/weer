@@ -6970,14 +6970,15 @@ let stationsActief = false;
 let stationsLaag = null;
 let stationsPollTimer = null;
 let stationsVerzoekTeller = 0;
-// 2026-09-07, op verzoek van Lex: drie deel-schakelaars binnen de laag
-// (alleen zichtbaar als Stations aanstaat): knmi / peil (RWS-waterstanden) /
-// kust (RWS-punten met golven en/of wind). Standaard alles aan; per toestel
-// bewaard. Uitzetten filtert alleen in de weergave -- de data is al binnen,
-// dus geen extra verzoeken bij wisselen.
+// 2026-09-07, op verzoek van Lex: deel-schakelaars binnen de laag (alleen
+// zichtbaar als Stations aanstaat), per PUBLICERENDE PARTIJ: knmi / rws.
+// Bewust geen indeling naar soort meting of naar wie de sensor beheert --
+// dat weten we niet zeker (zie de discussie over windmasten), dus elk vakje
+// zegt alleen "dit publiceert KNMI" resp. "dit publiceert RWS". Standaard
+// alles aan; per toestel bewaard. Uitzetten filtert alleen in de weergave.
 const STATIONS_SUB_EL = document.getElementById('stationsSub');
 const STATIONS_DELEN_KEY = 'weerStationsDelen';
-let stationsDelen = { knmi: true, peil: true, kust: true };
+let stationsDelen = { knmi: true, rws: true };
 try { stationsDelen = { ...stationsDelen, ...JSON.parse(localStorage.getItem(STATIONS_DELEN_KEY) || '{}') }; } catch (_) { /* privé-modus */ }
 let laatsteStationsData = null; // { stations, meetpunten } -- voor hertekenen bij een deel-schakelaar
 
@@ -7108,31 +7109,26 @@ function knmiVakHtml(s) {
   return `<span class="station-vak is-knmi${m ? '' : ' is-geen-meting'}"><span class="station-bron">KNMI</span>${stationTempTekst(m)}${bft}${tendensHtml}</span>`;
 }
 
-function rwsIsZee(p) {
-  return p.meting.golfhoogteCm != null || p.meting.windMs != null;
-}
-
 function rwsVakHtml(p) {
   const m = p.meting;
-  const zee = rwsIsZee(p);
   const delen = [];
   if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
   if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
   if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
-  return `<span class="station-vak ${zee ? 'is-kust' : 'is-peil'}"><span class="station-bron">RWS</span>${delen.join('')}</span>`;
+  return `<span class="station-vak is-rws"><span class="station-bron">RWS</span>${delen.join('')}</span>`;
 }
 
-function rwsZichtbaar(p) {
-  return rwsIsZee(p) ? stationsDelen.kust : stationsDelen.peil;
+function rwsZichtbaar() {
+  return stationsDelen.rws;
 }
 
-// Windpijl: KNMI-wind gaat voor (10 m-hoogte, gecalibreerd); anders de
-// RWS-wind van een kustpunt. Kleur volgt de bron van de pijl.
+// Windpijl: één pijl per marker; KNMI-wind eerst (als KNMI-vak zichtbaar
+// is), anders de RWS-wind. Kleur volgt de partij die de pijl levert.
 function stationsPijlHtml(knmi, rwsPunten) {
   const k = knmi?.meting;
   if (k?.windRichtingGraden != null && k.windMs != null && k.windMs >= 0.3) return windVaanPijlSvg(k.windRichtingGraden, '#3ec6ff', '#0b4a63');
   const r = rwsPunten.find((p) => p.meting.windRichtingGraden != null && p.meting.windMs != null && p.meting.windMs >= 0.3);
-  if (r) return windVaanPijlSvg(r.meting.windRichtingGraden, '#ffb020', '#7a5200');
+  if (r) return windVaanPijlSvg(r.meting.windRichtingGraden, '#38d9c8', '#0b5f56');
   return knmi ? '<span class="station-stil">○</span>' : '';
 }
 
