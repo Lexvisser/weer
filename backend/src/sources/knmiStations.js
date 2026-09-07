@@ -55,21 +55,37 @@ async function haalStationsLijst(apiKey) {
 
 async function haalMeting(station, apiKey) {
   const nu = new Date();
-  // Open interval "40 minuten geleden tot laatste" -- zie knmi.js voor
+  // Open interval "ruim 3 uur geleden tot laatste" -- zie knmi.js voor
   // waarom een exact tijdstip hier niet werkt (404 op elke niet-10-min-tijd).
-  const vanIso = new Date(nu.getTime() - 40 * 60 * 1000).toISOString();
+  // 3 uur (i.p.v. 40 min zoals in knmi.js) omdat we uit dezelfde respons ook
+  // de DRUKTENDENS afleiden (2026-09-07, tweede wens van Lex): verschil
+  // tussen de nieuwste meting en die van ~3 uur eerder, de klassieke
+  // barometer-tendens. Kost geen extra verzoek, alleen een wat grotere respons.
+  const vanIso = new Date(nu.getTime() - (3 * 60 + 15) * 60 * 1000).toISOString();
   const url = `${EDR_BASIS}/locations/${station.locationId}?datetime=${encodeURIComponent(`${vanIso}/..`)}`;
   const res = await fetch(url, { headers: { Authorization: apiKey, accept: 'application/prs.coverage+json' } });
   if (!res.ok) throw new Error(`status ${res.status}`);
   const body = await res.json();
-  const coverage = (body.coverages ?? []).reduce((meestRecent, c) => {
-    const t = c.domain?.axes?.t?.values?.[0];
-    const tHuidig = meestRecent?.domain?.axes?.t?.values?.[0];
-    if (!meestRecent) return c;
-    return t && (!tHuidig || new Date(t) > new Date(tHuidig)) ? c : meestRecent;
-  }, null);
+  const coverages = (body.coverages ?? [])
+    .map((c) => ({ c, tMs: new Date(c.domain?.axes?.t?.values?.[0] ?? 0).getTime() }))
+    .filter((x) => Number.isFinite(x.tMs) && x.tMs > 0)
+    .sort((a, b) => a.tMs - b.tMs);
+  const coverage = coverages.at(-1)?.c;
   if (!coverage) throw new Error('geen coverages');
   const waarde = (sleutel) => coverage.ranges?.[sleutel]?.values?.[0] ?? null;
+  // Druktendens: druk nu minus druk ~3 uur geleden (de coverage die het
+  // dichtst bij "nieuwste - 3u" ligt, mits minstens 2,5 uur oud -- anders is
+  // de reeks te kort en laten we de tendens weg i.p.v. iets misleidends).
+  const drukNu = waarde('pp') ?? waarde('qnh');
+  let drukTendens3uHpa = null;
+  if (drukNu != null && coverages.length > 1) {
+    const doelMs = coverages.at(-1).tMs - 3 * 60 * 60 * 1000;
+    const oud = coverages.reduce((beste, x) => (Math.abs(x.tMs - doelMs) < Math.abs(beste.tMs - doelMs) ? x : beste));
+    const drukOud = oud.c.ranges?.pp?.values?.[0] ?? oud.c.ranges?.qnh?.values?.[0] ?? null;
+    if (drukOud != null && coverages.at(-1).tMs - oud.tMs >= 2.5 * 60 * 60 * 1000) {
+      drukTendens3uHpa = Math.round((drukNu - drukOud) * 10) / 10;
+    }
+  }
   const windMs = waarde('ff');
   const windstootMs = waarde('fx');
   return {
@@ -83,7 +99,8 @@ async function haalMeting(station, apiKey) {
     windRichtingGraden: waarde('dd'),
     windstotenMs: windstootMs,
     windstotenKn: windstootMs != null ? Math.round(windstootMs * 1.94384 * 10) / 10 : null,
-    luchtdrukHpa: waarde('pp') ?? waarde('qnh'),
+    luchtdrukHpa: drukNu,
+    drukTendens3uHpa,
     zichtMeter: waarde('vv'),
     bewolkingOkta: waarde('n'),
     neerslagLaatsteUurMm: waarde('R1H'),

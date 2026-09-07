@@ -2042,3 +2042,6 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .station-pin.is-geen-meting { opacity:0.45; }
 .station-stat { display:flex; justify-content:space-between; gap:10px; }
 .station-stat-label { color:#9199b5; }
+.station-tendens { font-size:12px; font-weight:700; color:#9199b5; }
+.station-tendens.is-stijgend { color:#3ee08a; }
+.station-tendens.is-dalend { color:#ff6a3d; }

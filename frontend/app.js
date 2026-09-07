@@ -6986,6 +6986,16 @@ function toggleStations() {
   try { localStorage.setItem(STATIONS_KEY, stationsActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
 }
 
+// Druktendens (3 uur, zie knmiStations.js): WMO-achtige drempels -- vanaf
+// 1,5 hPa/3u telt het als stijgend/dalend, daarbinnen als stabiel.
+function stationTendens(m) {
+  const d = m?.drukTendens3uHpa;
+  if (d == null) return null;
+  if (d >= 1.5) return { pijl: '↑', klasse: 'is-stijgend', tekst: `+${d}` };
+  if (d <= -1.5) return { pijl: '↓', klasse: 'is-dalend', tekst: `${d}` };
+  return { pijl: '→', klasse: 'is-stabiel', tekst: d > 0 ? `+${d}` : `${d}` };
+}
+
 function stationTempTekst(m) {
   return m?.temperatuurC != null ? `${Math.round(m.temperatuurC * 10) / 10}°` : '';
 }
@@ -7005,7 +7015,8 @@ function stationPopupHtml(s) {
       r('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${m.windMs} m/s)`);
     }
     r('Windstoten', m.windstotenKn != null ? `${m.windstotenKn} kn` : null);
-    r('Luchtdruk', m.luchtdrukHpa != null ? `${Math.round(m.luchtdrukHpa * 10) / 10} hPa` : null);
+    const tendens = stationTendens(m);
+    r('Luchtdruk', m.luchtdrukHpa != null ? `${Math.round(m.luchtdrukHpa * 10) / 10} hPa${tendens ? ` <span class="station-tendens ${tendens.klasse}">${tendens.pijl} ${tendens.tekst}/3u</span>` : ''}` : null);
     r('Zicht', m.zichtMeter != null ? (m.zichtMeter >= 1000 ? `${Math.round(m.zichtMeter / 100) / 10} km` : `${m.zichtMeter} m`) : null);
     r('Bewolking', m.bewolkingOkta != null ? `${m.bewolkingOkta}/8` : null);
     r('Neerslag (1u)', m.neerslagLaatsteUurMm != null ? `${m.neerslagLaatsteUurMm} mm` : null);
@@ -7035,7 +7046,9 @@ async function ververStations() {
       ? windVaanPijlSvg(m.windRichtingGraden, '#3ec6ff', '#0b4a63')
       : '<span class="station-stil">○</span>';
     const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
-    const html = `<div class="station-pin${m ? '' : ' is-geen-meting'}" title="${escapeHtml(s.naam)}">${pijl}<span class="station-label">${stationTempTekst(m)}${bft}</span></div>`;
+    const tendens = stationTendens(m);
+    const tendensHtml = tendens ? `<span class="station-tendens ${tendens.klasse}" title="Druk ${tendens.tekst} hPa in 3 uur">${tendens.pijl}</span>` : '';
+    const html = `<div class="station-pin${m ? '' : ' is-geen-meting'}" title="${escapeHtml(s.naam)}">${pijl}<span class="station-label">${stationTempTekst(m)}${bft}${tendensHtml}</span></div>`;
     const marker = L.marker([s.lat, s.lon], {
       icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
     }).bindPopup(() => stationPopupHtml(s), { maxWidth: 260 });
