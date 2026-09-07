@@ -103,8 +103,10 @@ async function vraagOverpass(lat, lon, straalM) {
   // liep op alle Overpass-servers in een timeout. Nu één sleutel-patroon op
   // alleen nodes en ways -- zeemarkeringen zijn nooit relaties.
   const rond = `(around:${straalM},${lat},${lon})`;
-  const sleutels = '[~"^seamark:(type|light:character|fog_signal:category|radar_transponder:category|radio_station:category)$"~"."]';
-  const q = `[out:json][timeout:20];(node${rond}${sleutels};way${rond}${sleutels};);out center tags;`;
+  // 2026-09-07, derde poging: het sleutel-regex-filter bleek óók traag
+  // (Overpass moet dan alle tags scannen). Terug naar de simpele, snelle
+  // vorm ["seamark:type"] -- vrijwel elke zeemarkering in OSM heeft die tag.
+  const q = `[out:json][timeout:30];(node${rond}["seamark:type"];way${rond}["seamark:type"];);out center tags;`;
   let laatsteFout = null;
   let body = null;
   for (const url of OVERPASS_URLS) {
@@ -113,7 +115,7 @@ async function vraagOverpass(lat, lon, straalM) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
         body: `data=${encodeURIComponent(q)}`,
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(40000),
       });
       if (!res.ok) throw new Error(`${new URL(url).host} gaf status ${res.status}`);
       body = await res.json();
