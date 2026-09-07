@@ -7086,45 +7086,86 @@ async function ververStations() {
   tekenStations(laatsteStationsData);
 }
 
+// 2026-09-07, herschreven op verzoek van Lex ("ik wil aan de pil zien wat er
+// door wie gemeten wordt"): elk pilletje bestaat nu uit VAKJES per bron, elk
+// met een klein bronlabel -- KNMI (blauw), RWS peil (zeegroen), RWS kust
+// (amber). Een KNMI-station en RWS-punt(en) binnen SAMENVOEG_KM (zelfde
+// meetpaal: Europlatform, K13, Geulhaven, Stavenisse...) worden één marker
+// met de vakjes naast elkaar, zodat je per plek ziet wie wat meet. De
+// subknoppen KNMI/Peil/Kust filteren per vakje; valt het laatste vakje weg,
+// dan verdwijnt de marker.
+const SAMENVOEG_KM = 1;
+
+function stationsAfstandKm(a, b) {
+  return Math.hypot((a.lat - b.lat) * 111, (a.lon - b.lon) * 111 * Math.cos((a.lat * Math.PI) / 180));
+}
+
+function knmiVakHtml(s) {
+  const m = s.meting;
+  const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
+  const tendens = stationTendens(m);
+  const tendensHtml = tendens ? `<span class="station-tendens ${tendens.klasse}" title="Druk ${tendens.tekst} hPa in 3 uur">${tendens.pijl}</span>` : '';
+  return `<span class="station-vak is-knmi${m ? '' : ' is-geen-meting'}"><span class="station-bron">KNMI</span>${stationTempTekst(m)}${bft}${tendensHtml}</span>`;
+}
+
+function rwsIsZee(p) {
+  return p.meting.golfhoogteCm != null || p.meting.windMs != null;
+}
+
+function rwsVakHtml(p) {
+  const m = p.meting;
+  const zee = rwsIsZee(p);
+  const delen = [];
+  if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
+  if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
+  if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
+  return `<span class="station-vak ${zee ? 'is-kust' : 'is-peil'}"><span class="station-bron">RWS</span>${delen.join('')}</span>`;
+}
+
+function rwsZichtbaar(p) {
+  return rwsIsZee(p) ? stationsDelen.kust : stationsDelen.peil;
+}
+
+// Windpijl: KNMI-wind gaat voor (10 m-hoogte, gecalibreerd); anders de
+// RWS-wind van een kustpunt. Kleur volgt de bron van de pijl.
+function stationsPijlHtml(knmi, rwsPunten) {
+  const k = knmi?.meting;
+  if (k?.windRichtingGraden != null && k.windMs != null && k.windMs >= 0.3) return windVaanPijlSvg(k.windRichtingGraden, '#3ec6ff', '#0b4a63');
+  const r = rwsPunten.find((p) => p.meting.windRichtingGraden != null && p.meting.windMs != null && p.meting.windMs >= 0.3);
+  if (r) return windVaanPijlSvg(r.meting.windRichtingGraden, '#ffb020', '#7a5200');
+  return knmi ? '<span class="station-stil">○</span>' : '';
+}
+
+function plaatsStationsMarker(lat, lon, naam, vakken, pijl, popupFn) {
+  const html = `<div class="station-pin" title="${escapeHtml(naam)}">${pijl}<span class="station-label">${vakken.join('')}</span></div>`;
+  const marker = L.marker([lat, lon], {
+    icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
+  }).bindPopup(popupFn, { maxWidth: 280 });
+  stationsLaag.addLayer(marker);
+}
+
 function tekenStations({ stations, meetpunten }) {
   if (!stationsActief || !kaart) return;
-  const data = { stations: stationsDelen.knmi ? stations : [] };
   if (!stationsLaag) stationsLaag = L.layerGroup().addTo(kaart);
   stationsLaag.clearLayers();
-  meetpunten.forEach((p) => {
-    const m = p.meting;
-    if ((m.golfhoogteCm != null || m.windMs != null) ? !stationsDelen.kust : !stationsDelen.peil) return;
-    // 2026-09-07, op verzoek van Lex: RWS-punten met golven en/of wind (de
-    // kust) in een eigen kleur (amber) t.o.v. de zuivere waterstand-
-    // peilschalen (zeegroen), zodat je op de kaart meteen ziet waar de
-    // zee-informatie zit.
-    const isZee = m.golfhoogteCm != null || m.windMs != null;
-    const pijl = m.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
-      ? windVaanPijlSvg(m.windRichtingGraden, isZee ? '#ffb020' : '#38d9c8', isZee ? '#7a5200' : '#0b5f56')
-      : ''; // 2026-09-07: geen los icoon bij stil weer/geen wind -- "overkill" volgens Lex; het zeegroene pilletje is onderscheid genoeg
-    const delen = [];
-    if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
-    if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
-    if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
-    const html = `<div class="station-pin is-water${isZee ? ' is-zee' : ''}" title="${escapeHtml(p.naam)}">${pijl}<span class="station-label">${delen.join('')}</span></div>`;
-    const marker = L.marker([p.lat, p.lon], {
-      icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
-    }).bindPopup(() => rwsMeetpuntPopupHtml(p), { maxWidth: 260 });
-    stationsLaag.addLayer(marker);
+  const rwsOver = new Set(meetpunten);
+
+  stations.forEach((s) => {
+    const buren = meetpunten.filter((p) => rwsOver.has(p) && stationsAfstandKm(s, p) <= SAMENVOEG_KM);
+    buren.forEach((p) => rwsOver.delete(p));
+    const vakken = [];
+    if (stationsDelen.knmi) vakken.push(knmiVakHtml(s));
+    const zichtbareBuren = buren.filter(rwsZichtbaar);
+    zichtbareBuren.forEach((p) => vakken.push(rwsVakHtml(p)));
+    if (!vakken.length) return;
+    const pijl = stationsPijlHtml(stationsDelen.knmi ? s : null, zichtbareBuren);
+    const naam = [s.naam, ...zichtbareBuren.map((p) => p.naam)].join(' + ');
+    plaatsStationsMarker(s.lat, s.lon, naam, vakken, pijl, () => [stationsDelen.knmi ? stationPopupHtml(s) : '', ...zichtbareBuren.map(rwsMeetpuntPopupHtml)].filter(Boolean).join('<hr class="station-popup-scheiding">'));
   });
-  (data.stations ?? []).forEach((s) => {
-    const m = s.meting;
-    const pijl = m?.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
-      ? windVaanPijlSvg(m.windRichtingGraden, '#3ec6ff', '#0b4a63')
-      : '<span class="station-stil">○</span>';
-    const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
-    const tendens = stationTendens(m);
-    const tendensHtml = tendens ? `<span class="station-tendens ${tendens.klasse}" title="Druk ${tendens.tekst} hPa in 3 uur">${tendens.pijl}</span>` : '';
-    const html = `<div class="station-pin${m ? '' : ' is-geen-meting'}" title="${escapeHtml(s.naam)}">${pijl}<span class="station-label">${stationTempTekst(m)}${bft}${tendensHtml}</span></div>`;
-    const marker = L.marker([s.lat, s.lon], {
-      icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
-    }).bindPopup(() => stationPopupHtml(s), { maxWidth: 260 });
-    stationsLaag.addLayer(marker);
+
+  rwsOver.forEach((p) => {
+    if (!rwsZichtbaar(p)) return;
+    plaatsStationsMarker(p.lat, p.lon, p.naam, [rwsVakHtml(p)], stationsPijlHtml(null, [p]), () => rwsMeetpuntPopupHtml(p));
   });
 }
 
