@@ -932,6 +932,8 @@ function initMap() {
   if (TOGGLE_FRONTEN_EL) TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
   if (TOGGLE_GRADEN_EL) TOGGLE_GRADEN_EL.addEventListener('click', toggleGradenGrid);
   if (TOGGLE_STATIONS_EL) TOGGLE_STATIONS_EL.addEventListener('click', toggleStations); // 2026-09-07, weerstations-laag
+  STATIONS_SUB_EL?.querySelectorAll('.stations-subknop').forEach((k) => k.addEventListener('click', () => stationsSubToggle(k.dataset.deel)));
+  stationsSubKnoppenBijwerken();
   if (TOGGLE_DWD_KAART_EL) TOGGLE_DWD_KAART_EL.addEventListener('click', openDwdKaart);
   document.getElementById('dwdKaartSluiten')?.addEventListener('click', sluitDwdKaart);
   // Tik op de kaart: wisselen tussen passend en 100% (dan scrollen/pinchen).
@@ -6968,6 +6970,28 @@ let stationsActief = false;
 let stationsLaag = null;
 let stationsPollTimer = null;
 let stationsVerzoekTeller = 0;
+// 2026-09-07, op verzoek van Lex: drie deel-schakelaars binnen de laag
+// (alleen zichtbaar als Stations aanstaat): knmi / peil (RWS-waterstanden) /
+// kust (RWS-punten met golven en/of wind). Standaard alles aan; per toestel
+// bewaard. Uitzetten filtert alleen in de weergave -- de data is al binnen,
+// dus geen extra verzoeken bij wisselen.
+const STATIONS_SUB_EL = document.getElementById('stationsSub');
+const STATIONS_DELEN_KEY = 'weerStationsDelen';
+let stationsDelen = { knmi: true, peil: true, kust: true };
+try { stationsDelen = { ...stationsDelen, ...JSON.parse(localStorage.getItem(STATIONS_DELEN_KEY) || '{}') }; } catch (_) { /* privé-modus */ }
+let laatsteStationsData = null; // { stations, meetpunten } -- voor hertekenen bij een deel-schakelaar
+
+function stationsSubKnoppenBijwerken() {
+  STATIONS_SUB_EL?.classList.toggle('verborgen', !stationsActief);
+  STATIONS_SUB_EL?.querySelectorAll('.stations-subknop').forEach((k) => k.classList.toggle('actief', !!stationsDelen[k.dataset.deel]));
+}
+
+function stationsSubToggle(deel) {
+  stationsDelen[deel] = !stationsDelen[deel];
+  try { localStorage.setItem(STATIONS_DELEN_KEY, JSON.stringify(stationsDelen)); } catch (_) { /* privé-modus */ }
+  stationsSubKnoppenBijwerken();
+  if (laatsteStationsData) tekenStations(laatsteStationsData);
+}
 
 function toggleStations() {
   stationsActief = !stationsActief;
@@ -6984,6 +7008,7 @@ function toggleStations() {
     stationsLaag = null;
   }
   try { localStorage.setItem(STATIONS_KEY, stationsActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
+  stationsSubKnoppenBijwerken();
 }
 
 // Druktendens (3 uur, zie knmiStations.js): WMO-achtige drempels -- vanaf
@@ -7056,12 +7081,19 @@ async function ververStations() {
     veilig(`/api/weerstations?straal=${STATIONS_STRAAL_KM}`, 'stations'),
     veilig(`/api/rws-meetpunten?straal=${STATIONS_STRAAL_KM}`, 'meetpunten'),
   ]);
-  const data = { stations };
   if (verzoekId !== stationsVerzoekTeller || !stationsActief || !kaart) return; // ondertussen uitgezet of ingehaald door een nieuwer verzoek
+  laatsteStationsData = { stations, meetpunten };
+  tekenStations(laatsteStationsData);
+}
+
+function tekenStations({ stations, meetpunten }) {
+  if (!stationsActief || !kaart) return;
+  const data = { stations: stationsDelen.knmi ? stations : [] };
   if (!stationsLaag) stationsLaag = L.layerGroup().addTo(kaart);
   stationsLaag.clearLayers();
   meetpunten.forEach((p) => {
     const m = p.meting;
+    if ((m.golfhoogteCm != null || m.windMs != null) ? !stationsDelen.kust : !stationsDelen.peil) return;
     // 2026-09-07, op verzoek van Lex: RWS-punten met golven en/of wind (de
     // kust) in een eigen kleur (amber) t.o.v. de zuivere waterstand-
     // peilschalen (zeegroen), zodat je op de kaart meteen ziet waar de
