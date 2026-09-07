@@ -1,57 +1,97 @@
 // 2026-09-07, op verzoek van Lex (na de vraag wat "Fl(4)W.20s32m28M · Horn(U)30s
-// · Racon(T)" bij LP Goeree betekent): lichtkarakter, misthoorn en racon van
-// zeemarkeringen (lichttorens, lichtplatforms, boeien) bij een meetpunt, in
-// de gangbare zeekaartnotatie, voor de popup van de Stations-laag.
+// · Racon(T)" bij LP Goeree betekent): lichtkarakter, misthoorn, racon en
+// AIS-baken van zeemarkeringen (lichttorens, lichtplatforms, boeien) bij een
+// meetpunt, in zeekaartnotatie, voor de popup van de Stations-laag.
 //
-// Bron: OpenStreetMap/OpenSeaMap via de Overpass API -- de seamark:*-tags
-// (seamark:light:character/group/colour/period/height/range,
-// seamark:fog_signal:category/group/period, seamark:radar_transponder:
-// category/group). Per opgevraagde positie één Overpass-verzoek naar alle
-// seamark-objecten binnen STRAAL_M; het resultaat wordt lang gecachet
-// (lichtkarakters veranderen zelden) én op schijf bewaard, zodat een
-// herstart niet opnieuw naar Overpass hoeft. Cache-sleutel is de positie
-// afgerond op ~100 m, zodat KNMI- en RWS-punt op dezelfde paal één entry delen.
-// Overpass is een gedeelde vrijwilligersdienst: bewust zuinig (lange cache,
-// serieel, korte timeout) en met een nette User-Agent.
-import { readFileSync, mkdirSync, writeFile } from 'node:fs';
+// Opzet (Lex, 2026-09-07: "die platform-info is zo statisch als wat" en
+// "ververs wel 1x per maand"):
+// - Eén STATISCH bestand met alle zeemarkeringen met licht/misthoorn/racon/
+//   AIS in het Nederlandse zeegebied: src/data/zeemarkeringen-nl.json
+//   (gecommit, gemaakt met tools/haal-zeemarkeringen.mjs -- dat script
+//   roept exporteerZeemarkeringen() hieronder aan).
+// - De server leest dat bestand bij opstarten en zoekt er LOKAAL in: geen
+//   Overpass per klik, geen cache, geen voorverwarmen.
+// - Eén keer per VERVERS_MS (30 dagen) haalt de server zelf een verse export
+//   op (één bounding-box-vraag aan Overpass, ~1 verzoek/maand) en schrijft
+//   die naar data/zeemarkeringen-nl.json (runtime-map, niet in git). Bij
+//   opstarten wint dat runtime-bestand als het nieuwer is dan het statische.
+// (De eerste versie deed dit live per klik met een 30-dagen-cache; dat was
+// traag, gevoelig voor Overpass-504's en onnodig voor data die vrijwel nooit
+// verandert.)
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Meerdere publieke Overpass-servers; bij een 5xx/timeout op de eerste wordt
-// de volgende geprobeerd (2026-09-07, na een 504 bij K13-A).
-const OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
-const STRAAL_M = 1000; // standaard; de aanroeper mag tot STRAAL_MAX_M vragen (KNMI-platforms op open zee: 3 km, zie frontend)
-const STRAAL_MAX_M = 5000;
-const CACHE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dagen
-const FOUT_CACHE_MS = 5 * 60 * 1000; // na een mislukking 5 min niet opnieuw proberen (was een uur; Overpass-504's zijn meestal kort)
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const STAAT_BESTAND = join(__dirname, '..', '..', 'data', 'zeemarkering-cache.json');
+export const STATISCH_BESTAND = join(__dirname, '..', 'data', 'zeemarkeringen-nl.json');
+const RUNTIME_BESTAND = join(__dirname, '..', '..', 'data', 'zeemarkeringen-nl.json');
+const STRAAL_M = 1000;
+const STRAAL_MAX_M = 5000;
+export const VERVERS_MS = 30 * 24 * 60 * 60 * 1000;
 
-const cache = laadCache(); // sleutel -> { tijdMs, markeringen | null (fout) }
-let inFlight = null; // serieel: één Overpass-verzoek tegelijk
+// Bounding box: NL-kust, Wadden, Zeeuwse/Zuid-Hollandse wateren en het
+// Nederlandse deel van de Noordzee t/m de noordelijke platforms (D15/F3).
+const BBOX = '51.0,2.0,55.0,7.3'; // zuid,west,noord,oost
+const OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 
-function laadCache() {
-  try {
-    const ruw = JSON.parse(readFileSync(STAAT_BESTAND, 'utf-8'));
-    return new Map(Object.entries(ruw));
-  } catch {
-    return new Map();
+let markeringen = null; // [{ naam, type, lichten, mist, racon, ais, lat, lon }]
+let bestandInfo = null; // { opgehaald, aantal, pad }
+
+// ---- inlezen ---------------------------------------------------------------
+function leesBestand(pad) {
+  const ruw = JSON.parse(readFileSync(pad, 'utf-8'));
+  return { markeringen: ruw.markeringen ?? [], opgehaald: ruw.opgehaald ?? null, pad };
+}
+
+export function laadZeemarkeringen() {
+  const kandidaten = [];
+  for (const pad of [RUNTIME_BESTAND, STATISCH_BESTAND]) {
+    try { kandidaten.push(leesBestand(pad)); } catch { /* ontbreekt of kapot -- volgende */ }
   }
+  if (!kandidaten.length) {
+    markeringen = [];
+    bestandInfo = { opgehaald: null, aantal: 0, pad: null };
+    console.warn('[weer] zeemarkeringen: geen bestand gevonden -- draai tools/haal-zeemarkeringen.mjs');
+    return;
+  }
+  // Nieuwste wint (runtime-export vs gecommit bestand).
+  kandidaten.sort((a, b) => new Date(b.opgehaald ?? 0) - new Date(a.opgehaald ?? 0));
+  const gekozen = kandidaten[0];
+  markeringen = gekozen.markeringen;
+  bestandInfo = { opgehaald: gekozen.opgehaald, aantal: markeringen.length, pad: gekozen.pad };
+  console.log(`[weer] zeemarkeringen: ${markeringen.length} markeringen geladen (opgehaald ${gekozen.opgehaald ?? '?'}, ${gekozen.pad === RUNTIME_BESTAND ? 'runtime-export' : 'statisch bestand'})`);
 }
 
-function bewaarCache() {
-  try {
-    mkdirSync(dirname(STAAT_BESTAND), { recursive: true });
-    writeFile(STAAT_BESTAND, JSON.stringify(Object.fromEntries(cache)), () => {});
-  } catch { /* niet fataal */ }
+// Hoe oud is de geladen set? Voor de maandelijkse verversing in server.js.
+export function zeemarkeringenLeeftijdMs() {
+  if (!bestandInfo) laadZeemarkeringen();
+  return bestandInfo?.opgehaald ? Date.now() - new Date(bestandInfo.opgehaald).getTime() : Infinity;
 }
 
+// ---- opzoeken --------------------------------------------------------------
+export function fetchZeemarkering({ lat, lon, straalM }) {
+  if (!markeringen) laadZeemarkeringen();
+  const maxM = Math.min(STRAAL_MAX_M, Math.max(100, Number(straalM) || STRAAL_M));
+  const binnen = markeringen
+    .map((m) => ({ ...m, afstandM: Math.round(afstandM(lat, lon, m.lat, m.lon)) }))
+    .filter((m) => m.afstandM <= maxM)
+    .sort((a, b) => a.afstandM - b.afstandM);
+  return { markeringen: binnen, bestand: bestandInfo };
+}
+
+function afstandM(lat1, lon1, lat2, lon2) {
+  const r = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(a));
+}
+
+// ---- exporteren (Overpass, één bbox-vraag) ---------------------------------
 const KLEUR = { white: 'W', red: 'R', green: 'G', yellow: 'Y', blue: 'Bu', orange: 'Or', amber: 'Am', violet: 'Vi' };
 const KARAKTER = { fixed: 'F', flashing: 'Fl', long_flashing: 'LFl', quick: 'Q', very_quick: 'VQ', ultra_quick: 'UQ', isophase: 'Iso', occulting: 'Oc', interrupted_quick: 'IQ', interrupted_very_quick: 'IVQ', morse: 'Mo', fixed_flashing: 'FFl', alternating: 'Al' };
 const MIST = { horn: 'Horn', siren: 'Siren', diaphone: 'Dia', bell: 'Bell', whistle: 'Whis', gong: 'Gong', explosive: 'Explos', reed: 'Reed', tyfon: 'Tyfon' };
 
-// Eén licht (prefix 'seamark:light:' of 'seamark:light:1:' enz.) naar
-// kaartnotatie: Fl(4)W.20s32m28M.
 function lichtTekst(tags, prefix) {
   const t = (k) => tags[`${prefix}${k}`];
   const kar = KARAKTER[t('character')] ?? t('character');
@@ -85,97 +125,53 @@ function markeringUitTags(tags, lat, lon) {
     const groep = tags['seamark:radar_transponder:group'] ? `(${tags['seamark:radar_transponder:group']})` : '';
     racon = `${rtCat === 'racon' ? 'Racon' : rtCat}${groep}`;
   }
-  // AIS-baken (fysiek of virtueel AtoN) -- de paarse "AIS"-cirkel op de zeekaart.
   const radioCat = tags['seamark:radio_station:category'] ?? '';
   const virtueel = tags['seamark:type'] === 'virtual_aton' || !!tags['seamark:virtual_aton:category'];
   const ais = virtueel ? 'AIS (virtueel)' : /ais/.test(radioCat) ? 'AIS' : null;
   if (!lichten.length && !mist && !racon && !ais) return null;
-  const naam = tags['seamark:name'] ?? tags.name ?? null;
-  const type = tags['seamark:type'] ?? null;
-  return { naam, type, lichten, mist, racon, ais, lat, lon };
+  return {
+    naam: tags['seamark:name'] ?? tags.name ?? null,
+    type: tags['seamark:type'] ?? null,
+    lichten, mist, racon, ais,
+    lat: Math.round(lat * 1e5) / 1e5,
+    lon: Math.round(lon * 1e5) / 1e5,
+  };
 }
 
-async function vraagOverpass(lat, lon, straalM) {
-  // Ook objecten zonder seamark:type maar mét lichtkarakter, misthoorn of
-  // racon (komt voor bij platforms die alleen als man_made=offshore_platform
-  // getagd zijn).
-  // 2026-09-07-fix: de eerdere vorm (5 losse takken met nwr = incl. relaties)
-  // liep op alle Overpass-servers in een timeout. Nu één sleutel-patroon op
-  // alleen nodes en ways -- zeemarkeringen zijn nooit relaties.
-  const rond = `(around:${straalM},${lat},${lon})`;
-  // 2026-09-07, derde poging: het sleutel-regex-filter bleek óók traag
-  // (Overpass moet dan alle tags scannen). Terug naar de simpele, snelle
-  // vorm ["seamark:type"] -- vrijwel elke zeemarkering in OSM heeft die tag.
-  const q = `[out:json][timeout:30];(node${rond}["seamark:type"];way${rond}["seamark:type"];);out center tags;`;
+async function vraagOverpass(q, log) {
   let laatsteFout = null;
-  let body = null;
   for (const url of OVERPASS_URLS) {
     try {
+      log(`Overpass: ${new URL(url).host} ...`);
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'weer-app (persoonlijk, github.com/Lexvisser)' },
         body: `data=${encodeURIComponent(q)}`,
-        signal: AbortSignal.timeout(40000),
+        signal: AbortSignal.timeout(240000),
       });
       if (!res.ok) throw new Error(`${new URL(url).host} gaf status ${res.status}`);
-      body = await res.json();
-      break;
+      return await res.json();
     } catch (err) {
+      log(`  mislukt: ${err.message ?? err}`);
       laatsteFout = err;
     }
   }
-  if (!body) throw laatsteFout ?? new Error('Overpass onbereikbaar');
-  return (body.elements ?? [])
-    .map((e) => markeringUitTags(e.tags ?? {}, e.lat ?? e.center?.lat ?? null, e.lon ?? e.center?.lon ?? null))
-    .filter(Boolean);
+  throw laatsteFout ?? new Error('Overpass onbereikbaar');
 }
 
-// 2026-09-07, op verzoek van Lex: cache vóórwarmen bij opstarten, zodat een
-// popup meteen gevuld is en het log laat zien hoeveel punten iets hebben.
-// Rustig tempo (één verzoek per PAUZE_MS) uit respect voor Overpass; punten
-// die al (geslaagd) in de cache staan worden overgeslagen. Aanroeper geeft
-// [{ naam, lat, lon, straalM }].
-const PAUZE_MS = 10 * 1000;
-export async function voorverwarmZeemarkering(punten) {
-  let metIets = 0; let leeg = 0; let mislukt = 0; let overgeslagen = 0;
-  for (const p of punten) {
-    const straal = Math.min(STRAAL_MAX_M, Math.max(100, Number(p.straalM) || STRAAL_M));
-    const bestaand = cache.get(`${p.lat.toFixed(3)},${p.lon.toFixed(3)},${straal}`);
-    if (bestaand?.markeringen && Date.now() - bestaand.tijdMs < CACHE_MS) {
-      overgeslagen += 1;
-      if (bestaand.markeringen.length) metIets += 1; else leeg += 1;
-      continue;
-    }
-    const r = await fetchZeemarkering({ lat: p.lat, lon: p.lon, straalM: straal });
-    if (r.fout) mislukt += 1; else if (r.markeringen.length) metIets += 1; else leeg += 1;
-    await new Promise((klaar) => setTimeout(klaar, PAUZE_MS));
-  }
-  console.log(`[weer] zeemarkering voorverwarmd: ${punten.length} zee-/kustpunten -- ${metIets} met markering, ${leeg} zonder, ${mislukt} mislukt (${overgeslagen} al in cache)`);
-}
-
-export async function fetchZeemarkering({ lat, lon, straalM }) {
-  const straal = Math.min(STRAAL_MAX_M, Math.max(100, Number(straalM) || STRAAL_M));
-  const sleutel = `${lat.toFixed(3)},${lon.toFixed(3)},${straal}`;
-  const nu = Date.now();
-  const bestaand = cache.get(sleutel);
-  if (bestaand && nu - bestaand.tijdMs < (bestaand.markeringen ? CACHE_MS : FOUT_CACHE_MS)) {
-    return { markeringen: bestaand.markeringen ?? [], uitCache: true };
-  }
-  while (inFlight) await inFlight.catch(() => {});
-  inFlight = (async () => {
-    try {
-      const markeringen = await vraagOverpass(lat, lon, straal);
-      cache.set(sleutel, { tijdMs: Date.now(), markeringen });
-      bewaarCache();
-      return { markeringen, uitCache: false };
-    } catch (err) {
-      console.warn(`[weer] zeemarkering ${sleutel} mislukt: ${err.message ?? err}`);
-      cache.set(sleutel, { tijdMs: Date.now(), markeringen: null });
-      bewaarCache();
-      return { markeringen: [], fout: true };
-    } finally {
-      inFlight = null;
-    }
-  })();
-  return inFlight;
+// Haalt alles op en schrijft naar `doel`; geeft { aantal, doel } terug.
+// Gebruikt door tools/haal-zeemarkeringen.mjs (doel = statisch bestand) en
+// door de maandelijkse verversing in server.js (doel = runtime-bestand).
+export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t) => console.log(`[weer] zeemarkeringen: ${t}`) } = {}) {
+  const q = `[out:json][timeout:200][bbox:${BBOX}];(node["seamark:type"];way["seamark:type"];);out center tags;`;
+  const body = await vraagOverpass(q, log);
+  const alle = body.elements ?? [];
+  const lijst = alle
+    .map((e) => markeringUitTags(e.tags ?? {}, e.lat ?? e.center?.lat, e.lon ?? e.center?.lon))
+    .filter((m) => m && Number.isFinite(m.lat) && Number.isFinite(m.lon));
+  mkdirSync(dirname(doel), { recursive: true });
+  writeFileSync(doel, JSON.stringify({ bron: 'OpenStreetMap/OpenSeaMap via Overpass (ODbL)', opgehaald: new Date().toISOString(), bbox: BBOX, aantal: lijst.length, markeringen: lijst }));
+  log(`${alle.length} seamark-objecten opgehaald, ${lijst.length} met licht/misthoorn/racon/AIS -> ${doel}`);
+  markeringen = null; // volgende fetchZeemarkering() laadt opnieuw (nieuwste bestand wint)
+  return { aantal: lijst.length, doel };
 }

@@ -20,7 +20,7 @@ import { fetchOpenMeteo } from './sources/openmeteo.js';
 import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
-import { fetchZeemarkering, voorverwarmZeemarkering } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
+import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
 import { startBlitzortungStream } from './sources/blitzortung.js';
@@ -936,29 +936,24 @@ export function createApp(env) {
     ververDwdFronten();
     timers.push(setInterval(ververDwdFronten, 30 * 60 * 1000));
 
-    // 2026-09-07: zeemarkering-cache voorverwarmen voor de Stations-laag (zie
-    // sources/zeemarkering.js). Twee minuten na opstarten, zodat de gewone
-    // bronnen eerst aan de beurt zijn; daarna 1x/dag opnieuw (vangt nieuwe
-    // punten en verlopen cache op). Punten: KNMI-platforms (3 km),
-    // KNMI-windstations (1 km) en RWS-punten met golven/wind (1 km).
-    const voorverwarmZeemarkeringen = async () => {
+    // 2026-09-07: zeemarkeringen (lichtkarakter/racon/AIS voor de Stations-
+    // popup, zie sources/zeemarkering.js) komen uit een statisch bestand;
+    // bij opstarten inlezen, en 1x per maand (Lex: "ververs wel 1x p/mnd")
+    // een verse export ophalen -- één bounding-box-vraag aan Overpass, naar
+    // data/zeemarkeringen-nl.json. Dagelijkse check op leeftijd, zodat een
+    // herstart de maandcyclus niet verstoort.
+    laadZeemarkeringen();
+    const ververZeemarkeringen = async () => {
+      if (zeemarkeringenLeeftijdMs() < ZEEMARKERING_VERVERS_MS) return;
       try {
-        const [knmi, rws] = await Promise.all([
-          fetchKnmiStations({ homeLat: env.homeLat, homeLon: env.homeLon, apiKey: env.knmiApiKey, straalKm: 300 }).catch(() => ({ stations: [] })),
-          fetchRwsMeetpunten({ homeLat: env.homeLat, homeLon: env.homeLon, straalKm: 300 }).catch(() => ({ meetpunten: [] })),
-        ]);
-        const punten = [
-          ...knmi.stations.filter((s) => /platform/i.test(s.type ?? '')).map((s) => ({ naam: s.naam, lat: s.lat, lon: s.lon, straalM: 3000 })),
-          ...knmi.stations.filter((s) => /wind/i.test(s.type ?? '')).map((s) => ({ naam: s.naam, lat: s.lat, lon: s.lon, straalM: 1000 })),
-          ...rws.meetpunten.filter((p) => p.meting?.golfhoogteCm != null || p.meting?.windMs != null).map((p) => ({ naam: p.naam, lat: p.lat, lon: p.lon, straalM: 1000 })),
-        ];
-        await voorverwarmZeemarkering(punten);
+        await exporteerZeemarkeringen();
+        laadZeemarkeringen();
       } catch (err) {
-        console.warn('[weer] zeemarkering voorverwarmen mislukt:', err.message ?? err);
+        console.warn('[weer] zeemarkeringen verversen mislukt (volgende poging morgen):', err.message ?? err);
       }
     };
-    timers.push(setTimeout(voorverwarmZeemarkeringen, 2 * 60 * 1000));
-    timers.push(setInterval(voorverwarmZeemarkeringen, 24 * 60 * 60 * 1000));
+    timers.push(setTimeout(ververZeemarkeringen, 5 * 60 * 1000));
+    timers.push(setInterval(ververZeemarkeringen, 24 * 60 * 60 * 1000));
     // Eerst de schijfcache (zie laadVeldVanSchijf in isobaren.js): een vers
     // veld telt als geslaagde ronde, dan haalt ververIsobaren() niets op.
     laadIsobarenVanSchijf().then((tijdMs) => { isobarenLaatstGeslaagd = tijdMs; return ververIsobaren(); });
@@ -1290,16 +1285,16 @@ export function createApp(env) {
     // golfhoogte) -- zie sources/rwsMeetpunten.js. Zelfde kaartlaag als de
     // KNMI-stations in de frontend, eigen route zodat een RWS-storing de
     // KNMI-stations niet meesleept (en andersom).
-    // 2026-09-07: zeemarkeringen (lichtkarakter, misthoorn, racon uit
-    // OpenSeaMap) binnen 500 m van een positie -- lazy, pas als een Stations-
-    // popup opengaat; zie sources/zeemarkering.js (30-dagen-cache op schijf).
+    // 2026-09-07: zeemarkeringen (lichtkarakter, misthoorn, racon, AIS uit
+    // OpenSeaMap) binnen ?straal m van een positie, lokaal opgezocht in het
+    // statische bestand -- zie sources/zeemarkering.js.
     if (url === '/api/zeemarkering') {
       const params = new URL(req.url, 'http://localhost').searchParams;
       const lat = Number(params.get('lat'));
       const lon = Number(params.get('lon'));
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return sendJson(res, 400, { fout: 'lat en lon zijn verplicht', markeringen: [] });
       try {
-        return sendJson(res, 200, await fetchZeemarkering({ lat, lon, straalM: params.get('straal') }));
+        return sendJson(res, 200, fetchZeemarkering({ lat, lon, straalM: params.get('straal') }));
       } catch (err) {
         console.error('[weer] zeemarkering-verzoek mislukt:', err.message ?? err);
         return sendJson(res, 502, { fout: 'Zeemarkering tijdelijk niet beschikbaar', markeringen: [] });
