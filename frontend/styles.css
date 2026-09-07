@@ -2051,17 +2051,12 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    kleur als de KNMI-pijlen), en de waterstand in een donker pilletje met
    "cm" erachter. Windpijl alleen bij kustpunten die ook wind meten. */
 /* .station-water-icoon vervallen 2026-09-07 (Lex: "overkill") -- alleen het pilletje blijft. */
-.station-pin.is-water .station-label { background:rgba(5,6,10,0.78); border:1px solid rgba(31,181,165,0.7); border-radius:8px; padding:2px 6px; color:#c9fff8; font-size:12px; }
-.rws-waterstand { color:#7ff5e6; }
+.rws-waterstand { color:#7ff5e6; font-weight:700; } /* 2026-09-07: expliciet vet, zelfde gewicht als golfhoogte/temperatuur (Lex: 'waarom vet en dan niet vet') */
 .rws-waterstand small { font-size:9px; font-weight:500; margin-left:1px; opacity:0.8; }
-.rws-golf { font-size:10px; font-weight:600; color:#c9fff8; opacity:0.85; }
+.rws-golf { font-size:12px; font-weight:700; color:#c9fff8; }
 .station-bft.is-water { color:#38d9c8; }
 /* RWS-kustpunten (golven/wind) in amber, peilschalen blijven zeegroen
    (2026-09-07, Lex: "de overige meldingen een andere kleur"). */
-.station-pin.is-water.is-zee .station-label { border-color:rgba(255,176,32,0.8); color:#ffe2a8; }
-.station-pin.is-zee .rws-waterstand { color:#ffb020; }
-.station-pin.is-zee .rws-golf { color:#ffe2a8; font-size:12px; font-weight:700; opacity:1; }
-.station-pin.is-zee .station-bft.is-water { color:#ffb020; }
 /* Subknoppen van de Stations-laag (KNMI / Peil / Kust), alleen zichtbaar
    als de laag aanstaat. Iets kleiner en zonder emoji, als "kinderen" van
    de Stations-knop. */
@@ -2073,7 +2068,7 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    wie gemeten wordt"). Elk vakje: klein bronlabel + waarden; kleur per bron.
    Samengevoegde meetpalen (KNMI + RWS binnen 1 km) hebben meerdere vakjes. */
 .station-pin .station-label { display:inline-flex; gap:0; padding:0; background:none; border:0; }
-.station-vak { display:inline-flex; align-items:baseline; gap:3px; padding:2px 6px; background:rgba(5,6,10,0.78); border:1px solid rgba(255,255,255,0.18); border-radius:8px; color:#f4f6fb; font-size:12px; }
+.station-vak { display:inline-flex; align-items:baseline; gap:3px; padding:2px 6px; font-weight:700; background:rgba(5,6,10,0.78); border:1px solid rgba(255,255,255,0.18); border-radius:8px; color:#f4f6fb; font-size:12px; }
 .station-vak + .station-vak { margin-left:-1px; border-top-left-radius:0; border-bottom-left-radius:0; }
 .station-vak:has(+ .station-vak) { border-top-right-radius:0; border-bottom-right-radius:0; }
 .station-bron { font-size:8px; font-weight:700; letter-spacing:0.5px; opacity:0.85; align-self:center; }
