@@ -7109,10 +7109,28 @@ function knmiVakHtml(s) {
   return `<span class="station-vak is-knmi${m ? '' : ' is-geen-meting'}"><span class="station-bron">KNMI</span>${stationTempTekst(m)}${bft}${tendensHtml}</span>`;
 }
 
+// 2026-09-07, op verzoek van Lex ("daar mag een peilstok bij getoond
+// worden, een schaal"): kleine verticale peilschaal naast de waterstand.
+// Bereik PEIL_MIN..PEIL_MAX cm t.o.v. NAP, NAP-streep op nul, streepjes per
+// meter, marker op de gemeten stand (geklemd aan de rand daarbuiten).
+const PEIL_MIN = -250;
+const PEIL_MAX = 250;
+function peilstokSvg(cm) {
+  const h = 22; const b = 9;
+  const y = (v) => 1 + (h - 2) * (1 - (Math.min(PEIL_MAX, Math.max(PEIL_MIN, v)) - PEIL_MIN) / (PEIL_MAX - PEIL_MIN));
+  const strepen = [-200, -100, 100, 200].map((v) => `<line x1="2" x2="${b - 2}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="currentColor" stroke-width="0.6" opacity="0.5"/>`).join('');
+  return `<svg class="peilstok" viewBox="0 0 ${b} ${h}" width="${b}" height="${h}" aria-hidden="true">
+    <line x1="${b / 2}" x2="${b / 2}" y1="1" y2="${h - 1}" stroke="currentColor" stroke-width="1"/>
+    ${strepen}
+    <line x1="0" x2="${b}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="currentColor" stroke-width="1.2"/>
+    <rect x="1" y="${(y(cm) - 1.5).toFixed(1)}" width="${b - 2}" height="3" rx="1" fill="currentColor"/>
+  </svg>`;
+}
+
 function rwsVakHtml(p) {
   const m = p.meting;
   const delen = [];
-  if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
+  if (m.waterstandCm != null) delen.push(`${peilstokSvg(m.waterstandCm)}<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
   if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
   if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
   return `<span class="station-vak is-rws"><span class="station-bron">RWS</span>${delen.join('')}</span>`;
