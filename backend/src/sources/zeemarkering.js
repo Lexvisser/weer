@@ -162,10 +162,42 @@ async function vraagOverpass(q, log) {
 // Haalt alles op en schrijft naar `doel`; geeft { aantal, doel } terug.
 // Gebruikt door tools/haal-zeemarkeringen.mjs (doel = statisch bestand) en
 // door de maandelijkse verversing in server.js (doel = runtime-bestand).
+// 2026-09-07: de hele bbox in één vraag gaf een 504 op alle servers; daarom
+// in tegels van ~1 graad (4 x 6 = 24 tegels; zee-tegels zijn snel), één voor
+// één met een korte pauze en per tegel een tweede kans.
+const TEGEL_GRADEN = 1;
+const TEGEL_PAUZE_MS = 3000;
+
 export async function exporteerZeemarkeringen({ doel = RUNTIME_BESTAND, log = (t) => console.log(`[weer] zeemarkeringen: ${t}`) } = {}) {
-  const q = `[out:json][timeout:200][bbox:${BBOX}];(node["seamark:type"];way["seamark:type"];);out center tags;`;
-  const body = await vraagOverpass(q, log);
-  const alle = body.elements ?? [];
+  const [zuid, west, noord, oost] = BBOX.split(',').map(Number);
+  const alle = [];
+  const gezien = new Set();
+  let tegels = 0;
+  for (let lat = zuid; lat < noord; lat += TEGEL_GRADEN) {
+    for (let lon = west; lon < oost; lon += TEGEL_GRADEN) {
+      tegels += 1;
+      const bbox = `${lat},${lon},${Math.min(noord, lat + TEGEL_GRADEN)},${Math.min(oost, lon + TEGEL_GRADEN)}`;
+      const q = `[out:json][timeout:90][bbox:${bbox}];(node["seamark:type"];way["seamark:type"];);out center tags;`;
+      let body = null;
+      for (let poging = 1; poging <= 2 && !body; poging++) {
+        try {
+          body = await vraagOverpass(q, () => {});
+        } catch (err) {
+          log(`tegel ${bbox} poging ${poging} mislukt: ${err.message ?? err}`);
+          await new Promise((k) => setTimeout(k, 15000));
+        }
+      }
+      if (!body) throw new Error(`tegel ${bbox} bleef mislukken`);
+      for (const e of body.elements ?? []) {
+        const sleutel = `${e.type}/${e.id}`;
+        if (gezien.has(sleutel)) continue; // objecten op een tegelgrens komen dubbel terug
+        gezien.add(sleutel);
+        alle.push(e);
+      }
+      log(`tegel ${tegels} (${bbox}): ${(body.elements ?? []).length} objecten`);
+      await new Promise((k) => setTimeout(k, TEGEL_PAUZE_MS));
+    }
+  }
   const lijst = alle
     .map((e) => markeringUitTags(e.tags ?? {}, e.lat ?? e.center?.lat, e.lon ?? e.center?.lon))
     .filter((m) => m && Number.isFinite(m.lat) && Number.isFinite(m.lon));
