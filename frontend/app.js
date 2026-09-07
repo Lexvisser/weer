@@ -7064,9 +7064,9 @@ async function ververStations() {
     const m = p.meting;
     const pijl = m.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
       ? windVaanPijlSvg(m.windRichtingGraden, '#38d9c8', '#0b5f56')
-      : '<span class="station-stil station-water-icoon">〜</span>';
+      : '<span class="station-water-icoon" aria-hidden="true">▮</span>';
     const delen = [];
-    if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}</span>`);
+    if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
     if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
     if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
     const html = `<div class="station-pin is-water" title="${escapeHtml(p.naam)}">${pijl}<span class="station-label">${delen.join('')}</span></div>`;
