@@ -7106,7 +7106,7 @@ function knmiVakHtml(s) {
   const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
   const tendens = stationTendens(m);
   const tendensHtml = tendens ? `<span class="station-tendens ${tendens.klasse}" title="Druk ${tendens.tekst} hPa in 3 uur">${tendens.pijl}</span>` : '';
-  return `<span class="station-vak is-knmi${m ? '' : ' is-geen-meting'}"><span class="station-bron">KNMI</span>${stationTempTekst(m)}${bft}${tendensHtml}</span>`;
+  return `<span class="station-vak is-knmi${m ? '' : ' is-geen-meting'}">${stationTempTekst(m)}${bft}${tendensHtml}</span>`;
 }
 
 function rwsVakHtml(p) {
@@ -7115,7 +7115,7 @@ function rwsVakHtml(p) {
   if (m.waterstandCm != null) delen.push(`<span class="rws-waterstand">${m.waterstandCm > 0 ? '+' : ''}${Math.round(m.waterstandCm)}<small>cm</small></span>`);
   if (m.golfhoogteCm != null) delen.push(`<span class="rws-golf">${Math.round(m.golfhoogteCm)}cm</span>`);
   if (m.windBft != null) delen.push(`<span class="station-bft is-water">${m.windBft}</span>`);
-  return `<span class="station-vak is-rws"><span class="station-bron">RWS</span>${delen.join('')}</span>`;
+  return `<span class="station-vak is-rws">${delen.join('')}</span>`;
 }
 
 function rwsZichtbaar() {
