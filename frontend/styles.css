@@ -2030,3 +2030,15 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    in app.js. */
 .nl-tijd { color:#3ec6ff; font-weight:normal; margin-top:2px; font-variant-numeric:tabular-nums; display:grid; grid-template-columns:max-content max-content; column-gap:0.8em; row-gap:1px; }
 .nl-tijd-label { opacity:0.8; }
+
+/* 2026-09-07, weerstations-laag (zie toggleStations() in app.js): windpijl
+   in koel blauw (bewust NIET het gale-rood van .wind-vaan) met temperatuur
+   en een klein Beaufort-getal ernaast. Stil weer = open rondje i.p.v. pijl. */
+.station-pin { display:flex; align-items:center; gap:3px; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); pointer-events:auto; cursor:pointer; }
+.station-pin svg { width:30px; height:30px; flex:none; }
+.station-stil { width:30px; height:30px; display:flex; align-items:center; justify-content:center; color:#3ec6ff; font-size:14px; flex:none; }
+.station-label { font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; color:#f4f6fb; line-height:1; white-space:nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 5px rgba(0,0,0,0.6); display:flex; align-items:baseline; gap:3px; }
+.station-bft { font-size:10px; font-weight:600; color:#3ec6ff; padding:1px 4px; border-radius:6px; background:rgba(5,6,10,0.65); }
+.station-pin.is-geen-meting { opacity:0.45; }
+.station-stat { display:flex; justify-content:space-between; gap:10px; }
+.station-stat-label { color:#9199b5; }

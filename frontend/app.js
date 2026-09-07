@@ -43,6 +43,7 @@ const TOGGLE_ZEE_EL = document.getElementById('toggleZee');
 const TOGGLE_VLIEGRADAR_EL = document.getElementById('toggleVliegradar');
 const TOGGLE_FRONTEN_EL = document.getElementById('toggleFronten'); // 2026-08-30, zie toggleFronten()
 const TOGGLE_GRADEN_EL = document.getElementById('toggleGraden'); // 2026-08-30, zie toggleGradenGrid()
+// TOGGLE_STATIONS_EL staat bij het stations-blok zelf (zie toggleStations(), 2026-09-07).
 const FRONTEN_INFO_EL = document.getElementById('frontenInfo');
 const TOGGLE_DWD_KAART_EL = document.getElementById('toggleDwdKaart'); // 2026-08-30, zie openDwdKaart()
 const DWD_KAART_OVERLAY_EL = document.getElementById('dwdKaartOverlay');
@@ -833,6 +834,7 @@ function initMap() {
   kaart.on('mouseout', () => { if (gradenActief) verbergGradenVak(); });
   kaart.on('click', (e) => { if (gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
+  try { if (localStorage.getItem(STATIONS_KEY) === 'aan') toggleStations(); } catch (_) { /* privé-modus */ }
 
   // 2026-08-19: basiskaart-geschiedenis (kort) — CARTO's gratis dark_all gaf
   // in Europa een ingebakken "Zoom Level Not Supported"-plaatje (HTTP 200,
@@ -929,6 +931,7 @@ function initMap() {
   TOGGLE_VLIEGRADAR_EL.addEventListener('click', toggleVliegradar);
   if (TOGGLE_FRONTEN_EL) TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
   if (TOGGLE_GRADEN_EL) TOGGLE_GRADEN_EL.addEventListener('click', toggleGradenGrid);
+  if (TOGGLE_STATIONS_EL) TOGGLE_STATIONS_EL.addEventListener('click', toggleStations); // 2026-09-07, weerstations-laag
   if (TOGGLE_DWD_KAART_EL) TOGGLE_DWD_KAART_EL.addEventListener('click', openDwdKaart);
   document.getElementById('dwdKaartSluiten')?.addEventListener('click', sluitDwdKaart);
   // Tik op de kaart: wisselen tussen passend en 100% (dan scrollen/pinchen).
@@ -6946,6 +6949,99 @@ const VLIEGRADAR_ZOOM = 8;
 // te zien"-zoom bij het aanzetten van de modus zelf), specifiek voor het
 // aantikken van één toestel.
 const VLIEGRADAR_KLIK_ZOOM = 12;
+
+// 2026-09-07, op verzoek van Lex ("kan ik de app nog verder optuigen? Ik
+// denk aan weerstations in de buurt"): KNMI-weerstations als losse kaartlaag
+// (🌡️ Stations-knop, links naast Fronten). Per station een windpijl
+// (zelfde windVaanPijlSvg als de Zeekaart-vanen, maar in koel blauw en
+// kleiner, zodat 'ie niet met een gale-waarschuwing verward wordt) met
+// temperatuur en Beaufort ernaast; klik = popup met de volledige meting.
+// Data via /api/weerstations (backend/src/sources/knmiStations.js, 10-min
+// cache daar). Staat NIET in de vlucht/vaart-uitsluiting: stations mogen
+// gewoon aan blijven naast Zee-modus of Vaarradar. Voorkeur per toestel
+// bewaard (STATIONS_KEY), zelfde patroon als het gradengrid.
+const TOGGLE_STATIONS_EL = document.getElementById('toggleStations');
+const STATIONS_KEY = 'weerStationsLaag';
+const STATIONS_POLL_MS = 5 * 60 * 1000; // backend-cache is 10 min; 5 min zodat een verse meting hooguit 5 min later op de kaart staat
+const STATIONS_STRAAL_KM = 60;
+let stationsActief = false;
+let stationsLaag = null;
+let stationsPollTimer = null;
+let stationsVerzoekTeller = 0;
+
+function toggleStations() {
+  stationsActief = !stationsActief;
+  TOGGLE_STATIONS_EL?.classList.toggle('actief', stationsActief);
+  if (stationsPollTimer) {
+    clearInterval(stationsPollTimer);
+    stationsPollTimer = null;
+  }
+  if (stationsActief) {
+    ververStations();
+    stationsPollTimer = setInterval(ververStations, STATIONS_POLL_MS);
+  } else if (stationsLaag) {
+    kaart.removeLayer(stationsLaag);
+    stationsLaag = null;
+  }
+  try { localStorage.setItem(STATIONS_KEY, stationsActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
+}
+
+function stationTempTekst(m) {
+  return m?.temperatuurC != null ? `${Math.round(m.temperatuurC * 10) / 10}°` : '';
+}
+
+function stationPopupHtml(s) {
+  const m = s.meting;
+  const regels = [];
+  if (!m) {
+    regels.push(`<div class="popup-sub">Geen recente meting${s.fout ? ` (${escapeHtml(s.fout)})` : ''}</div>`);
+  } else {
+    const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="popup-stat"><span class="popup-stat-label">${label}</span><span class="popup-stat-waarde">${waarde}</span></div>`); };
+    r('Temperatuur', m.temperatuurC != null ? `${m.temperatuurC} °C` : null);
+    r('Dauwpunt', m.dauwpuntC != null ? `${m.dauwpuntC} °C` : null);
+    r('Vochtigheid', m.luchtvochtigheidPct != null ? `${Math.round(m.luchtvochtigheidPct)} %` : null);
+    if (m.windMs != null) {
+      const richting = m.windRichtingGraden != null ? `${Math.round(m.windRichtingGraden)}° ` : '';
+      r('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${m.windMs} m/s)`);
+    }
+    r('Windstoten', m.windstotenKn != null ? `${m.windstotenKn} kn` : null);
+    r('Luchtdruk', m.luchtdrukHpa != null ? `${Math.round(m.luchtdrukHpa * 10) / 10} hPa` : null);
+    r('Zicht', m.zichtMeter != null ? (m.zichtMeter >= 1000 ? `${Math.round(m.zichtMeter / 100) / 10} km` : `${m.zichtMeter} m`) : null);
+    r('Bewolking', m.bewolkingOkta != null ? `${m.bewolkingOkta}/8` : null);
+    r('Neerslag (1u)', m.neerslagLaatsteUurMm != null ? `${m.neerslagLaatsteUurMm} mm` : null);
+    const t = new Date(m.tijd);
+    regels.push(`<div class="popup-sub">Meting ${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })} · KNMI 10-min</div>`);
+  }
+  const type = s.type ? ` · ${escapeHtml(s.type)}` : '';
+  return `<div class="popup-titel">🌡️ ${escapeHtml(s.naam)}</div><div class="popup-sub">${s.afstandKm} km van huis${type}</div><div class="popup-stats">${regels.join('')}</div>`;
+}
+
+async function ververStations() {
+  if (!stationsActief || !kaart) return;
+  const verzoekId = ++stationsVerzoekTeller;
+  let data;
+  try {
+    data = await fetch(`/api/weerstations?straal=${STATIONS_STRAAL_KM}`).then((r) => r.json());
+  } catch (err) {
+    console.warn('[weer] weerstations ophalen mislukt:', err);
+    return;
+  }
+  if (verzoekId !== stationsVerzoekTeller || !stationsActief || !kaart) return; // ondertussen uitgezet of ingehaald door een nieuwer verzoek
+  if (!stationsLaag) stationsLaag = L.layerGroup().addTo(kaart);
+  stationsLaag.clearLayers();
+  (data.stations ?? []).forEach((s) => {
+    const m = s.meting;
+    const pijl = m?.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
+      ? windVaanPijlSvg(m.windRichtingGraden, '#3ec6ff', '#0b4a63')
+      : '<span class="station-stil">○</span>';
+    const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
+    const html = `<div class="station-pin${m ? '' : ' is-geen-meting'}" title="${escapeHtml(s.naam)}">${pijl}<span class="station-label">${stationTempTekst(m)}${bft}</span></div>`;
+    const marker = L.marker([s.lat, s.lon], {
+      icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
+    }).bindPopup(() => stationPopupHtml(s), { maxWidth: 260 });
+    stationsLaag.addLayer(marker);
+  });
+}
 
 function toggleVliegradar() {
   vliegModusActief = !vliegModusActief;

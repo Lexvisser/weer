@@ -18,6 +18,7 @@ import { fetchEmsc } from './sources/emsc.js';
 import { fetchNws } from './sources/nws.js';
 import { fetchOpenMeteo } from './sources/openmeteo.js';
 import { fetchKnmi } from './sources/knmi.js';
+import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
 import { startBlitzortungStream } from './sources/blitzortung.js';
@@ -1254,6 +1255,21 @@ export function createApp(env) {
     // vliegradar/vaarradar hierboven, alleen zonder ?lat=&lon= (ISS-tracking
     // is altijd relatief aan HOME_LAT/HOME_LON, niet aan een live
     // telefoonpositie zoals bij vliegradar).
+    // 2026-09-07, op verzoek van Lex ("weerstations in de buurt"): alle
+    // KNMI-stations binnen ?straal km (standaard 60) rond huis, met de
+    // laatste 10-minuten-meting per station -- zie sources/knmiStations.js.
+    // Zelfde losse-live-route-opzet als /api/iss-live hieronder; de cache
+    // (10 min) zit in de bron zelf, dus de frontend mag gerust vaker vragen.
+    if (url === '/api/weerstations') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      try {
+        const data = await fetchKnmiStations({ homeLat: env.homeLat, homeLon: env.homeLon, apiKey: env.knmiApiKey, straalKm: params.get('straal') });
+        return sendJson(res, 200, data);
+      } catch (err) {
+        console.error('[weer] weerstations-verzoek mislukt:', err.message ?? err);
+        return sendJson(res, 502, { fout: 'KNMI-weerstations tijdelijk niet beschikbaar', stations: [] });
+      }
+    }
     if (url === '/api/iss-live') {
       try {
         const data = await fetchIssLive({ homeLat: env.homeLat, homeLon: env.homeLon });
