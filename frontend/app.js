@@ -7172,11 +7172,15 @@ async function vulZeemarkeringIn(popup, lat, lon) {
     return `<div>${naam}${delen.map(escapeHtml).join(' · ')}</div>`;
   });
   if (!regels.length) return;
-  const blok = document.createElement('div');
-  blok.className = 'station-zeemarkering';
-  blok.innerHTML = regels.join('');
-  titel.insertAdjacentElement('afterend', blok);
-  popup.update(); // popup-hoogte is veranderd
+  // Niet in de DOM prikken en dan popup.update() aanroepen -- Leaflet
+  // rendert bij update() de popup opnieuw vanuit de oorspronkelijke inhoud en
+  // gooit een los ingevoegd element dus meteen weer weg (dat was de bug bij
+  // de eerste versie, 2026-09-07). In plaats daarvan de inhoud zélf
+  // vervangen via setContent(): dat rendert én past de hoogte aan.
+  const inhoud = el.querySelector('.leaflet-popup-content');
+  if (!inhoud) return;
+  const blokHtml = `<div class="station-zeemarkering">${regels.join('')}</div>`;
+  popup.setContent(inhoud.innerHTML.replace(/(<div class="popup-titel">.*?<\/div>)/, `$1${blokHtml}`));
 }
 
 function tekenStations({ stations, meetpunten }) {
