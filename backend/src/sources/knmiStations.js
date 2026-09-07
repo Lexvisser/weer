@@ -29,7 +29,7 @@ const STATIONS_LIJST_MS = 24 * 60 * 60 * 1000;
 const STATIONS_CACHE_MS = 10 * 60 * 1000;
 const MAX_TEGELIJK = 4;
 const STRAAL_STANDAARD_KM = 60;
-const STRAAL_MAX_KM = 150;
+const STRAAL_MAX_KM = 400;
 
 let stationsLijst = null; // { tijdMs, stations: [{ locationId, naam, type, lat, lon }] }
 let metingenCache = null; // { tijdMs, straalKm, stations: [...] }

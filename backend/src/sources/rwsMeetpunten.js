@@ -41,9 +41,9 @@ const GROOTHEDEN = {
 const CATALOGUS_CACHE_MS = 24 * 60 * 60 * 1000;
 const METINGEN_CACHE_MS = 10 * 60 * 1000;
 const MAX_TEGELIJK = 4;
-const MAX_LOCATIES = 40; // 2026-09-07: 25 -> 40, straal in de frontend is nu 100 km
+const MAX_LOCATIES = 120; // 2026-09-07: heel NL, maar afgekapt op de 120 dichtstbijzijnde (anders honderden rivierpeilschalen)
 const STRAAL_STANDAARD_KM = 60;
-const STRAAL_MAX_KM = 150;
+const STRAAL_MAX_KM = 400;
 
 let catalogusCache = null; // { tijdMs, locaties: [{ code, naam, lat, lon, grootheden: Set }] }
 let metingenCache = null; // { tijdMs, straalKm, meetpunten }
