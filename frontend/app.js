@@ -7042,7 +7042,7 @@ function stationPopupHtml(s) {
     }
     r('Windstoten', m.windstotenKn != null ? `${m.windstotenKn} kn` : null);
     const tendens = stationTendens(m);
-    r('Luchtdruk', m.luchtdrukHpa != null ? `${Math.round(m.luchtdrukHpa * 10) / 10} hPa${tendens ? ` <span class="station-tendens ${tendens.klasse}">${tendens.pijl} ${tendens.tekst}/3u</span>` : ''}` : null);
+    r('Luchtdruk', m.luchtdrukHpa != null ? `${Math.round(m.luchtdrukHpa * 10) / 10} hPa${tendens ? ` <span class="station-tendens">${tendens.tekst}/3u</span>` : ''}` : null);
     r('Zicht', m.zichtMeter != null ? (m.zichtMeter >= 1000 ? `${Math.round(m.zichtMeter / 100) / 10} km` : `${m.zichtMeter} m`) : null);
     r('Bewolking', m.bewolkingOkta != null ? `${m.bewolkingOkta}/8` : null);
     r('Neerslag (1u)', m.neerslagLaatsteUurMm != null ? `${m.neerslagLaatsteUurMm} mm` : null);
