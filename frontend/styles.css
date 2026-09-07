@@ -2080,4 +2080,3 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    zeegroen). */
 .station-vak.is-rws { border-color:rgba(31,181,165,0.7); color:#c9fff8; }
 .station-vak.is-rws .station-bron, .station-vak.is-rws .rws-waterstand, .station-vak.is-rws .station-bft { color:#38d9c8; }
-.peilstok { flex:none; align-self:center; color:#38d9c8; margin-right:1px; }
