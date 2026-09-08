@@ -2095,22 +2095,27 @@ async function startNavtexAudio() {
   try {
     sdrAudioCtx = sdrAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
     await sdrAudioCtx.resume();
-    // Twee smalle banddoorlaatfilters, elk op één FSK-toon (915/1085 Hz,
-    // ±50 Hz — genoeg voor 100 baud): de demodulator pompt in stilte de ruis
-    // op tot vol niveau en een zwakke zender verdrinkt daar voor het oor in,
-    // terwijl de decoder zelf door een smal filter kijkt. Gemeten op Lex'
-    // opname (2026-09-08): tonen 6,7 dB ónder de ruis over de hele band, met
-    // deze twee filters ~7 dB erbóven. Alleen de luisterweg; de decoder-audio
-    // blijft zoals 'ie is.
+    // Twee smalle banddoorlaatfilters, elk op één FSK-toon (915/1085 Hz),
+    // twee trappen per toon (~65 Hz breed, steile flanken): de demodulator
+    // pompt in stilte de ruis op tot vol niveau en een zwakke zender
+    // verdrinkt daar voor het oor in, terwijl de decoder zelf door een smal
+    // filter kijkt. Gemeten op Lex' opname (2026-09-08, Niton, S/N ~19 dB
+    // in het paneel): tonen t.o.v. rest −9 dB origineel, −5 dB met één breed
+    // filter 800–1200, ~0 dB met deze opzet; smaller smeert het 100 baud-
+    // getjirp zelf uit. Alleen de luisterweg; de decoder-audio blijft zoals 'ie is.
     if (!sdrAudioFilter) {
       const ingang = sdrAudioCtx.createGain();
       for (const toon of [915, 1085]) {
-        const f = sdrAudioCtx.createBiquadFilter();
-        f.type = 'bandpass';
-        f.frequency.value = toon;
-        f.Q.value = 9; // ~100 Hz breed op -3 dB
-        ingang.connect(f);
-        f.connect(sdrAudioCtx.destination);
+        let vorige = ingang;
+        for (let trap = 0; trap < 2; trap++) {
+          const f = sdrAudioCtx.createBiquadFilter();
+          f.type = 'bandpass';
+          f.frequency.value = toon;
+          f.Q.value = 14;
+          vorige.connect(f);
+          vorige = f;
+        }
+        vorige.connect(sdrAudioCtx.destination);
       }
       sdrAudioFilter = ingang;
     }
