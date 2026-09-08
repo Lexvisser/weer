@@ -39,7 +39,7 @@ import { fetchLifeliner, lifelinerRapportTekst, vluchtlogboekJson } from './sour
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst, abonneerWaterval, leesWatervalGeschiedenis, abonneerAudio, AUDIO_SAMPLERATE } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, STATIONS_490 as NAVTEX_STATIONS_490, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst, abonneerWaterval, leesWatervalGeschiedenis, abonneerAudio, AUDIO_SAMPLERATE } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -1267,7 +1267,11 @@ export function createApp(env) {
       // vanaf thuis bepaalt wat "bijzondere ontvangst" is) — zie dxLijst()
       // in app.js.
       return sendJson(res, 200, {
-        stations: NAVTEX_STATIONS.map((s) => ({ id: s.id, naam: s.naam, land: s.land, lat: s.lat, lon: s.lon, zendschema: s.zendschema })),
+        stations: [
+          ...NAVTEX_STATIONS.map((s) => ({ id: s.id, naam: s.naam, land: s.land, lat: s.lat, lon: s.lon, zendschema: s.zendschema, frequentieKhz: 518 })),
+          // 2026-09-08: 490 kHz-stations, id met '@490' (zie stationId in navtexLokaal.js)
+          ...NAVTEX_STATIONS_490.map((s) => ({ id: `${s.id}@490`, naam: s.naam, land: s.land, lat: s.lat, lon: s.lon, zendschema: s.zendschema, frequentieKhz: 490 })),
+        ],
       });
     }
     if (url === '/api/zee-synopsis') {

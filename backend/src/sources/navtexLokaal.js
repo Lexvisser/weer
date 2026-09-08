@@ -172,6 +172,27 @@ export const STATIONS = [
   { id: 'J', naam: 'Gislövshammar Radio', land: 'SE', lat: 55.51, lon: 14.30, navarea: 'I', kleur: '#4cf0c8', zendschema: ['01:30', '05:30', '09:30', '13:30', '17:30', '21:30'] },
 ];
 const STATION_PER_ID = new Map(STATIONS.map((s) => [s.id, s]));
+
+// 2026-09-08, op verzoek van Lex ("vertel nog even over die 490 — die
+// ontvangen we nog helemaal niet?" → "zeker!"): de tweede NAVTEX-frequentie,
+// 490 kHz, nationale taal. Sinds vandaag als tweede tak in
+// navtex_usb_demod.py (--extra 490000:~/navtex_berichten_490.txt, eigen
+// decoder-proces). De stationsletters op 490 zijn een ANDERE toewijzing dan
+// op 518 (B is hier Oostende, op 518 Bodø) — vandaar een eigen tabel en een
+// eigen lookup per band. Zendschema via dezelfde letterformule (positie ×
+// 10 min, elke 4 uur). Alleen de stations opgenomen waarvan de 490-letter
+// zeker is; een onbekende letter valt gewoon terug op "station X
+// (onbevestigd)", zoals op 518.
+export const STATIONS_490 = [
+  { id: 'B', naam: 'Oostende NAVTEX 490 (Nederlandstalig)', land: 'BE', lat: 51.1823, lon: 2.8065, navarea: 'I', kleur: '#ff9ec4', zendschema: ['00:10', '04:10', '08:10', '12:10', '16:10', '20:10'] },
+  { id: 'I', naam: 'Niton Radio 490', land: 'UK', lat: 50.6, lon: -1.3, navarea: 'I', kleur: '#ffe14c', zendschema: ['01:20', '05:20', '09:20', '13:20', '17:20', '21:20'] },
+  { id: 'U', naam: 'Cullercoats Radio 490', land: 'UK', lat: 55.0, lon: -1.4, navarea: 'I', kleur: '#6bf07a', zendschema: ['03:20', '07:20', '11:20', '15:20', '19:20', '23:20'] },
+  { id: 'C', naam: 'Portpatrick Radio 490', land: 'UK', lat: 54.85, lon: -5.12, navarea: 'I', kleur: '#7b4cf0', zendschema: ['00:20', '04:20', '08:20', '12:20', '16:20', '20:20'] },
+  { id: 'L', naam: 'Pinneberg Radio 490 (Duitstalig)', land: 'DE', lat: 53.652, lon: 9.797, navarea: 'I', kleur: '#8c8cf0', zendschema: ['01:50', '05:50', '09:50', '13:50', '17:50', '21:50'] },
+  { id: 'E', naam: 'CROSS Corsen 490 (Franstalig)', land: 'FR', lat: 48.41, lon: -4.79, navarea: 'II', kleur: '#4cd9f0', zendschema: ['00:40', '04:40', '08:40', '12:40', '16:40', '20:40'] },
+];
+const STATION_PER_ID_490 = new Map(STATIONS_490.map((s) => [s.id, s]));
+const STANDAARD_BESTAND_490 = path.join(homedir(), 'navtex_berichten_490.txt');
 const STATION_KLEUR_ONBEKEND = '#9aa0b4'; // zelfde neutraal-grijs als de BEVESTIGD-pil elders — "geen idee welk station"
 
 const TYPE_OMSCHRIJVING = {
@@ -1490,7 +1511,7 @@ function segmenteerBerichten(tekst) {
 // al ÓP de ZCZC-match zelf, dus dit vangt alleen nog een eventueel restje
 // vóór die exacte match), en (2) de station/type-uitlezing is stricter, zie
 // leesStationEnType().
-function parseBlok(blok) {
+function parseBlok(blok, stations = STATION_PER_ID) {
   const zczcIndex = blok.search(/ZCZC/i);
   if (zczcIndex < 0) return null; // geen herkenbare berichtstart in dit blok
   const vanafZczc = blok.slice(zczcIndex);
@@ -1575,7 +1596,7 @@ function parseBlok(blok) {
   const weergaveTekst = lines.slice(2).join('\n');
 
   const { stationId, typeLetter } = leesStationEnType(code);
-  const station = stationId ? STATION_PER_ID.get(stationId) ?? null : null;
+  const station = stationId ? stations.get(stationId) ?? null : null;
   const ruweDatum = datumIn(datumregel) ?? datumInBodyZonderGeldigheidsclausules(body); // sommige blokken missen de aparte datumregel niet, maar staat 'ie soms toch pas in de body
   // 2026-08-24-fix, op melding van Lex (een NAVTEX-melding met datum "12 sep"
   // terwijl vandaag 24 aug is): een NAVTEX-bericht kan niet uit de toekomst
@@ -1623,23 +1644,33 @@ function parseBlok(blok) {
 // ooit een multibyte-teken insluipen, dan verschuift een kopregel hooguit
 // een paar tekens, nooit fataal.
 const RUW_TIJDEN_BESTAND = path.join(homedir(), 'navtex_ruw_tijden.json');
+const RUW_TIJDEN_BESTAND_490 = path.join(homedir(), 'navtex_ruw_tijden_490.json');
 const RUW_TIJDEN_MAX = 800;
 
-let ruweBlokTijden = (() => {
+function laadRuweBlokTijden(tijdenBestand) {
   try {
-    if (!existsSync(RUW_TIJDEN_BESTAND)) return [];
-    const ruw = JSON.parse(readFileSync(RUW_TIJDEN_BESTAND, 'utf-8'));
+    if (!existsSync(tijdenBestand)) return [];
+    const ruw = JSON.parse(readFileSync(tijdenBestand, 'utf-8'));
     return Array.isArray(ruw) ? ruw.filter((b) => Number.isFinite(b?.offset) && b?.tijd) : [];
   } catch (err) {
     console.error('[weer] navtexLokaal: ruw-tijden-bestand niet leesbaar, begin leeg:', err.message ?? err);
     return [];
   }
-})();
+}
 
-// Aangeroepen vanuit fetchNavtexLokaal() met de zojuist gelezen RAUWE tekst
+// 2026-09-08: één "band" per NAVTEX-frequentie — eigen ontvangstbestand,
+// eigen stationstabel, eigen bloktijdenregister, eigen id-voorvoegsel (zodat
+// "BA12" op 490 en "BA12" op 518 nooit samensmelten). fetchNavtexLokaal()
+// draait de hele verwerking per band. BAND_518 is wat de 📻-viewer toont.
+const BAND_518 = { frequentieKhz: 518, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND, stations: STATION_PER_ID, idPrefix: 'navtexlokaal', tijdenBestand: RUW_TIJDEN_BESTAND, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND) };
+const BAND_490 = { frequentieKhz: 490, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND_490 || STANDAARD_BESTAND_490, stations: STATION_PER_ID_490, idPrefix: 'navtexlokaal490', tijdenBestand: RUW_TIJDEN_BESTAND_490, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND_490) };
+const BANDEN = [BAND_518, BAND_490];
+
+// Aangeroepen vanuit fetchNavtexBand() met de zojuist gelezen RAUWE tekst
 // (vóór elke normalisatie, zodat de offsets bij het bestand blijven horen).
-function registreerRuweBlokTijden(ruweTekst) {
+function registreerRuweBlokTijden(band, ruweTekst) {
   try {
+    let ruweBlokTijden = band.tijden;
     // Bestand gekrompen (handmatig geleegd/geroteerd)? Dan kloppen alle
     // onthouden posities niet meer — opnieuw beginnen.
     if (ruweBlokTijden.length && ruweBlokTijden[ruweBlokTijden.length - 1].offset >= ruweTekst.length) {
@@ -1659,8 +1690,9 @@ function registreerRuweBlokTijden(ruweTekst) {
     if (nieuw) {
       ruweBlokTijden.sort((a, b) => a.offset - b.offset);
       if (ruweBlokTijden.length > RUW_TIJDEN_MAX) ruweBlokTijden = ruweBlokTijden.slice(-RUW_TIJDEN_MAX);
-      writeFileSync(RUW_TIJDEN_BESTAND, JSON.stringify(ruweBlokTijden), 'utf-8');
+      writeFileSync(band.tijdenBestand, JSON.stringify(ruweBlokTijden), 'utf-8');
     }
+    band.tijden = ruweBlokTijden;
   } catch (err) {
     console.error('[weer] navtexLokaal: ruw-tijden bijwerken mislukt:', err.message ?? err);
   }
@@ -1699,7 +1731,7 @@ export function leesRuweOntvangst(maxBytes = 64 * 1024) {
     // offsets omgerekend van bestandspositie naar positie binnen `tekst`
     // (zie ruweBlokTijden hierboven). De viewer tekent er kopregels mee.
     const startInBestand = s.size - lees + weggeknipt;
-    const blokken = ruweBlokTijden
+    const blokken = BAND_518.tijden
       .filter((b) => b.offset >= startInBestand && b.offset < s.size)
       .map((b) => ({ offset: b.offset - startInBestand, tijd: b.tijd }));
     return { tekst, bestandsBytes: s.size, bijgewerkt: s.mtime.toISOString(), blokken };
@@ -1824,6 +1856,12 @@ export function leesWatervalGeschiedenis(maxRegels = 200) {
 }
 
 export async function fetchNavtexLokaal(env = {}) {
+  const alles = [];
+  for (const band of BANDEN) alles.push(...(await fetchNavtexBand(env, band)));
+  return alles;
+}
+
+async function fetchNavtexBand(env, band) {
   const homeLat = env.homeLat ?? 52.0907;
   const homeLon = env.homeLon ?? 5.1214;
   // 2026-08-28, op verzoek van Lex ("de 450 km grens graag los laten"): de
@@ -1834,17 +1872,17 @@ export async function fetchNavtexLokaal(env = {}) {
   // interessant, en het Noorse NE35-bulletin draagt drukgebied-coördinaten
   // die de zeekaart nu ook plot. Geen afstandsfilter meer dus; alleen een
   // plotbare positie blijft vereist.
-  const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
+  const bestand = band.bestand();
 
   if (!existsSync(bestand)) {
-    console.log(`[weer] navtexLokaal: ${bestand} bestaat nog niet — nog geen bericht ontvangen/opgeslagen.`);
+    console.log(`[weer] navtexLokaal ${band.frequentieKhz}: ${bestand} bestaat nog niet — nog geen bericht ontvangen/opgeslagen.`);
     return [];
   }
 
   const ruweTekst = readFileSync(bestand, 'utf-8');
   // 2026-08-28: begintijden per ruw blok bijhouden vóór elke normalisatie,
   // zodat de offsets bij het bestand blijven horen (zie registreerRuweBlokTijden).
-  registreerRuweBlokTijden(ruweTekst);
+  registreerRuweBlokTijden(band, ruweTekst);
   // 2026-08-28 (DX-lijst, vraag van Lex "wordt dat straks de tijd van het
   // laatst ontvangen bericht?"): de ECHTE ontvangsttijd per blok bestaat al
   // — het begintijden-register van de viewer hierboven. Hier per blok
@@ -1852,7 +1890,7 @@ export async function fetchNavtexLokaal(env = {}) {
   // ZCZC-treffer, en die offset staat (voor de laatste RUW_TIJDEN_MAX
   // blokken) in ruweBlokTijden. Blokken van vóór het register of buiten de
   // cap krijgen null — liever geen tijd dan een verzonnen tijd.
-  const tijdPerOffset = new Map(ruweBlokTijden.map((b) => [b.offset, b.tijd]));
+  const tijdPerOffset = new Map(band.tijden.map((b) => [b.offset, b.tijd]));
   const ruweOffsets = [];
   {
     const re = /ZCZC/gi;
@@ -1863,7 +1901,7 @@ export async function fetchNavtexLokaal(env = {}) {
   const blokken = segmenteerBerichten(tekst);
   const ruweBerichten = blokken
     .map((blok, i) => {
-      const b = parseBlok(blok);
+      const b = parseBlok(blok, band.stations);
       if (b) b.ontvangstTijd = tijdPerOffset.get(ruweOffsets[i]) ?? null;
       return b;
     })
@@ -1926,7 +1964,7 @@ export async function fetchNavtexLokaal(env = {}) {
     if (!Number.isFinite(ms)) continue;
     if (ms > (laatstGehoordPerStation.get(rb.stationId) ?? 0)) laatstGehoordPerStation.set(rb.stationId, ms);
   }
-  const registerStartMs = ruweBlokTijden.length ? new Date(ruweBlokTijden[0].tijd).getTime() : NaN;
+  const registerStartMs = band.tijden.length ? new Date(band.tijden[0].tijd).getTime() : NaN;
   let nietMeerHerhaaldTeller = 0;
   const nietVervallen = metPlek.filter((b) => {
     if (b.zelfVervalDatum && b.zelfVervalDatum.getTime() < nu) return false; // "CANCEL THIS MSG <datum>" al gepasseerd
@@ -1943,7 +1981,7 @@ export async function fetchNavtexLokaal(env = {}) {
   const zonderPositie = berichten.length - metPlek.length;
   const vervallen = metPlek.length - nietVervallen.length;
   console.log(
-    `[weer] navtexLokaal: ${blokken.length} blok(ken) (${ruweBerichten.length} ruw, ${berichten.length} na dedup) in ${bestand}, ` +
+    `[weer] navtexLokaal ${band.frequentieKhz}: ${blokken.length} blok(ken) (${ruweBerichten.length} ruw, ${berichten.length} na dedup) in ${bestand}, ` +
       `${berichten.length} met leesbare code, ${zonderPositie} zonder bruikbare positie (corrupte/onbekende station-letter of geen coordinaat), ` +
       `${metPlek.length} met positie (geen afstandsgrens), ${vervallen} vervallen/ingetrokken (waarvan ${nietMeerHerhaaldTeller} 72u niet meer herhaald), ${nietVervallen.length} blijft over.`
   );
@@ -1952,12 +1990,15 @@ export async function fetchNavtexLokaal(env = {}) {
     const typeOmschrijving = b.typeLetter ? TYPE_OMSCHRIJVING[b.typeLetter] ?? null : null;
     const stationNaam = b.station?.naam ?? `station ${leesStationEnType(b.code).stationId ?? '?'} (onbevestigd)`;
     const stationKleur = b.station?.kleur ?? STATION_KLEUR_ONBEKEND;
-    const baseId = `navtexlokaal-${b.code}-${b.datum ? b.datum.getTime() : hashTekst(b.body)}`;
+    const baseId = `${band.idPrefix}-${b.code}-${b.datum ? b.datum.getTime() : hashTekst(b.body)}`;
     const gedeeldeDetail = {
       code: b.code,
       referentie: b.referentie,
       station: stationNaam,
-      stationId: b.station?.id ?? null,
+      // 2026-09-08: op 490 met '@490'-achtervoegsel, zodat de frontend (schema,
+      // DX-lijst, groepering — alles zoekt op stationId) 'B' op 490 (Oostende)
+      // nooit verwart met 'B' op 518 (Bodø). Zie ook /api/navtex-stations.
+      stationId: b.station ? (band.frequentieKhz === 518 ? b.station.id : `${b.station.id}@${band.frequentieKhz}`) : null,
       stationKleur,
       land: b.station?.land ?? null,
       navarea: b.station?.navarea ?? null,
@@ -2017,7 +2058,8 @@ export async function fetchNavtexLokaal(env = {}) {
       // pollronde van hetzelfde bericht een nieuw alarm).
       typeLetter: b.typeLetter ?? null,
       noodbericht: b.typeLetter === 'D' && b.datum != null,
-      bron: 'lokaal (ATS Mini + MLA-30+, testopstelling)',
+      bron: `lokaal (Airspy HF+ + MLA-30+, ${band.frequentieKhz} kHz)`,
+      frequentieKhz: band.frequentieKhz, // 2026-09-08: 518 of 490, voor de badge in de app
       bestand,
     };
 

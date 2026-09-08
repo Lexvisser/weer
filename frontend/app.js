@@ -343,9 +343,10 @@ function navtexOntvangstBadge(s) {
 // hierboven, ongewijzigd.
 function navtexNummerBadge(s) {
   if (s.categorie !== 'navtex' || s.detail?.bron === 'ukho') return null;
-  const { code, aantalOntvangsten } = s.detail ?? {};
+  const { code, aantalOntvangsten, frequentieKhz } = s.detail ?? {};
   if (!code || aantalOntvangsten == null) return null;
-  return `${code} · ${aantalOntvangsten}x`;
+  // 2026-09-08: 490 kHz-berichten (nationale taal) krijgen de frequentie erbij.
+  return `${code}${frequentieKhz && frequentieKhz !== 518 ? ` · ${frequentieKhz} kHz` : ''} · ${aantalOntvangsten}x`;
 }
 
 // Alleen-datum-variant (geen klok) voor dingen die dagen tot maanden vooruit
@@ -1883,11 +1884,14 @@ function sdrTeken(p) {
       ctx.fillStyle = '#3bff7c';
       if (x > 14 * dpr && x < W - 14 * dpr) ctx.fillText((f / 1000).toFixed(p.decimalen), x, specH + asH / 2);
     }
-    // markering op de zender (518 kHz)
-    const zender = Number(regel.zender);
-    if (Number.isFinite(zender) && zender > fVan && zender < fTot) {
+    // markering op de zender(s): in het brede venster alle zenders (518 én
+    // 490 sinds 2026-09-08), in de zoom alleen de getoonde.
+    const zenders = p.sleutel === 'b' && Array.isArray(regel.zenders) && regel.zenders.length ? regel.zenders : [regel.zender];
+    for (const zRaw of zenders) {
+      const zender = Number(zRaw);
+      if (!Number.isFinite(zender) || zender <= fVan || zender >= fTot) continue;
       const x = Math.round(((zender - fVan) / (2 * span)) * W);
-      ctx.fillStyle = 'rgba(255,80,80,0.75)';
+      ctx.fillStyle = zender === Number(regel.zender) ? 'rgba(255,80,80,0.75)' : 'rgba(255,80,80,0.4)';
       ctx.fillRect(x, 0, Math.max(1, dpr), specH);
       ctx.fillRect(x, wvY, Math.max(1, dpr), wvH);
     }
@@ -1910,10 +1914,42 @@ function sdrUpdateMeter(regel) {
   if (SDR_SNR_EL) SDR_SNR_EL.textContent = `S/N ${snr} dB`;
 }
 
+// 2026-09-08 (490 kHz erbij): de demodulator levert per zender een zoom
+// ("zooms": [{f, d}]). De zoom-canvas toont er één: de zender met de hoogste
+// S/N, met 6 dB hysterese zodat 'ie niet flippert in ruis. De uitlezing
+// bovenin volgt mee (518.000 / 490.000).
+let sdrZoomZender = null;
+const SDR_FREQ_EL = document.getElementById('sdrFreq');
+
+function sdrSnrVan(d, spanHz) {
+  if (!Array.isArray(d) || !d.length) return 0;
+  const vloer = d.slice().sort((a, b) => a - b)[Math.floor(d.length / 2)];
+  const midIdx = (d.length - 1) / 2;
+  const halfBins = Math.round((150 / (2 * spanHz)) * (d.length - 1));
+  let piek = -Infinity;
+  for (let i = Math.max(0, Math.floor(midIdx - halfBins)); i <= Math.min(d.length - 1, Math.ceil(midIdx + halfBins)); i++) piek = Math.max(piek, d[i]);
+  return piek - vloer;
+}
+
+function sdrKiesZoom(regel) {
+  if (!Array.isArray(regel.zooms) || !regel.zooms.length) return regel;
+  const span = Number(regel.zoom) || 1500;
+  const metSnr = regel.zooms.map((z) => ({ f: Number(z.f), d: z.d, snr: sdrSnrVan(z.d, span) }));
+  let keuze = metSnr.find((z) => z.f === sdrZoomZender) ?? metSnr[0];
+  const beste = metSnr.reduce((a, b) => (b.snr > a.snr ? b : a), metSnr[0]);
+  if (beste.f !== keuze.f && beste.snr > keuze.snr + 6) keuze = beste;
+  sdrZoomZender = keuze.f;
+  return { ...regel, zender: keuze.f, z: keuze.d };
+}
+
 function sdrVerwerkRegel(regel, meteenTekenen) {
   if (!regel || typeof regel !== 'object') return;
-  sdrPanelen.forEach((p) => sdrVoegRijToe(p, regel, meteenTekenen));
-  if (meteenTekenen) sdrUpdateMeter(regel);
+  const r = sdrKiesZoom(regel);
+  sdrPanelen.forEach((p) => sdrVoegRijToe(p, r, meteenTekenen));
+  if (meteenTekenen) {
+    sdrUpdateMeter(r);
+    if (SDR_FREQ_EL && Number.isFinite(Number(r.zender))) SDR_FREQ_EL.innerHTML = `${(Number(r.zender) / 1000).toFixed(3)}<small> kHz USB</small>`;
+  }
 }
 
 function startNavtexWaterval() {
