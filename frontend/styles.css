@@ -731,9 +731,13 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .sdr-meter { flex:1; height:8px; max-width:220px; background:rgba(59,255,124,0.12); border:1px solid rgba(59,255,124,0.3); border-radius:2px; overflow:hidden; }
 .sdr-meter-balk { display:block; height:100%; width:0; background:linear-gradient(90deg,#1e9c4a,#3bff7c 60%,#ffe14d 85%,#ff5a3c); transition:width 0.25s linear; }
 .sdr-snr { font-family:'JetBrains Mono',monospace; font-size:11px; color:#3bff7c; white-space:nowrap; min-width:64px; text-align:right; }
-.sdr-panelen { display:grid; grid-template-columns:2fr 1fr; gap:4px; padding:0 6px 6px; height:200px; }
+.sdr-panelen { display:grid; grid-template-columns:2fr 1fr; grid-auto-rows:minmax(0,1fr); gap:4px; padding:0 6px 6px; height:200px; }
 .navtex-sdr.ingeklapt .sdr-panelen { display:none; }
-.sdr-canvas { width:100%; height:100%; display:block; background:#000018; border:1px solid rgba(59,255,124,0.2); }
+/* Canvas absoluut in een vaste wrapper: de pixelmaat (canvas.width/height,
+   die sdrTeken() op clientWidth*dpr zet) mag de layout nooit beïnvloeden —
+   anders groeit het paneel bij elke tekening door (gezien op 2026-09-08). */
+.sdr-paneel { position:relative; min-height:0; overflow:hidden; background:#000018; border:1px solid rgba(59,255,124,0.2); }
+.sdr-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
 @media (max-width:640px) { .sdr-panelen { grid-template-columns:1fr; height:300px; } .sdr-freq { font-size:18px; } }
 .navtex-ruw-inhoud .ruw-cursor { color:#8fffb4; animation: ruw-knipper 1s steps(1) infinite; }
 @keyframes ruw-knipper { 50% { opacity:0; } }
