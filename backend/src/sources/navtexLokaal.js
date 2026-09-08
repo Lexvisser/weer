@@ -192,7 +192,6 @@ export const STATIONS_490 = [
   { id: 'E', naam: 'CROSS Corsen 490 (Franstalig)', land: 'FR', lat: 48.41, lon: -4.79, navarea: 'II', kleur: '#4cd9f0', zendschema: ['00:40', '04:40', '08:40', '12:40', '16:40', '20:40'] },
 ];
 const STATION_PER_ID_490 = new Map(STATIONS_490.map((s) => [s.id, s]));
-const STANDAARD_BESTAND_490 = path.join(homedir(), 'navtex_berichten_490.txt');
 const STATION_KLEUR_ONBEKEND = '#9aa0b4'; // zelfde neutraal-grijs als de BEVESTIGD-pil elders — "geen idee welk station"
 
 const TYPE_OMSCHRIJVING = {
@@ -1663,7 +1662,11 @@ function laadRuweBlokTijden(tijdenBestand) {
 // "BA12" op 490 en "BA12" op 518 nooit samensmelten). fetchNavtexLokaal()
 // draait de hele verwerking per band. BAND_518 is wat de 📻-viewer toont.
 const BAND_518 = { frequentieKhz: 518, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND, stations: STATION_PER_ID, idPrefix: 'navtexlokaal', tijdenBestand: RUW_TIJDEN_BESTAND, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND) };
-const BAND_490 = { frequentieKhz: 490, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND_490 || STANDAARD_BESTAND_490, stations: STATION_PER_ID_490, idPrefix: 'navtexlokaal490', tijdenBestand: RUW_TIJDEN_BESTAND_490, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND_490) };
+// 490-pad: expliciet via NAVTEX_LOKAAL_BESTAND_490, anders NAAST het 518-
+// bestand (zelfde map, '_490' erachter) — niet via homedir(), want de app
+// draait als root en het 518-pad staat in .env op /home/lex (gezien
+// 2026-09-08: '/root/navtex_berichten_490.txt bestaat nog niet').
+const BAND_490 = { frequentieKhz: 490, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND_490 || BAND_518.bestand().replace(/(\.[^.\/]*)?$/, (ext) => `_490${ext}`), stations: STATION_PER_ID_490, idPrefix: 'navtexlokaal490', tijdenBestand: RUW_TIJDEN_BESTAND_490, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND_490) };
 const BANDEN = [BAND_518, BAND_490];
 
 // Aangeroepen vanuit fetchNavtexBand() met de zojuist gelezen RAUWE tekst
