@@ -2085,6 +2085,7 @@ function stopNavtexWaterval() {
 const SDR_AUDIO_KNOP_EL = document.getElementById('sdrAudioKnop');
 const SDR_AUDIO_BUFFER_S = 0.4;
 let sdrAudioCtx = null;
+let sdrAudioFilter = null; // 2026-09-08: banddoorlaat rond de NAVTEX-tonen (zie startNavtexAudio)
 let sdrAudioAbort = null;
 let sdrAudioZender = null; // waar de lopende audio-stream naar luistert
 let sdrAudioVolgende = 0;
@@ -2094,6 +2095,17 @@ async function startNavtexAudio() {
   try {
     sdrAudioCtx = sdrAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
     await sdrAudioCtx.resume();
+    // Banddoorlaat 800–1200 Hz om de twee FSK-tonen (915/1085 Hz): de
+    // demodulator pompt in stilte de ruis op tot vol niveau, en een zwakke
+    // zender verdrinkt daar voor het oor in — de decoder kijkt zelf al door
+    // een smal filter. Alleen de luisterweg; de decoder-audio blijft zoals 'ie is.
+    if (!sdrAudioFilter) {
+      sdrAudioFilter = sdrAudioCtx.createBiquadFilter();
+      sdrAudioFilter.type = 'bandpass';
+      sdrAudioFilter.frequency.value = 1000;
+      sdrAudioFilter.Q.value = 2.5; // ~400 Hz breed op -3 dB
+      sdrAudioFilter.connect(sdrAudioCtx.destination);
+    }
   } catch (err) {
     console.warn('[weer] audio niet beschikbaar:', err);
     return;
@@ -2128,7 +2140,7 @@ async function startNavtexAudio() {
       for (let i = 0; i < nSamples; i++) kanaal[i] = int16[i] / 32768;
       const bron = sdrAudioCtx.createBufferSource();
       bron.buffer = buffer;
-      bron.connect(sdrAudioCtx.destination);
+      bron.connect(sdrAudioFilter ?? sdrAudioCtx.destination);
       const nu = sdrAudioCtx.currentTime;
       if (sdrAudioVolgende < nu + 0.05 || sdrAudioVolgende > nu + 2) sdrAudioVolgende = nu + SDR_AUDIO_BUFFER_S;
       bron.start(sdrAudioVolgende);
