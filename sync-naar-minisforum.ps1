@@ -54,7 +54,7 @@ tar --exclude=".env" `
     --exclude="simulatie-fotostrip.html" `
     --exclude="node_modules" `
     --exclude=".git" `
-    -czf $tarPad -C $projectDir backend frontend
+    -czf $tarPad -C $projectDir backend frontend tools
 
 if (-not (Test-Path $tarPad)) {
     Write-Error "Inpakken mislukt - geen tar.gz aangemaakt."
@@ -91,6 +91,30 @@ $remoteLines = @(
     '  nohup node src/index.js > weer-app.log 2>&1 &',
     '  disown',
     '  echo "[sync] herstart via nohup (systemd nog niet actief op deze server)"',
+    'fi',
+    '',
+    '# 2026-09-09: de NAVTEX-demodulator (tools/navtex-airspy) draait los van',
+    '# de app, vanuit /usr/local/bin en /etc/systemd/system. Die werden tot nu',
+    '# toe nooit meegesynced, waardoor bv. de nieuwe --spectrum-optie pas',
+    '# werkte na een handmatige install + restart. Nu: alleen als script of',
+    '# service-bestand echt verschilt, installeren en de ontvanger herstarten',
+    '# (kost een paar seconden ontvangst - daarom niet bij elke sync).',
+    'NAVTEX_SRC=~/weer-app/tools/navtex-airspy',
+    'NAVTEX_WIJZIG=0',
+    'if [ -f "$NAVTEX_SRC/navtex_usb_demod.py" ] && ! cmp -s "$NAVTEX_SRC/navtex_usb_demod.py" /usr/local/bin/navtex_usb_demod.py; then',
+    '  sudo install -m 755 "$NAVTEX_SRC/navtex_usb_demod.py" /usr/local/bin/navtex_usb_demod.py',
+    '  NAVTEX_WIJZIG=1',
+    'fi',
+    'if [ -f "$NAVTEX_SRC/navtex-airspy.service" ] && ! cmp -s "$NAVTEX_SRC/navtex-airspy.service" /etc/systemd/system/navtex-airspy.service; then',
+    '  sudo install -m 644 "$NAVTEX_SRC/navtex-airspy.service" /etc/systemd/system/navtex-airspy.service',
+    '  sudo systemctl daemon-reload',
+    '  NAVTEX_WIJZIG=1',
+    'fi',
+    'if [ "$NAVTEX_WIJZIG" = 1 ]; then',
+    '  sudo systemctl restart navtex-airspy.service',
+    '  echo "[sync] navtex-airspy bijgewerkt en herstart"',
+    'else',
+    '  echo "[sync] navtex-airspy ongewijzigd"',
     'fi',
     'rm -f ~/weer-app-remote-restart.sh'
 )

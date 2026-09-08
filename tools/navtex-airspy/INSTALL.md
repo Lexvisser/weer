@@ -35,6 +35,19 @@ op 517.000 USB — dat was dus géén afrondfout).
        journalctl -u navtex-airspy -f        # foutmeldingen
        tail -f ~/navtex_berichten.txt        # gedecodeerde berichten
 
+6. Linger aanzetten (2026-09-09, eenmalig):
+       sudo loginctl enable-linger lex
+   Zonder dit ruimt systemd-logind bij het uitloggen van lex (bv. het einde
+   van een syncweer-ssh-sessie) diens bestanden in /dev/shm op (RemoveIPC=yes).
+   De demodulator schrijft dan door naar een verwijderd bestand en het
+   spectrum/waterval-paneel en meeluisteren in de app vallen stil
+   ("geen spectrumdata").
+
+Sinds 2026-09-09 synct `syncweer` tools/navtex-airspy mee en installeert
+script + service-bestand automatisch (met herstart) als ze verschillen van
+wat in /usr/local/bin en /etc/systemd/system staat; stap 2 en 4 zijn dus
+alleen nog voor een eerste installatie.
+
 ## Let op
 
 - SDR++ server (`sdrpp --server`) en deze dienst kunnen NIET tegelijk de
