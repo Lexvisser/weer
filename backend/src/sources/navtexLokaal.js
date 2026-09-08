@@ -1719,28 +1719,55 @@ export function leesRuweOntvangst(maxBytes = 64 * 1024) {
 // een stat elke 250 ms kost niets. Wordt het bestand kleiner (roteerd/
 // geleegd), dan begint de lezer opnieuw vanaf 0 — geen verzonnen tekst.
 const RUW_STREAM_POLL_MS = 250;
-const ruwStreamAbonnees = new Set();
-let ruwStreamBestand = null;
-let ruwStreamGelezenTot = 0;
+// Per gevolgd bestand één poller + set abonnees (2026-09-08 verder
+// veralgemeend voor het spectrum/waterval-bestand, zie abonneerWaterval).
+const bestandVolgers = new Map(); // pad -> { abonnees:Set, gelezenTot:number, tik:fn }
 
-function ruwStreamTik(cur) {
-  if (!cur.isFile?.() && cur.size === 0 && cur.mtimeMs === 0) return; // (nog) niet aanwezig
-  if (cur.size < ruwStreamGelezenTot) ruwStreamGelezenTot = 0;
-  if (cur.size === ruwStreamGelezenTot) return;
-  const lengte = cur.size - ruwStreamGelezenTot;
-  const fd = openSync(ruwStreamBestand, 'r');
-  try {
-    const buf = Buffer.alloc(lengte);
-    const n = readSync(fd, buf, 0, lengte, ruwStreamGelezenTot);
-    ruwStreamGelezenTot += n;
-    const tekst = buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n');
-    if (!tekst) return;
-    for (const cb of ruwStreamAbonnees) {
-      try { cb(tekst); } catch (err) { console.warn('[weer] navtex-ruw-stream abonnee:', err.message ?? err); }
-    }
-  } finally {
-    closeSync(fd);
+function volgBestand(bestand, onTekst, vanafBytes) {
+  let v = bestandVolgers.get(bestand);
+  if (!v) {
+    v = { abonnees: new Set(), gelezenTot: 0, tik: null };
+    v.gelezenTot = Number.isFinite(vanafBytes) ? vanafBytes : (existsSync(bestand) ? statSync(bestand).size : 0);
+    v.tik = (cur) => {
+      if (cur.size === 0 && cur.mtimeMs === 0) return; // (nog) niet aanwezig
+      if (cur.size < v.gelezenTot) v.gelezenTot = 0; // geleegd/geroteerd: opnieuw vanaf 0
+      if (cur.size === v.gelezenTot) return;
+      const lengte = cur.size - v.gelezenTot;
+      const fd = openSync(bestand, 'r');
+      try {
+        const buf = Buffer.alloc(lengte);
+        const n = readSync(fd, buf, 0, lengte, v.gelezenTot);
+        v.gelezenTot += n;
+        const tekst = buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n');
+        if (!tekst) return;
+        for (const cb of v.abonnees) {
+          try { cb(tekst); } catch (err) { console.warn('[weer] bestand-stream abonnee:', err.message ?? err); }
+        }
+      } finally {
+        closeSync(fd);
+      }
+    };
+    bestandVolgers.set(bestand, v);
+    watchFile(bestand, { interval: RUW_STREAM_POLL_MS, persistent: false }, v.tik);
+  } else if (Number.isFinite(vanafBytes) && vanafBytes < v.gelezenTot) {
+    // Late abonnee die nog een stukje mist: dat stuk eenmalig nasturen.
+    try {
+      const fd = openSync(bestand, 'r');
+      try {
+        const buf = Buffer.alloc(v.gelezenTot - vanafBytes);
+        const n = readSync(fd, buf, 0, buf.length, vanafBytes);
+        onTekst(buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n'));
+      } finally { closeSync(fd); }
+    } catch (err) { console.warn('[weer] bestand-stream inhalen mislukt:', err.message ?? err); }
   }
+  v.abonnees.add(onTekst);
+  return () => {
+    v.abonnees.delete(onTekst);
+    if (v.abonnees.size === 0) {
+      unwatchFile(bestand, v.tik);
+      bestandVolgers.delete(bestand);
+    }
+  };
 }
 
 // Meld je aan voor aangroei van het ontvangstbestand vanaf `vanafBytes`
@@ -1748,30 +1775,40 @@ function ruwStreamTik(cur) {
 // teruggaf, zodat er niets dubbel of niets overgeslagen wordt). Geeft een
 // afmeldfunctie terug.
 export function abonneerRuweOntvangst(onTekst, vanafBytes) {
-  const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
-  if (ruwStreamAbonnees.size === 0) {
-    ruwStreamBestand = bestand;
-    ruwStreamGelezenTot = Number.isFinite(vanafBytes) ? vanafBytes : (existsSync(bestand) ? statSync(bestand).size : 0);
-    watchFile(bestand, { interval: RUW_STREAM_POLL_MS, persistent: false }, ruwStreamTik);
-  } else if (Number.isFinite(vanafBytes) && vanafBytes < ruwStreamGelezenTot) {
-    // Late abonnee die nog een stukje mist: dat stuk eenmalig nasturen.
-    try {
-      const fd = openSync(bestand, 'r');
-      try {
-        const buf = Buffer.alloc(ruwStreamGelezenTot - vanafBytes);
-        const n = readSync(fd, buf, 0, buf.length, vanafBytes);
-        onTekst(buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n'));
-      } finally { closeSync(fd); }
-    } catch (err) { console.warn('[weer] navtex-ruw-stream inhalen mislukt:', err.message ?? err); }
+  return volgBestand(process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND, onTekst, vanafBytes);
+}
+
+// 2026-09-08, op verzoek van Lex ("de frequentie en de waterval, zoals je
+// dat in SDR++ ziet"): navtex_usb_demod.py schrijft met --spectrum 4x/s een
+// JSON-regel (breed ±12 kHz rond 520 kHz + zoom ±1,5 kHz rond 518 kHz, dB
+// per bin) naar een tmpfs-bestand; die regels gaan als eventstream naar het
+// spectrum/waterval-paneel. Het bestand wordt door de demodulator bij 1 MB
+// geleegd — volgBestand() begint dan gewoon opnieuw vanaf 0.
+const STANDAARD_WATERVAL_BESTAND = '/dev/shm/navtex_waterval.jsonl';
+
+export function abonneerWaterval(onTekst) {
+  return volgBestand(process.env.NAVTEX_WATERVAL_BESTAND || STANDAARD_WATERVAL_BESTAND, onTekst, undefined);
+}
+
+// Laatste `maxRegels` complete spectrumregels als geschiedenis bij het
+// openen van het paneel (zodat de waterval niet leeg begint).
+export function leesWatervalGeschiedenis(maxRegels = 200) {
+  const bestand = process.env.NAVTEX_WATERVAL_BESTAND || STANDAARD_WATERVAL_BESTAND;
+  if (!existsSync(bestand)) return { regels: [], bestandsBytes: 0 };
+  const s = statSync(bestand);
+  const lees = Math.min(maxRegels * 3000, s.size);
+  if (lees === 0) return { regels: [], bestandsBytes: 0 };
+  const fd = openSync(bestand, 'r');
+  try {
+    const buf = Buffer.alloc(lees);
+    readSync(fd, buf, 0, lees, s.size - lees);
+    let tekst = buf.toString('utf-8');
+    if (lees < s.size) tekst = tekst.slice(tekst.indexOf('\n') + 1);
+    const regels = tekst.split('\n').filter((r) => r.startsWith('{') && r.endsWith('}')).slice(-maxRegels);
+    return { regels, bestandsBytes: s.size };
+  } finally {
+    closeSync(fd);
   }
-  ruwStreamAbonnees.add(onTekst);
-  return () => {
-    ruwStreamAbonnees.delete(onTekst);
-    if (ruwStreamAbonnees.size === 0 && ruwStreamBestand) {
-      unwatchFile(ruwStreamBestand, ruwStreamTik);
-      ruwStreamBestand = null;
-    }
-  };
 }
 
 export async function fetchNavtexLokaal(env = {}) {

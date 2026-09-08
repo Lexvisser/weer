@@ -39,7 +39,7 @@ import { fetchLifeliner, lifelinerRapportTekst, vluchtlogboekJson } from './sour
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst, abonneerWaterval, leesWatervalGeschiedenis } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -1201,6 +1201,36 @@ export function createApp(env) {
       const afmelden = abonneerRuweOntvangst(stuur, Number.isFinite(vanaf) ? vanaf : undefined);
       // Hartslag elke 20 s zodat proxies/browsers de verbinding niet als dood
       // afsluiten tijdens de stiltes tussen uitzendingen.
+      const hartslag = setInterval(() => res.write(': hartslag\n\n'), 20 * 1000);
+      req.on('close', () => { clearInterval(hartslag); afmelden(); });
+      return;
+    }
+    // 2026-09-08 (vervolg, "zoals je dat in SDR++ ziet"): eventstream van
+    // spectrumregels uit navtex_usb_demod.py --spectrum (zie abonneerWaterval
+    // in navtexLokaal.js). Eerst de laatste ~200 regels als geschiedenis
+    // (event "geschiedenis"), daarna elke nieuwe regel los (event "regel").
+    if (url === '/api/navtex-waterval-stream') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.write('retry: 3000\n\n');
+      try {
+        const g = leesWatervalGeschiedenis();
+        res.write(`event: geschiedenis\ndata: [${g.regels.join(',')}]\n\n`);
+      } catch (err) {
+        console.warn('[weer] waterval-geschiedenis mislukt:', err.message ?? err);
+      }
+      let rest = '';
+      const afmelden = abonneerWaterval((tekst) => {
+        rest += tekst;
+        const delen = rest.split('\n');
+        rest = delen.pop();
+        for (const r of delen) if (r.startsWith('{') && r.endsWith('}')) res.write(`event: regel\ndata: ${r}\n\n`);
+      });
       const hartslag = setInterval(() => res.write(': hartslag\n\n'), 20 * 1000);
       req.on('close', () => { clearInterval(hartslag); afmelden(); });
       return;
