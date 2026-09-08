@@ -2104,7 +2104,8 @@ function renderNavtexUitlegSectie() {
     const rij = document.createElement('div');
     rij.className = 'instelling-item navtex-naslag-rij';
     const label = document.createElement('span');
-    label.textContent = `${station.id}  ${station.naam}${station.land ? ` (${station.land})` : ''}`;
+    // 2026-09-08: '@490' is intern (zie stationId in navtexLokaal.js) — alleen de letter tonen.
+    label.textContent = `${String(station.id).split('@')[0]}  ${station.naam}${station.land ? ` (${station.land})` : ''}`;
     const tijden = document.createElement('span');
     tijden.className = 'navtex-naslag-tijden';
     tijden.textContent = station.zendschema?.length ? station.zendschema.join(', ') : 'onbekend';
