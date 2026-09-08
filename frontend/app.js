@@ -1626,7 +1626,10 @@ function sluitNavtexRuw() {
 // nooit meer dan een paar seconden is. Bij een 'ZCZC' aan het begin van een
 // regel komt meteen de groene kopregel met het ECHTE ontvangstmoment (nu).
 const NAVTEX_RUW_TEKEN_MS = 140; // ~7 tekens/s
-const NAVTEX_RUW_WACHTRIJ_SNEL = 200; // vanaf zoveel tekens achterstand: meerdere tekens per tik
+// 2026-09-08 (Lex: "het leek of hij een buffer van eerder aan het leegschrijven
+// was"): de achterstand mag hooguit ~3 s zijn (21 tekens op NAVTEX-tempo);
+// daarboven meerdere tekens per tik, zodat tekst en geluid bij elkaar blijven.
+const NAVTEX_RUW_MAX_ACHTERSTAND = 21;
 let navtexRuwStream = null;
 let navtexRuwBytes = 0;
 let navtexRuwLaatsteTeken = '';
@@ -1660,7 +1663,7 @@ function navtexRuwTypTik() {
     return;
   }
   const vastgepind = navtexRuwVastgepind();
-  const aantal = navtexRuwWachtrij.length > NAVTEX_RUW_WACHTRIJ_SNEL ? Math.ceil(navtexRuwWachtrij.length / 50) : 1;
+  const aantal = Math.max(1, Math.ceil(navtexRuwWachtrij.length / NAVTEX_RUW_MAX_ACHTERSTAND));
   for (let i = 0; i < aantal && navtexRuwWachtrij; i++) {
     // Nieuw bericht? Kopregel met het echte ontvangstmoment, zoals de
     // volledige vulling die uit het bloktijdenregister tekent.
