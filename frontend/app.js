@@ -2095,16 +2095,24 @@ async function startNavtexAudio() {
   try {
     sdrAudioCtx = sdrAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
     await sdrAudioCtx.resume();
-    // Banddoorlaat 800–1200 Hz om de twee FSK-tonen (915/1085 Hz): de
-    // demodulator pompt in stilte de ruis op tot vol niveau, en een zwakke
-    // zender verdrinkt daar voor het oor in — de decoder kijkt zelf al door
-    // een smal filter. Alleen de luisterweg; de decoder-audio blijft zoals 'ie is.
+    // Twee smalle banddoorlaatfilters, elk op één FSK-toon (915/1085 Hz,
+    // ±50 Hz — genoeg voor 100 baud): de demodulator pompt in stilte de ruis
+    // op tot vol niveau en een zwakke zender verdrinkt daar voor het oor in,
+    // terwijl de decoder zelf door een smal filter kijkt. Gemeten op Lex'
+    // opname (2026-09-08): tonen 6,7 dB ónder de ruis over de hele band, met
+    // deze twee filters ~7 dB erbóven. Alleen de luisterweg; de decoder-audio
+    // blijft zoals 'ie is.
     if (!sdrAudioFilter) {
-      sdrAudioFilter = sdrAudioCtx.createBiquadFilter();
-      sdrAudioFilter.type = 'bandpass';
-      sdrAudioFilter.frequency.value = 1000;
-      sdrAudioFilter.Q.value = 2.5; // ~400 Hz breed op -3 dB
-      sdrAudioFilter.connect(sdrAudioCtx.destination);
+      const ingang = sdrAudioCtx.createGain();
+      for (const toon of [915, 1085]) {
+        const f = sdrAudioCtx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.value = toon;
+        f.Q.value = 9; // ~100 Hz breed op -3 dB
+        ingang.connect(f);
+        f.connect(sdrAudioCtx.destination);
+      }
+      sdrAudioFilter = ingang;
     }
   } catch (err) {
     console.warn('[weer] audio niet beschikbaar:', err);
