@@ -1830,8 +1830,12 @@ export function abonneerWaterval(onTekst) {
 const STANDAARD_AUDIO_BESTAND = '/dev/shm/navtex_audio.raw';
 export const AUDIO_SAMPLERATE = 12000;
 
-export function abonneerAudio(onBuffer) {
-  return volgBestand(process.env.NAVTEX_AUDIO_BESTAND || STANDAARD_AUDIO_BESTAND, onBuffer, undefined, true);
+// `khz`: 518 (hoofdbestand) of een extra zender — de demodulator schrijft
+// die naast het hoofdbestand als navtex_audio_<khz>.raw (2026-09-08).
+export function abonneerAudio(onBuffer, khz = 518) {
+  const hoofd = process.env.NAVTEX_AUDIO_BESTAND || STANDAARD_AUDIO_BESTAND;
+  const bestand = khz === 518 ? hoofd : hoofd.replace(/(\.[^.]*)?$/, (ext) => `_${khz}${ext}`);
+  return volgBestand(bestand, onBuffer, undefined, true);
 }
 
 // Laatste `maxRegels` complete spectrumregels als geschiedenis bij het

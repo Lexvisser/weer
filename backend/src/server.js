@@ -1239,6 +1239,9 @@ export function createApp(env) {
     // 12 kHz (header X-Samplerate), chunked zolang de verbinding open is.
     // De viewer speelt 'm af via Web Audio (zie startNavtexAudio in app.js).
     if (url === '/api/navtex-audio-stream') {
+      // ?khz=490 voor de tweede zender (2026-09-08); alleen bekende waarden.
+      const khzParam = Number.parseInt(new URL(req.url, 'http://localhost').searchParams.get('khz') ?? '518', 10);
+      const khz = khzParam === 490 ? 490 : 518;
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Cache-Control': 'no-cache, no-store, no-transform',
@@ -1246,7 +1249,7 @@ export function createApp(env) {
         'X-Accel-Buffering': 'no',
         'Access-Control-Allow-Origin': '*',
       });
-      const afmelden = abonneerAudio((buf) => res.write(buf));
+      const afmelden = abonneerAudio((buf) => res.write(buf), khz);
       req.on('close', afmelden);
       return;
     }

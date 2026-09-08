@@ -29,6 +29,8 @@ Parameters:
   --audio PAD     (2026-09-08) schrijf dezelfde 16-bit/12 kHz-audio die naar
             de decoder gaat óók naar PAD (tmpfs!), voor meeluisteren in de
             app (/api/navtex-audio-stream). 24 kB/s; bij 4 MB geleegd.
+            Met --extra ook per extra zender een bestand ernaast:
+            navtex_audio.raw -> navtex_audio_490.raw.
 """
 import argparse
 import fcntl
@@ -228,8 +230,12 @@ def main():
     if args.spectrum:
         spec_f = open(args.spectrum, "a", buffering=1)
     audio_f = None
+    extra_audio = []  # per extra tak: bestand naast --audio, bv. navtex_audio.raw -> navtex_audio_490.raw
     if args.audio:
         audio_f = open(args.audio, "ab", buffering=0)
+        stam, ext = os.path.splitext(args.audio)
+        for tak, _ in extras:
+            extra_audio.append(open(f"{stam}_{tak.signal / 1000:.0f}{ext}", "ab", buffering=0))
     while True:
         raw = wachtrij.get()
         if raw is None:
@@ -258,7 +264,7 @@ def main():
         if spec_f:
             zooms.append({"f": hoofd.signal, "d": spectrum_db(x, SPEC_FFT_ZOOM, AUDIO_RATE, hoofd.tone, SPEC_ZOOM_HZ, SPEC_BINS)})
 
-        for tak, proc in extras:
+        for k, (tak, proc) in enumerate(extras):
             x2, pcm2 = tak.verwerk(iq)
             try:
                 proc.stdin.write(pcm2)
@@ -266,6 +272,15 @@ def main():
             except (BrokenPipeError, OSError) as e:
                 print(f"decoder voor {tak.signal:.0f} Hz weg ({e}); stop", file=sys.stderr)
                 sys.exit(1)  # systemd herstart de hele pipeline
+            if extra_audio:
+                try:
+                    f2 = extra_audio[k]
+                    if f2.tell() > AUDIO_MAX_BYTES:
+                        f2.seek(0)
+                        f2.truncate()
+                    f2.write(pcm2)
+                except OSError as e:
+                    print(f"audio {tak.signal:.0f} schrijven mislukt: {e}", file=sys.stderr)
             if spec_f:
                 zooms.append({"f": tak.signal, "d": spectrum_db(x2, SPEC_FFT_ZOOM, AUDIO_RATE, tak.tone, SPEC_ZOOM_HZ, SPEC_BINS)})
 

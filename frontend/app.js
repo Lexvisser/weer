@@ -1959,6 +1959,12 @@ function sdrKiesZoom(regel) {
   const beste = metSnr.reduce((a, b) => (b.snr > a.snr ? b : a), metSnr[0]);
   if (beste.f !== keuze.f && beste.snr > keuze.snr + 6) keuze = beste;
   sdrZoomZender = keuze.f;
+  // Audio volgt mee: staat de knop aan en wisselt de getoonde zender, dan
+  // de stream opnieuw openen op de nieuwe zender.
+  if (sdrAudioAbort && sdrAudioZender && sdrAudioZender !== keuze.f) {
+    stopNavtexAudio();
+    startNavtexAudio();
+  }
   return { ...regel, zender: keuze.f, z: keuze.d };
 }
 
@@ -2012,6 +2018,7 @@ const SDR_AUDIO_KNOP_EL = document.getElementById('sdrAudioKnop');
 const SDR_AUDIO_BUFFER_S = 0.4;
 let sdrAudioCtx = null;
 let sdrAudioAbort = null;
+let sdrAudioZender = null; // waar de lopende audio-stream naar luistert
 let sdrAudioVolgende = 0;
 
 async function startNavtexAudio() {
@@ -2023,13 +2030,16 @@ async function startNavtexAudio() {
     console.warn('[weer] audio niet beschikbaar:', err);
     return;
   }
-  sdrAudioAbort = new AbortController();
+  const mijnAbort = new AbortController();
+  sdrAudioAbort = mijnAbort;
   SDR_AUDIO_KNOP_EL?.classList.add('aan');
   if (SDR_AUDIO_KNOP_EL) SDR_AUDIO_KNOP_EL.textContent = '🔊';
   sdrAudioVolgende = 0;
   let rest = new Uint8Array(0);
   try {
-    const res = await fetch('/api/navtex-audio-stream', { signal: sdrAudioAbort.signal, cache: 'no-store' });
+    // 2026-09-08: luisteren naar de zender die het paneel toont (518 of 490).
+    sdrAudioZender = sdrZoomZender || 518000;
+    const res = await fetch(`/api/navtex-audio-stream?khz=${Math.round(sdrAudioZender / 1000)}`, { signal: mijnAbort.signal, cache: 'no-store' });
     const rate = Number(res.headers.get('x-samplerate')) || 12000;
     const reader = res.body.getReader();
     for (;;) {
@@ -2059,7 +2069,9 @@ async function startNavtexAudio() {
   } catch (err) {
     if (err?.name !== 'AbortError') console.warn('[weer] audio-stream:', err);
   } finally {
-    stopNavtexAudio();
+    // Alleen opruimen als dit nog de lopende stream is — bij een zenderwissel
+    // (zie sdrKiesZoom) is er intussen al een nieuwe gestart.
+    if (sdrAudioAbort === mijnAbort) stopNavtexAudio();
   }
 }
 
