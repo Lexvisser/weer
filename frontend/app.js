@@ -1663,7 +1663,11 @@ function navtexRuwTypTik() {
     return;
   }
   const vastgepind = navtexRuwVastgepind();
-  const aantal = Math.max(1, Math.ceil(navtexRuwWachtrij.length / NAVTEX_RUW_MAX_ACHTERSTAND));
+  // 2026-09-08 (Lex zag om 15:16 berichten van 14:44 "uit een buffer"
+  // komen): in een tabblad op de achtergrond vertraagt de browser timers tot
+  // 1x per seconde of zelfs 1x per minuut, en dan blijft de wachtrij staan
+  // tot je terugkomt. Onzichtbaar = niet typen maar meteen alles plaatsen.
+  const aantal = document.hidden ? navtexRuwWachtrij.length : Math.max(1, Math.ceil(navtexRuwWachtrij.length / NAVTEX_RUW_MAX_ACHTERSTAND));
   for (let i = 0; i < aantal && navtexRuwWachtrij; i++) {
     // Nieuw bericht? Kopregel met het echte ontvangstmoment, zoals de
     // volledige vulling die uit het bloktijdenregister tekent.
@@ -1713,7 +1717,8 @@ function startNavtexRuwStream() {
       const tijd = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst · live · ${Math.round(navtexRuwBytes / 1024)} kB · laatste schrijf ${tijd}`;
     }
-    if (!navtexRuwTypTimer) navtexRuwTypTimer = setInterval(navtexRuwTypTik, NAVTEX_RUW_TEKEN_MS);
+    if (document.hidden) navtexRuwTypTik(); // achtergrond: direct plaatsen (zie navtexRuwTypTik)
+    else if (!navtexRuwTypTimer) navtexRuwTypTimer = setInterval(navtexRuwTypTik, NAVTEX_RUW_TEKEN_MS);
   };
   es.onerror = () => {
     // Niet EventSource zelf laten herverbinden (die zou met de oude
@@ -1728,6 +1733,18 @@ function startNavtexRuwStream() {
     }, 3000);
   };
 }
+
+// Terug op het tabblad: wat er in de tussentijd nog in de wachtrij zit
+// eerst in één keer plaatsen, daarna weer op tempo typen.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !navtexRuwWachtrij) return;
+  const vastgepind = navtexRuwVastgepind();
+  const rest = navtexRuwWachtrij;
+  navtexRuwWachtrij = '';
+  navtexRuwVoegToe(document.createTextNode(rest));
+  navtexRuwLaatsteTeken = rest.slice(-1);
+  if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
+});
 
 function stopNavtexRuwStream() {
   if (navtexRuwStream) {
