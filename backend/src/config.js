@@ -200,7 +200,10 @@ export const SOURCES = [
     // 2026-09-04: tik naar 10s = de fijnste korrel (OpenSky ververst zelf
     // ~elke 5-10s, fijner heeft geen zin); lifeliner.js zelf bepaalt per tik
     // of er echt gepolld wordt (missie 10s / trigger 60s / hartslag 2 min).
-    pollIntervalMs: 10 * 1000,
+    // 2026-09-08: tik naar 5s — voor een ingelogde API-client ververst OpenSky
+    // elke 5s, dus missietempo kan naar 5s (LIFELINER_MISSIE_POLL_MS=5000 in
+    // .env; standaard blijft 10s). Een vlucht van 45 min kost dan ~540 credits.
+    pollIntervalMs: 5 * 1000,
     // Idle-drempel + direct-verversen-bij-terugkeer zit in server.js
     // (IDLE_DREMPEL_MS/isIdle()/signaalVerzoekOntvangen()) — deze vlag
     // schakelt dat gedrag alleen voor déze bron in, want dit is de enige met

@@ -217,8 +217,16 @@ function stuurRapportBijNood(statusCode) {
 // OPENSKY_CLIENT_ID/SECRET nog leeg en bleef het budget op 300 staan
 // terwijl de authenticatie zelf (die de env pas bij gebruik leest) wél
 // werkte. Daarom nu een functie: elke check leest de env vers.
+// 2026-09-08: plafond groeit automatisch mee met wat OpenSky zelf meldt. Als
+// het account gaat feeden (eigen ADS-B-antenne) hoogt OpenSky server-side op
+// naar 8.000 — dan zou deze vaste 4000 onze eigen rem te vroeg dichtgooien.
+// Daarom: de hoogste X-Rate-Limit-Remaining die we ooit gezien hebben
+// (openskyPlafondGezien, op schijf) telt mee als ondergrens van het budget.
+// OPENSKY_DAG_BUDGET in .env blijft alles overschrijven.
 function openskyDagBudget() {
-  return Number(process.env.OPENSKY_DAG_BUDGET ?? (openskyCredsAanwezig() ? 4000 : 400));
+  if (process.env.OPENSKY_DAG_BUDGET != null) return Number(process.env.OPENSKY_DAG_BUDGET);
+  const standaard = openskyCredsAanwezig() ? 4000 : 400;
+  return Math.max(standaard, openskyPlafondGezien);
 }
 let budgetDatumUtc = null; // "2026-08-21" — resetpunt
 let creditsVandaag = 0;
@@ -243,6 +251,7 @@ function huidigeUtcDatum() {
 // bestand geschreven, waardoor vastgelegde vluchten bij elke herstart/deploy
 // verdwenen (Lex: "Lifeliner zou toch de vluchten opslaan? Niet gelukt hoor").
 let openskyRestCredits = null; // { waarde, tijdMs } -- laatst geziene X-Rate-Limit-Remaining (hoort bij noteerRestCredits, verderop)
+let openskyPlafondGezien = 0; // hoogste X-Rate-Limit-Remaining ooit gezien -- ondergrens van openskyDagBudget() (2026-09-08)
 const VLUCHTLOG_MAX = 50;
 const VLUCHT_ROUTE_MAX = 600; // ~100 min op 10s-tempo
 let vluchtLog = []; // afgesloten vluchten, oud -> nieuw
@@ -268,6 +277,7 @@ try {
     // anders staat de status na elke herstart zonder OpenSky-getal tot de
     // eerstvolgende echte poll (op hartslag kan dat minuten duren).
     if (ruw.openskyRestCredits && typeof ruw.openskyRestCredits.waarde === 'number') openskyRestCredits = ruw.openskyRestCredits;
+    if (typeof ruw.openskyPlafondGezien === 'number') openskyPlafondGezien = ruw.openskyPlafondGezien;
     console.log(
       `[weer] lifeliner: staat teruggeladen van schijf (${pollLog.length} poll-log-regel(s), ${creditsVandaag}/${openskyDagBudget()} credits vandaag al verbruikt) — overleeft nu een herstart/deploy.`
     );
@@ -280,7 +290,7 @@ try {
 // het pollen/rapporteren zelf nooit blokkeren, dan blijft het gewoon (net als
 // vóór deze toevoeging) puur in het geheugen werken tot de volgende herstart.
 function schrijfStaatNaarSchijf() {
-  const data = { pollLog, budgetDatumUtc, creditsVandaag, rapportVerstuurdOpUtcDatum, vluchtLog, openVluchten: Object.fromEntries(openVluchten), openskyRestCredits };
+  const data = { pollLog, budgetDatumUtc, creditsVandaag, rapportVerstuurdOpUtcDatum, vluchtLog, openVluchten: Object.fromEntries(openVluchten), openskyRestCredits, openskyPlafondGezien };
   writeFile(STAAT_BESTAND, JSON.stringify(data), (err) => {
     if (err) console.error('[weer] lifeliner: staat wegschrijven naar schijf mislukt —', err.message ?? err);
   });
@@ -486,6 +496,10 @@ function noteerRestCredits(res) {
     // door magPollenEnTeltMee geschreven), en een sprong omhoog expliciet loggen.
     if (openskyRestCredits && waarde > openskyRestCredits.waarde + 100) {
       console.log(`[weer] lifeliner: OpenSky-restcredits sprongen van ${openskyRestCredits.waarde} naar ${waarde} — hier reset OpenSky zijn dagteller (onze eigen teller staat op ${creditsVandaag})`);
+    }
+    if (waarde > openskyPlafondGezien) {
+      if (openskyPlafondGezien > 0) console.log(`[weer] lifeliner: OpenSky meldt meer restcredits (${waarde}) dan ooit gezien — dagbudget-plafond groeit mee (was ${openskyDagBudget()})`);
+      openskyPlafondGezien = waarde;
     }
     openskyRestCredits = { waarde, tijdMs: Date.now() };
     const laatste = pollLog[pollLog.length - 1];
