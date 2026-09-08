@@ -1923,7 +1923,10 @@ export function leesRuweOntvangstGemengd(maxBytes = 64 * 1024) {
       else samengevoegd[i].sorteerTijd = volgendeTijd;
       samengevoegd[i].sorteerTijd = samengevoegd[i].sorteerTijd ?? samengevoegd[i].tijd;
     }
-    samengevoegd.forEach((seg, i) => segmenten.push({ khz: seg.khz, tijd: seg.kop ? seg.tijd : null, tekst: seg.tekst, sorteerMs: seg.sorteerTijd ? new Date(seg.sorteerTijd).getTime() : 0, volgorde: i }));
+    // Zonder enige bloktijd (staart begint niet met een gaaf ZCZC, of het
+    // register kent 'm nog niet): terugvallen op het schrijfmoment van het
+    // bestand, niet op 0 — anders belandt zo'n stuk helemaal bovenaan.
+    samengevoegd.forEach((seg, i) => segmenten.push({ khz: seg.khz, tijd: seg.kop ? seg.tijd : null, tekst: seg.tekst, sorteerMs: seg.sorteerTijd ? new Date(seg.sorteerTijd).getTime() : s.mtimeMs, volgorde: i }));
   }
   segmenten.sort((a, b) => a.sorteerMs - b.sorteerMs || a.khz - b.khz || a.volgorde - b.volgorde);
   return {
