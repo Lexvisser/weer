@@ -753,7 +753,7 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
   const gezienDezeRonde = new Set();
   const signalen = [];
   for (const s of states) {
-    const [icao24, callsignRuw, , , , lon, lat, baroAltM, aanGrond, snelheidMs, koersGraden] = s;
+    const [icao24, callsignRuw, , timePositionS, , lon, lat, baroAltM, aanGrond, snelheidMs, koersGraden] = s;
     const naam = naamVoor(icao24, callsignRuw);
     if (!naam) continue;
     if (lat == null || lon == null) continue; // geen positie bekend (net geland/net vertrokken)
@@ -769,7 +769,14 @@ export async function fetchLifeliner({ homeLat, homeLon }) {
       trails.set(icao24, trail);
     }
     trail.laatstGezienMs = nu;
-    if (!aanGrond) {
+    // 2026-09-08: op 5s-tempo kan OpenSky dezelfde positie twee keer geven
+    // (time_position = index 3 in de state vector, ongewijzigd). Die telt
+    // dan niet als nieuwe waarneming: geen spoorpunt, geen route-punt, geen
+    // "gat"-telling — anders loopt het vluchtlog vol met lucht.
+    const zelfdePositie = timePositionS != null && trail.laatsteTimePositionS === timePositionS;
+    trail.laatsteTimePositionS = timePositionS ?? trail.laatsteTimePositionS;
+    if (!aanGrond && zelfdePositie) actiefTotMs = nu + ACTIEF_NA_VLUCHT_MS;
+    if (!aanGrond && !zelfdePositie) {
       // 2026-08-28: een toestel in de lucht houdt de snelle poll-modus aan
       // (zie de spaarstand-toelichting bij fetchLifeliner) — en nog even
       // erná, zodat een landing/doorstart niet gemist wordt.
