@@ -20,6 +20,7 @@ import { fetchOpenMeteo } from './sources/openmeteo.js';
 import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
+import { fetchNavtexKustrapporten } from './sources/navtexKustrapporten.js'; // 2026-09-08, Niton-490 kustrapporten (zelfde laag)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
@@ -1387,6 +1388,17 @@ export function createApp(env) {
       } catch (err) {
         console.error('[weer] zeemarkering-verzoek mislukt:', err.message ?? err);
         return sendJson(res, 502, { fout: 'Zeemarkering tijdelijk niet beschikbaar', markeringen: [] });
+      }
+    }
+    // 2026-09-08: NAVTEX-kustrapporten (Niton 490: Sandettie, Greenwich L/V,
+    // Portland...) uit de eigen ontvangst — zie sources/navtexKustrapporten.js.
+    // Zelfde kaartlaag als KNMI/RWS, eigen route.
+    if (url === '/api/navtex-kustrapporten') {
+      try {
+        return sendJson(res, 200, fetchNavtexKustrapporten({ homeLat: env.homeLat, homeLon: env.homeLon }));
+      } catch (err) {
+        console.error('[weer] navtex-kustrapporten mislukt:', err.message ?? err);
+        return sendJson(res, 502, { fout: 'NAVTEX-kustrapporten niet leesbaar', rapporten: [] });
       }
     }
     if (url === '/api/rws-meetpunten') {

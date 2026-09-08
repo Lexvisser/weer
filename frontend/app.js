@@ -7528,7 +7528,7 @@ let stationsVerzoekTeller = 0;
 // alles aan; per toestel bewaard. Uitzetten filtert alleen in de weergave.
 const STATIONS_SUB_EL = document.getElementById('stationsSub');
 const STATIONS_DELEN_KEY = 'weerStationsDelen';
-let stationsDelen = { knmi: true, rws: true };
+let stationsDelen = { knmi: true, rws: true, navtex: true }; // navtex: 2026-09-08, kustrapporten via eigen ontvangst
 try { stationsDelen = { ...stationsDelen, ...JSON.parse(localStorage.getItem(STATIONS_DELEN_KEY) || '{}') }; } catch (_) { /* privé-modus */ }
 let laatsteStationsData = null; // { stations, meetpunten } -- voor hertekenen bij een deel-schakelaar
 
@@ -7628,12 +7628,15 @@ async function ververStations() {
   // golven, /api/rws-meetpunten) in dezelfde laag; elk apart opgehaald zodat
   // de een niet wegvalt als de ander hapert.
   const veilig = (url, sleutel) => fetch(url).then((r) => r.json()).then((d) => d[sleutel] ?? []).catch((err) => { console.warn(`[weer] ${sleutel} ophalen mislukt:`, err); return []; });
-  const [stations, meetpunten] = await Promise.all([
+  const [stations, meetpunten, kustrapporten] = await Promise.all([
     veilig(`/api/weerstations?straal=${STATIONS_STRAAL_KM}`, 'stations'),
     veilig(`/api/rws-meetpunten?straal=${STATIONS_STRAAL_KM}`, 'meetpunten'),
+    // 2026-09-08: kustrapporten uit de eigen NAVTEX-ontvangst (Niton 490) —
+    // geen straal: dit zijn de Kanaal-stations, per definitie ver weg.
+    veilig('/api/navtex-kustrapporten', 'rapporten'),
   ]);
   if (verzoekId !== stationsVerzoekTeller || !stationsActief || !kaart) return; // ondertussen uitgezet of ingehaald door een nieuwer verzoek
-  laatsteStationsData = { stations, meetpunten };
+  laatsteStationsData = { stations, meetpunten, kustrapporten };
   tekenStations(laatsteStationsData);
 }
 
@@ -7671,6 +7674,34 @@ function rwsVakHtml(p) {
 
 function rwsZichtbaar() {
   return stationsDelen.rws;
+}
+
+// 2026-09-08: NAVTEX-kustrapport (Niton 490) — pil met temperatuur + Bft,
+// groene windpijl, popup met druk/wind/zicht/temperatuur en het
+// waarnemingsmoment. Zelfde meting-veldnamen als KNMI/RWS.
+function navtexVakHtml(r) {
+  const m = r.meting;
+  const bft = m?.windBft != null ? `<span class="station-bft">${m.windBft}</span>` : '';
+  return `<span class="station-vak is-navtex">${stationTempTekst(m)}${bft}</span>`;
+}
+
+function navtexKustPopupHtml(r) {
+  const m = r.meting;
+  const regels = [];
+  const rr = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}:</span> <span class="station-stat-waarde">${waarde}</span></div>`); };
+  rr('Temperatuur', m.temperatuurC != null ? `${m.temperatuurC} °C` : null);
+  if (m.windKn != null) {
+    const richting = m.windRichtingGraden != null ? `${Math.round(m.windRichtingGraden)}° ` : '';
+    rr('Wind', `${richting}${m.windKn} kn · ${m.windBft} Bft (${m.windMs} m/s)`);
+  }
+  rr('Luchtdruk', m.luchtdrukHpa != null ? `${m.luchtdrukHpa} hPa` : null);
+  rr('Zicht', m.zichtNm != null ? `${m.zichtNm} NM (${Math.round(m.zichtNm * 1.852)} km)` : null);
+  if (m.tijd) {
+    const t = new Date(m.tijd);
+    regels.push(`<div class="popup-sub">Waarneming ${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })} · NAVTEX 490 kHz, eigen ontvangst (Niton)</div>`);
+  }
+  const afstand = r.afstandKm != null ? `${r.afstandKm} km van huis · ` : '';
+  return `<div class="popup-titel">📻 ${escapeHtml(r.naam)}</div><div class="popup-sub">${afstand}kustrapport ${escapeHtml(r.naamUitgezonden ?? '')}</div><div class="popup-stats">${regels.join('')}</div>`;
 }
 
 // Windpijl: één pijl per marker; KNMI-wind eerst (als KNMI-vak zichtbaar
@@ -7733,10 +7764,21 @@ async function vulZeemarkeringIn(popup, lat, lon, straalM = 1000) {
   popup.setContent(inhoud.innerHTML.replace(/(<div class="popup-titel">.*?<\/div>)/, `$1${blokHtml}`));
 }
 
-function tekenStations({ stations, meetpunten }) {
+function tekenStations({ stations, meetpunten, kustrapporten = [] }) {
   if (!stationsActief || !kaart) return;
   if (!stationsLaag) stationsLaag = L.layerGroup().addTo(kaart);
   stationsLaag.clearLayers();
+
+  // 2026-09-08: NAVTEX-kustrapporten (Kanaal), los van de KNMI/RWS-samenvoeging.
+  if (stationsDelen.navtex) {
+    kustrapporten.forEach((r) => {
+      const m = r.meting;
+      const pijl = m?.windRichtingGraden != null && m.windMs != null && m.windMs >= 0.3
+        ? windVaanPijlSvg(m.windRichtingGraden, '#3bff7c', '#0f5a2a')
+        : '<span class="station-stil">○</span>';
+      plaatsStationsMarker(r.lat, r.lon, r.naam, [navtexVakHtml(r)], pijl, () => navtexKustPopupHtml(r), false, 3000);
+    });
+  }
   const rwsOver = new Set(meetpunten);
 
   stations.forEach((s) => {
