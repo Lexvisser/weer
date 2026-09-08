@@ -1719,7 +1719,16 @@ function navtexRuwTypTik() {
   const totaal = navtexRuwWachtrijLengte();
   const aantal = document.hidden ? totaal : Math.max(1, Math.ceil(totaal / NAVTEX_RUW_MAX_ACHTERSTAND));
   for (let i = 0; i < aantal && navtexRuwWachtrij.length; i++) {
-    const kop = navtexRuwWachtrij[0];
+    // 2026-09-08 (Lex zag groen en blauw door elkaar gevlochten: 518-
+    // rommelletters uit ruis tussen de letters van een Oostende-490-bericht):
+    // de band die midden in een regel zit maakt die regel eerst af; pas na
+    // een regeleinde is de oudste wachtende tekst van de andere band aan de
+    // beurt. Regels blijven zo één kleur.
+    let kop = navtexRuwWachtrij[0];
+    if (navtexRuwHuidigeKhz != null && (navtexRuwLaatsteTekenPerKhz[navtexRuwHuidigeKhz] ?? '') !== '\n') {
+      const zelfde = navtexRuwWachtrij.find((c) => (c.khz === 490 ? 490 : 518) === navtexRuwHuidigeKhz);
+      if (zelfde) kop = zelfde;
+    }
     const khz = kop.khz === 490 ? 490 : 518;
     // Nieuw bericht? Kopregel met het echte ontvangstmoment, zoals de
     // volledige vulling die uit het bloktijdenregister tekent.
@@ -1734,7 +1743,7 @@ function navtexRuwTypTik() {
     }
     const teken = kop.tekst[0];
     kop.tekst = kop.tekst.slice(1);
-    if (!kop.tekst) navtexRuwWachtrij.shift();
+    if (!kop.tekst) navtexRuwWachtrij.splice(navtexRuwWachtrij.indexOf(kop), 1);
     navtexRuwVoegTeken(teken, khz);
     navtexRuwLaatsteTekenPerKhz[khz] = teken;
     navtexRuwLaatsteTeken = teken;
@@ -1799,10 +1808,12 @@ function startNavtexRuwStream() {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !navtexRuwWachtrij.length) return;
   const vastgepind = navtexRuwVastgepind();
-  for (const kop of navtexRuwWachtrij) {
-    const khz = kop.khz === 490 ? 490 : 518;
+  for (const khz of [518, 490]) {
+    const tekst = navtexRuwWachtrij.filter((c) => (c.khz === 490 ? 490 : 518) === khz).map((c) => c.tekst).join('');
+    if (!tekst) continue;
     navtexRuwHuidigeSpan = null;
-    if (kop.tekst) { navtexRuwVoegTeken(kop.tekst, khz); navtexRuwLaatsteTekenPerKhz[khz] = kop.tekst.slice(-1); }
+    navtexRuwVoegTeken(tekst, khz);
+    navtexRuwLaatsteTekenPerKhz[khz] = tekst.slice(-1);
   }
   navtexRuwWachtrij = [];
   if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
