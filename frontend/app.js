@@ -1834,7 +1834,12 @@ NAVTEX_RUW_SLUITEN_EL?.addEventListener('click', sluitNavtexRuw);
 // frequentie-as tussenin, rode markering op 518 kHz. Kleuren = SDR++
 // "classic". Schaal: ruisvloer (mediaan, traag gevolgd) = onderkant,
 // SDR_BEREIK_DB erboven = wit/geel — dus zelfschalend, geen knopjes.
-const SDR_BEREIK_DB = 70;
+const SDR_BEREIK_DB = 70; // zoom: fijne bins, veel dynamiek
+// 2026-09-08 (Lex: "dat ik alleen rechts dit zag"): in het brede venster
+// zit per bin ~8x zoveel ruis als in de zoom (94 vs 12 Hz), dus een zwakke
+// zender steekt er ~9 dB minder bovenuit. Steilere schaal daar, zodat ook
+// Niton-sterkte (S/N ~13 dB in de zoom) nog een streep geeft.
+const SDR_BEREIK_BREED_DB = 40;
 const SDR_WATERVAL_RIJEN = 240;
 const SDR_KLEUREN = ['#000020', '#000030', '#000050', '#000091', '#1E90FF', '#FFFFFF', '#FFFF00', '#FE6D16', '#FE6D16', '#FF0000', '#FF0000', '#C60000', '#9F0000', '#750000', '#4A0000'];
 const SDR_EL = document.getElementById('navtexSdr');
@@ -1865,8 +1870,8 @@ function sdrMaakPaneel(canvasId, opties) {
   return { canvas, ctx: canvas.getContext('2d'), wv: null, wvCtx: null, bins: 0, vloer: null, laatste: null, ...opties };
 }
 const sdrPanelen = [
-  sdrMaakPaneel('sdrBreed', { sleutel: 'b', midden: 'midden', span: 'breed', stapHz: 4000, decimalen: 0 }),
-  sdrMaakPaneel('sdrZoom', { sleutel: 'z', midden: 'zender', span: 'zoom', stapHz: 500, decimalen: 1 }),
+  sdrMaakPaneel('sdrBreed', { sleutel: 'b', midden: 'midden', span: 'breed', stapHz: 4000, decimalen: 0, bereikDb: SDR_BEREIK_BREED_DB }),
+  sdrMaakPaneel('sdrZoom', { sleutel: 'z', midden: 'zender', span: 'zoom', stapHz: 500, decimalen: 1, bereikDb: SDR_BEREIK_DB }),
 ].filter(Boolean);
 
 function sdrVloer(p, rij) {
@@ -1894,7 +1899,7 @@ function sdrVoegRijToe(p, regel, meteenTekenen) {
   p.wvCtx.drawImage(p.wv, 0, 1);
   const beeld = p.wvCtx.createImageData(p.bins, 1);
   for (let i = 0; i < p.bins; i++) {
-    const v = Math.max(0, Math.min(255, Math.round(((rij[i] - (vloer - 5)) / SDR_BEREIK_DB) * 255)));
+    const v = Math.max(0, Math.min(255, Math.round(((rij[i] - (vloer - 5)) / (p.bereikDb ?? SDR_BEREIK_DB)) * 255)));
     const [r, g, b] = lut[v];
     beeld.data[i * 4] = r; beeld.data[i * 4 + 1] = g; beeld.data[i * 4 + 2] = b; beeld.data[i * 4 + 3] = 255;
   }
@@ -1918,11 +1923,12 @@ function sdrTeken(p) {
   const wvY = specH + asH;
   const wvH = H - wvY;
   const vloer = p.vloer ?? rij[0];
-  const dbNaarY = (db) => specH - Math.max(0, Math.min(1, (db - (vloer - 5)) / SDR_BEREIK_DB)) * (specH - 4 * dpr);
+  const bereik = p.bereikDb ?? SDR_BEREIK_DB;
+  const dbNaarY = (db) => specH - Math.max(0, Math.min(1, (db - (vloer - 5)) / bereik)) * (specH - 4 * dpr);
   // rasterlijnen per 10 dB
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.lineWidth = 1;
-  for (let db = vloer; db < vloer - 5 + SDR_BEREIK_DB; db += 10) {
+  for (let db = vloer; db < vloer - 5 + bereik; db += 10) {
     const y = Math.round(dbNaarY(db)) + 0.5;
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
