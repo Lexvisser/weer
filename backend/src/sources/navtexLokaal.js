@@ -185,7 +185,13 @@ const STATION_PER_ID = new Map(STATIONS.map((s) => [s.id, s]));
 // (onbevestigd)", zoals op 518.
 export const STATIONS_490 = [
   { id: 'B', naam: 'Oostende NAVTEX 490 (Nederlandstalig)', land: 'BE', lat: 51.1823, lon: 2.8065, navarea: 'I', kleur: '#ff9ec4', zendschema: ['00:10', '04:10', '08:10', '12:10', '16:10', '20:10'] },
+  // 2026-09-08 (avond) live gezien: Oostende zendt drietalig — Engels op
+  // 518-T, Nederlands op 490-B en FRANS op 490-T, en die laatste twee
+  // tegelijk met 518-T (zelfde slot, 19:10 UTC: "BULLETIN SUD MER DU NORD",
+  // TA69 Ruytingen in het Frans). Eerst voor Niton aangezien; het is Oostende.
+  { id: 'T', naam: 'Oostende NAVTEX 490 (Franstalig)', land: 'BE', lat: 51.1823, lon: 2.8065, navarea: 'I', kleur: '#ffc4e0', zendschema: ['03:10', '07:10', '11:10', '15:10', '19:10', '23:10'] },
   { id: 'I', naam: 'Niton Radio 490', land: 'UK', lat: 50.6, lon: -1.3, navarea: 'I', kleur: '#ffe14c', zendschema: ['01:20', '05:20', '09:20', '13:20', '17:20', '21:20'] },
+  // U: 2026-09-08 bevestigd (kustrapporten-tabel Lerwick…Sandettie om 19:20 UTC)
   { id: 'U', naam: 'Cullercoats Radio 490', land: 'UK', lat: 55.0, lon: -1.4, navarea: 'I', kleur: '#6bf07a', zendschema: ['03:20', '07:20', '11:20', '15:20', '19:20', '23:20'] },
   { id: 'C', naam: 'Portpatrick Radio 490', land: 'UK', lat: 54.85, lon: -5.12, navarea: 'I', kleur: '#7b4cf0', zendschema: ['00:20', '04:20', '08:20', '12:20', '16:20', '20:20'] },
   { id: 'L', naam: 'Pinneberg Radio 490 (Duitstalig)', land: 'DE', lat: 53.652, lon: 9.797, navarea: 'I', kleur: '#8c8cf0', zendschema: ['01:50', '05:50', '09:50', '13:50', '17:50', '21:50'] },
