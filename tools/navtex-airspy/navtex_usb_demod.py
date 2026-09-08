@@ -31,11 +31,14 @@ Parameters:
             app (/api/navtex-audio-stream). 24 kB/s; bij 4 MB geleegd.
 """
 import argparse
+import fcntl
 import json
 import os
+import queue
 import shlex
 import subprocess
 import sys
+import threading
 import time
 import numpy as np
 from scipy.signal import firwin, lfilter, lfilter_zi
@@ -181,6 +184,34 @@ def main():
     chunk = rate // 4  # kwart seconde per blok
     stdin = sys.stdin.buffer
     stdout = sys.stdout.buffer
+
+    # 2026-09-08: de pipe van airspyhf_rx naar dit script is standaard 64 kB
+    # = ~10 ms aan IQ; zodra dit script langer dan dat met een blok bezig is
+    # blokkeert airspyhf_rx en laat de Airspy-driver stilletjes samples vallen
+    # (verdacht bij rommelige ontvangst van zwakkere zenders terwijl Oostende
+    # schoon doorkomt). Daarom: pipe naar 1 MB (~170 ms) én een leesthread die
+    # de pipe altijd leeg houdt, met een wachtrij van 8 blokken (2 s). Loopt
+    # die wachtrij toch vol, dan wordt dat expliciet gemeld op stderr (journal).
+    try:
+        fcntl.fcntl(stdin.fileno(), 1031, 1 << 20)  # F_SETPIPE_SZ
+    except OSError as e:
+        print(f"pipe vergroten mislukt (geen probleem, wel minder marge): {e}", file=sys.stderr)
+    wachtrij = queue.Queue(maxsize=8)
+
+    def lezer():
+        weggevallen = 0
+        while True:
+            raw = stdin.read(chunk * 8)
+            if not raw:
+                wachtrij.put(None)
+                return
+            try:
+                wachtrij.put_nowait(raw)
+            except queue.Full:
+                weggevallen += 1
+                print(f"WAARSCHUWING: verwerking loopt achter, blok {weggevallen} weggegooid", file=sys.stderr)
+
+    threading.Thread(target=lezer, daemon=True).start()
     spec_f = None
     if args.spectrum:
         spec_f = open(args.spectrum, "a", buffering=1)
@@ -188,8 +219,8 @@ def main():
     if args.audio:
         audio_f = open(args.audio, "ab", buffering=0)
     while True:
-        raw = stdin.read(chunk * 8)
-        if not raw:
+        raw = wachtrij.get()
+        if raw is None:
             break
         n = len(raw) // 8
         if n == 0:
