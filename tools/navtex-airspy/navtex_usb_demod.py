@@ -62,6 +62,16 @@ SPEC_MAX_BYTES = 1024 * 1024
 AUDIO_MAX_BYTES = 4 * 1024 * 1024  # ~3 minuten op 12 kHz/16 bit
 
 
+def snr_db(zoom, span_hz, venster_hz=150.0):
+    """S/N zoals het app-paneel 'm toont: piek binnen ±venster rond het midden
+    van de zoom t.o.v. de mediaan (ruisvloer)."""
+    a = np.asarray(zoom, dtype=float)
+    mid = (len(a) - 1) / 2.0
+    half = int(round(venster_hz / (2 * span_hz) * (len(a) - 1)))
+    lo, hi = max(0, int(mid - half)), min(len(a), int(mid + half) + 1)
+    return float(a[lo:hi].max() - np.median(a))
+
+
 def spectrum_db(x, nfft, rate, f_mid, span_hz, bins):
     """Gemiddeld vermogensspectrum (dB) van complex signaal x, over
     [f_mid-span, f_mid+span] Hz (basisband-frequenties), herbemonsterd naar
@@ -182,6 +192,8 @@ def main():
     spec_breed = (max(zenders) - min(zenders)) / 2.0 + (SPEC_BREED_HZ if len(zenders) == 1 else SPEC_BREED_MARGE_HZ)
 
     chunk = rate // 4  # kwart seconde per blok
+    snr_log_elke_s = 10.0   # 2026-09-08: S/N per zender naar stderr (journal), voor ontvangstonderzoek
+    snr_laatste_log = 0.0
     stdin = sys.stdin.buffer
     stdout = sys.stdout.buffer
 
@@ -256,6 +268,10 @@ def main():
                 sys.exit(1)  # systemd herstart de hele pipeline
             if spec_f:
                 zooms.append({"f": tak.signal, "d": spectrum_db(x2, SPEC_FFT_ZOOM, AUDIO_RATE, tak.tone, SPEC_ZOOM_HZ, SPEC_BINS)})
+
+        if spec_f and zooms and time.time() - snr_laatste_log >= snr_log_elke_s:
+            snr_laatste_log = time.time()
+            print("S/N " + ", ".join(f"{z['f'] / 1000:.0f} kHz: {snr_db(z['d'], SPEC_ZOOM_HZ):.0f} dB" for z in zooms), file=sys.stderr, flush=True)
 
         if spec_f:
             try:
