@@ -1703,6 +1703,12 @@ function startNavtexRuwStream() {
     if (typeof tekst !== 'string' || !tekst) return;
     navtexRuwBytes += new TextEncoder().encode(tekst).length;
     navtexRuwWachtrij += tekst;
+    // Statusregel meelaten lopen (de 10 s-verversing die 'm vulde staat
+    // tijdens de stream uit) — bytestand en moment van binnenkomst.
+    if (NAVTEX_RUW_STATUS_EL) {
+      const tijd = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst · live · ${Math.round(navtexRuwBytes / 1024)} kB · laatste schrijf ${tijd}`;
+    }
     if (!navtexRuwTypTimer) navtexRuwTypTimer = setInterval(navtexRuwTypTik, NAVTEX_RUW_TEKEN_MS);
   };
   es.onerror = () => {
