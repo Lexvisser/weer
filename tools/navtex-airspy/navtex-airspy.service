@@ -11,7 +11,7 @@ User=lex
 # bestand komt en de Ontvangst-viewer in de app 'm live kan laten binnendruppelen.
 ExecStart=/bin/bash -o pipefail -c '\
   airspyhf_rx -r stdout -f 0.520 -a 768000 -g on \
-  | /usr/local/bin/navtex_usb_demod.py --rate 768000 --center 520000 --spectrum /dev/shm/navtex_waterval.jsonl \
+  | /usr/local/bin/navtex_usb_demod.py --rate 768000 --center 520000 --spectrum /dev/shm/navtex_waterval.jsonl --audio /dev/shm/navtex_audio.raw \
   | stdbuf -o0 navtex_rx_from_file 12000 \
   | tee -a /home/lex/navtex_berichten.txt'
 Restart=always

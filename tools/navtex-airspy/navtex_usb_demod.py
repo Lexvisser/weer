@@ -21,6 +21,9 @@ Parameters:
             voor het spectrum/waterval-paneel in de app (zoals SDR++). Neem een
             pad op tmpfs (/dev/shm/...) — het bestand groeit ~8 kB/s en wordt
             bij 1 MB automatisch geleegd (de app-backend vangt dat op).
+  --audio PAD     (2026-09-08) schrijf dezelfde 16-bit/12 kHz-audio die naar
+            de decoder gaat óók naar PAD (tmpfs!), voor meeluisteren in de
+            app (/api/navtex-audio-stream). 24 kB/s; bij 4 MB geleegd.
 """
 import argparse
 import json
@@ -33,7 +36,7 @@ from scipy.signal import firwin, lfilter, lfilter_zi
 AUDIO_RATE = 12000
 
 # Spectrum/waterval (2026-09-08, "zoals je dat in SDR++ ziet"):
-#  - breed: ±SPEC_BREED_HZ rond de Airspy-afstemfrequentie, uit de ruwe IQ,
+#  - breed: ±SPEC_BREED_HZ rond de zender (518 kHz), uit de ruwe IQ,
 #    SPEC_BINS waarden — daarop is de zender op 518 kHz een dunne streep.
 #  - zoom: ±SPEC_ZOOM_HZ rond de zender, uit de gedemoduleerde 12 kHz-stroom
 #    (daar zit de zender op +tone Hz), fijn genoeg om de twee FSK-tonen
@@ -45,6 +48,7 @@ SPEC_ZOOM_HZ = 1500.0
 SPEC_FFT_BREED = 8192
 SPEC_FFT_ZOOM = 2048  # kwart seconde op 12 kHz = 3000 samples
 SPEC_MAX_BYTES = 1024 * 1024
+AUDIO_MAX_BYTES = 4 * 1024 * 1024  # ~3 minuten op 12 kHz/16 bit
 
 
 def spectrum_db(x, nfft, rate, f_mid, span_hz, bins):
@@ -98,6 +102,8 @@ def main():
     ap.add_argument("--tone", type=float, default=1000.0)
     ap.add_argument("--gain", type=float, default=0.15,
                     help="doelamplitude (fractie van full scale) na normalisatie")
+    ap.add_argument("--audio", default=None,
+                    help="pad voor meeluister-audio (raw int16 12 kHz mono), bv. /dev/shm/navtex_audio.raw")
     ap.add_argument("--spectrum", default=None,
                     help="pad voor spectrumregels (JSONL), bv. /dev/shm/navtex_waterval.jsonl")
     args = ap.parse_args()
@@ -125,6 +131,9 @@ def main():
     spec_f = None
     if args.spectrum:
         spec_f = open(args.spectrum, "a", buffering=1)
+    audio_f = None
+    if args.audio:
+        audio_f = open(args.audio, "ab", buffering=0)
     while True:
         raw = stdin.read(chunk * 8)
         if not raw:
@@ -135,7 +144,8 @@ def main():
         iq = np.frombuffer(raw[: n * 8], dtype=np.complex64).astype(np.complex128)
 
         # breed spectrum uit de ruwe IQ (vóór het mengen; 0 Hz = --center)
-        spec_breed = spectrum_db(iq, SPEC_FFT_BREED, rate, 0.0, SPEC_BREED_HZ, SPEC_BINS) if spec_f else None
+        # (2026-09-08, Lex: "518 in het midden") gecentreerd op de zender, niet op --center
+        spec_breed = spectrum_db(iq, SPEC_FFT_BREED, rate, args.signal - args.center, SPEC_BREED_HZ, SPEC_BINS) if spec_f else None
 
         # mengen met doorlopende fase (geen klik op blokgrenzen)
         t = phase + dphi * np.arange(n)
@@ -153,7 +163,7 @@ def main():
                     spec_f.truncate()
                 spec_f.write(json.dumps({
                     "t": round(time.time(), 2),
-                    "midden": args.center, "breed": SPEC_BREED_HZ,
+                    "midden": args.signal, "breed": SPEC_BREED_HZ,
                     "zender": args.signal, "zoom": SPEC_ZOOM_HZ,
                     "b": spec_breed, "z": spec_zoom,
                 }, separators=(",", ":")) + "\n")
@@ -167,8 +177,17 @@ def main():
         rms = float(np.sqrt(np.mean(audio ** 2))) + 1e-12
         agc_level = rms if agc_level is None else 0.9 * agc_level + 0.1 * rms
         audio = audio / agc_level * args.gain * 32767.0
-        stdout.write(np.clip(audio, -32767, 32767).astype(np.int16).tobytes())
+        pcm = np.clip(audio, -32767, 32767).astype(np.int16).tobytes()
+        stdout.write(pcm)
         stdout.flush()
+        if audio_f:
+            try:
+                if audio_f.tell() > AUDIO_MAX_BYTES:
+                    audio_f.seek(0)
+                    audio_f.truncate()
+                audio_f.write(pcm)
+            except OSError as e:
+                print(f"audio schrijven mislukt: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

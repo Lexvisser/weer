@@ -39,7 +39,7 @@ import { fetchLifeliner, lifelinerRapportTekst, vluchtlogboekJson } from './sour
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst, abonneerWaterval, leesWatervalGeschiedenis } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst, abonneerWaterval, leesWatervalGeschiedenis, abonneerAudio, AUDIO_SAMPLERATE } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -1233,6 +1233,21 @@ export function createApp(env) {
       });
       const hartslag = setInterval(() => res.write(': hartslag\n\n'), 20 * 1000);
       req.on('close', () => { clearInterval(hartslag); afmelden(); });
+      return;
+    }
+    // 2026-09-08 ("en geluid?"): meeluister-stream — raw PCM int16 LE, mono,
+    // 12 kHz (header X-Samplerate), chunked zolang de verbinding open is.
+    // De viewer speelt 'm af via Web Audio (zie startNavtexAudio in app.js).
+    if (url === '/api/navtex-audio-stream') {
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Cache-Control': 'no-cache, no-store, no-transform',
+        'X-Samplerate': String(AUDIO_SAMPLERATE),
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      });
+      const afmelden = abonneerAudio((buf) => res.write(buf));
+      req.on('close', afmelden);
       return;
     }
     // 2026-08-27 (vervolg): alleen de bestandsgrootte/mtime, voor de

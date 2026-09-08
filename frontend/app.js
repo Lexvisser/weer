@@ -1606,6 +1606,7 @@ function sluitNavtexRuw() {
   navtexRuwGeopendDoorAuto = false;
   stopNavtexRuwStream();
   stopNavtexWaterval();
+  stopNavtexAudio();
   if (navtexRuwTimer) {
     clearInterval(navtexRuwTimer);
     navtexRuwTimer = null;
@@ -1936,6 +1937,84 @@ function stopNavtexWaterval() {
     sdrStream = null;
   }
 }
+
+// ---- Meeluisteren (2026-09-08, "en geluid?") -------------------------
+// /api/navtex-audio-stream levert de decoder-audio als raw int16 LE mono
+// 12 kHz, chunked. Afspelen via Web Audio: elk chunk wordt een AudioBuffer
+// (op 12 kHz — de context resamplet zelf) die naadloos achter de vorige
+// wordt ingepland, met ~0,4 s buffer tegen haperen. Loopt de achterstand op
+// (tabblad op de achtergrond geweest), dan wordt de inplanning teruggezet
+// naar "nu" — liever een tikje overslaan dan steeds verder achterlopen.
+// Start alleen via de 🔊-knop (browsers eisen een gebaar voor audio).
+const SDR_AUDIO_KNOP_EL = document.getElementById('sdrAudioKnop');
+const SDR_AUDIO_BUFFER_S = 0.4;
+let sdrAudioCtx = null;
+let sdrAudioAbort = null;
+let sdrAudioVolgende = 0;
+
+async function startNavtexAudio() {
+  if (sdrAudioAbort) return;
+  try {
+    sdrAudioCtx = sdrAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    await sdrAudioCtx.resume();
+  } catch (err) {
+    console.warn('[weer] audio niet beschikbaar:', err);
+    return;
+  }
+  sdrAudioAbort = new AbortController();
+  SDR_AUDIO_KNOP_EL?.classList.add('aan');
+  if (SDR_AUDIO_KNOP_EL) SDR_AUDIO_KNOP_EL.textContent = '🔊';
+  sdrAudioVolgende = 0;
+  let rest = new Uint8Array(0);
+  try {
+    const res = await fetch('/api/navtex-audio-stream', { signal: sdrAudioAbort.signal, cache: 'no-store' });
+    const rate = Number(res.headers.get('x-samplerate')) || 12000;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      // samenvoegen met een eventueel oneven restbyte
+      let bytes = value;
+      if (rest.length) {
+        bytes = new Uint8Array(rest.length + value.length);
+        bytes.set(rest); bytes.set(value, rest.length);
+      }
+      const nSamples = Math.floor(bytes.length / 2);
+      rest = bytes.slice(nSamples * 2);
+      if (!nSamples) continue;
+      const int16 = new Int16Array(bytes.buffer, bytes.byteOffset, nSamples);
+      const buffer = sdrAudioCtx.createBuffer(1, nSamples, rate);
+      const kanaal = buffer.getChannelData(0);
+      for (let i = 0; i < nSamples; i++) kanaal[i] = int16[i] / 32768;
+      const bron = sdrAudioCtx.createBufferSource();
+      bron.buffer = buffer;
+      bron.connect(sdrAudioCtx.destination);
+      const nu = sdrAudioCtx.currentTime;
+      if (sdrAudioVolgende < nu + 0.05 || sdrAudioVolgende > nu + 2) sdrAudioVolgende = nu + SDR_AUDIO_BUFFER_S;
+      bron.start(sdrAudioVolgende);
+      sdrAudioVolgende += buffer.duration;
+    }
+  } catch (err) {
+    if (err?.name !== 'AbortError') console.warn('[weer] audio-stream:', err);
+  } finally {
+    stopNavtexAudio();
+  }
+}
+
+function stopNavtexAudio() {
+  if (sdrAudioAbort) {
+    const a = sdrAudioAbort;
+    sdrAudioAbort = null;
+    a.abort();
+  }
+  SDR_AUDIO_KNOP_EL?.classList.remove('aan');
+  if (SDR_AUDIO_KNOP_EL) SDR_AUDIO_KNOP_EL.textContent = '🔇';
+}
+
+SDR_AUDIO_KNOP_EL?.addEventListener('click', (ev) => {
+  ev.stopPropagation(); // niet ook het paneel in-/uitklappen
+  if (sdrAudioAbort) stopNavtexAudio(); else startNavtexAudio();
+});
 
 SDR_KOP_EL?.addEventListener('click', () => SDR_EL?.classList.toggle('ingeklapt'));
 window.addEventListener('resize', () => { if (sdrStream) sdrPanelen.forEach(sdrTeken); });

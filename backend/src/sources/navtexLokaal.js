@@ -1723,7 +1723,8 @@ const RUW_STREAM_POLL_MS = 250;
 // veralgemeend voor het spectrum/waterval-bestand, zie abonneerWaterval).
 const bestandVolgers = new Map(); // pad -> { abonnees:Set, gelezenTot:number, tik:fn }
 
-function volgBestand(bestand, onTekst, vanafBytes) {
+// `binair`: abonnees krijgen Buffers i.p.v. utf-8-tekst (audio, 2026-09-08).
+function volgBestand(bestand, onTekst, vanafBytes, binair = false) {
   let v = bestandVolgers.get(bestand);
   if (!v) {
     v = { abonnees: new Set(), gelezenTot: 0, tik: null };
@@ -1738,8 +1739,8 @@ function volgBestand(bestand, onTekst, vanafBytes) {
         const buf = Buffer.alloc(lengte);
         const n = readSync(fd, buf, 0, lengte, v.gelezenTot);
         v.gelezenTot += n;
-        const tekst = buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n');
-        if (!tekst) return;
+        const tekst = binair ? buf.subarray(0, n) : buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n');
+        if (!tekst.length) return;
         for (const cb of v.abonnees) {
           try { cb(tekst); } catch (err) { console.warn('[weer] bestand-stream abonnee:', err.message ?? err); }
         }
@@ -1788,6 +1789,17 @@ const STANDAARD_WATERVAL_BESTAND = '/dev/shm/navtex_waterval.jsonl';
 
 export function abonneerWaterval(onTekst) {
   return volgBestand(process.env.NAVTEX_WATERVAL_BESTAND || STANDAARD_WATERVAL_BESTAND, onTekst, undefined);
+}
+
+// Meeluisteren (2026-09-08, "en geluid?"): navtex_usb_demod.py --audio
+// schrijft de decoder-audio (raw int16, 12 kHz, mono) naar tmpfs; abonnees
+// krijgen elke aangroei als Buffer, vanaf het huidige einde (geen
+// geschiedenis — je luistert live).
+const STANDAARD_AUDIO_BESTAND = '/dev/shm/navtex_audio.raw';
+export const AUDIO_SAMPLERATE = 12000;
+
+export function abonneerAudio(onBuffer) {
+  return volgBestand(process.env.NAVTEX_AUDIO_BESTAND || STANDAARD_AUDIO_BESTAND, onBuffer, undefined, true);
 }
 
 // Laatste `maxRegels` complete spectrumregels als geschiedenis bij het
