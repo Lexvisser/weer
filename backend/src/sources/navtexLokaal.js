@@ -1859,6 +1859,86 @@ export function leesWatervalGeschiedenis(maxRegels = 200) {
   }
 }
 
+// 2026-09-08 (Lex: "ik wil het sowieso tussen deze berichten in zien"): de
+// staarten van 518 én 490 als één lijst segmenten in tijdvolgorde, voor de
+// 📻-viewer. Per band wordt de staart in segmenten geknipt op de
+// geregistreerde blokstarts (ZCZC-offsets met tijd); een segment zonder
+// eigen tijd (het stuk vóór de eerste bekende blokstart) erft de tijd van
+// het eerstvolgende segment uit dezelfde band, zodat de volgorde binnen een
+// band altijd blijft kloppen. Daarna stabiel gesorteerd op tijd.
+export function leesRuweOntvangstGemengd(maxBytes = 64 * 1024) {
+  const segmenten = [];
+  const bestandsBytes = {};
+  let bijgewerkt = null;
+  for (const band of BANDEN) {
+    const bestand = band.bestand();
+    bestandsBytes[band.frequentieKhz] = 0;
+    if (!existsSync(bestand)) continue;
+    const s = statSync(bestand);
+    bestandsBytes[band.frequentieKhz] = s.size;
+    if (!bijgewerkt || s.mtime > bijgewerkt) bijgewerkt = s.mtime;
+    const lees = Math.min(maxBytes, s.size);
+    if (lees === 0) continue;
+    const fd = openSync(bestand, 'r');
+    let tekst;
+    let startInBestand;
+    try {
+      const buf = Buffer.alloc(lees);
+      readSync(fd, buf, 0, lees, s.size - lees);
+      tekst = buf.toString('utf-8').replace(/\r\n/g, '\n');
+      let weggeknipt = 0;
+      if (lees < s.size) {
+        const knip = tekst.indexOf('\n') + 1;
+        weggeknipt = Buffer.byteLength(tekst.slice(0, knip));
+        tekst = tekst.slice(knip);
+      }
+      startInBestand = s.size - lees + weggeknipt;
+    } finally {
+      closeSync(fd);
+    }
+    // offsets zijn byte-posities in het bestand; tekst-index ≈ byte-index
+    // (vrijwel puur ASCII), zelfde aanname als leesRuweOntvangst().
+    const blokken = band.tijden
+      .filter((b) => b.offset >= startInBestand && b.offset < s.size)
+      .map((b) => ({ offset: b.offset - startInBestand, tijd: b.tijd }))
+      .filter((b) => b.offset <= tekst.length);
+    const eigen = [];
+    let vorige = 0;
+    for (const blok of blokken) {
+      if (blok.offset > vorige) eigen.push({ khz: band.frequentieKhz, tijd: null, tekst: tekst.slice(vorige, blok.offset) });
+      vorige = blok.offset;
+      eigen.push({ khz: band.frequentieKhz, tijd: blok.tijd, tekst: '' , kop: true });
+    }
+    if (vorige < tekst.length) eigen.push({ khz: band.frequentieKhz, tijd: null, tekst: tekst.slice(vorige) });
+    // kopregel-segment en de tekst erna samenvoegen; tijd erven van de volgende
+    const samengevoegd = [];
+    for (const seg of eigen) {
+      const laatste = samengevoegd[samengevoegd.length - 1];
+      if (laatste && laatste.kop && !seg.kop) { laatste.tekst += seg.tekst; continue; }
+      samengevoegd.push({ ...seg });
+    }
+    let volgendeTijd = null;
+    for (let i = samengevoegd.length - 1; i >= 0; i--) {
+      if (samengevoegd[i].tijd) volgendeTijd = samengevoegd[i].tijd;
+      else samengevoegd[i].sorteerTijd = volgendeTijd;
+      samengevoegd[i].sorteerTijd = samengevoegd[i].sorteerTijd ?? samengevoegd[i].tijd;
+    }
+    samengevoegd.forEach((seg, i) => segmenten.push({ khz: seg.khz, tijd: seg.kop ? seg.tijd : null, tekst: seg.tekst, sorteerMs: seg.sorteerTijd ? new Date(seg.sorteerTijd).getTime() : 0, volgorde: i }));
+  }
+  segmenten.sort((a, b) => a.sorteerMs - b.sorteerMs || a.khz - b.khz || a.volgorde - b.volgorde);
+  return {
+    segmenten: segmenten.map(({ khz, tijd, tekst }) => ({ khz, tijd, tekst })),
+    bestandsBytes,
+    bijgewerkt: bijgewerkt ? bijgewerkt.toISOString() : null,
+  };
+}
+
+// Aangroei van het ontvangstbestand van een band (518 of 490) volgen.
+export function abonneerRuweOntvangstBand(khz, onTekst, vanafBytes) {
+  const band = BANDEN.find((b) => b.frequentieKhz === khz) ?? BAND_518;
+  return volgBestand(band.bestand(), onTekst, vanafBytes);
+}
+
 export async function fetchNavtexLokaal(env = {}) {
   const alles = [];
   for (const band of BANDEN) alles.push(...(await fetchNavtexBand(env, band)));

@@ -39,7 +39,7 @@ import { fetchLifeliner, lifelinerRapportTekst, vluchtlogboekJson } from './sour
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, STATIONS_490 as NAVTEX_STATIONS_490, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst, abonneerWaterval, leesWatervalGeschiedenis, abonneerAudio, AUDIO_SAMPLERATE } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, STATIONS_490 as NAVTEX_STATIONS_490, leesRuweOntvangst, leesRuweOntvangstGemengd, ruweOntvangstStatus, abonneerRuweOntvangst, abonneerRuweOntvangstBand, abonneerWaterval, leesWatervalGeschiedenis, abonneerAudio, AUDIO_SAMPLERATE } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -1171,9 +1171,12 @@ export function createApp(env) {
     // voor de 📻-viewer. sendJson geeft dit gzip + ETag mee, dus de
     // 10s-autoverversing van de viewer kost bij een ongewijzigd bestand
     // alleen een 304'je.
+    // 2026-09-08: ?gemengd=1 → 518 én 490 als segmenten in tijdvolgorde
+    // (zie leesRuweOntvangstGemengd in navtexLokaal.js); zonder = oude vorm.
     if (url === '/api/navtex-ruw') {
       try {
-        return sendJson(res, 200, leesRuweOntvangst());
+        const gemengd = new URL(req.url, 'http://localhost').searchParams.get('gemengd') === '1';
+        return sendJson(res, 200, gemengd ? leesRuweOntvangstGemengd() : leesRuweOntvangst());
       } catch (err) {
         console.error('[weer] /api/navtex-ruw mislukt:', err.message ?? err);
         return sendJson(res, 500, { fout: 'ruwe ontvangst niet leesbaar' });
@@ -1189,6 +1192,10 @@ export function createApp(env) {
     if (url === '/api/navtex-ruw-stream') {
       const params = new URL(req.url, 'http://localhost').searchParams;
       const vanaf = Number.parseInt(params.get('vanaf') ?? '', 10);
+      // 2026-09-08: ?vanaf490=<bytes> erbij → ook het 490-bestand volgen; elke
+      // aangroei gaat dan als {khz, tekst} i.p.v. kale string.
+      const vanaf490 = Number.parseInt(params.get('vanaf490') ?? '', 10);
+      const gemengd = params.has('vanaf490');
       res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
@@ -1197,8 +1204,12 @@ export function createApp(env) {
         'Access-Control-Allow-Origin': '*',
       });
       res.write('retry: 3000\n\n');
-      const stuur = (tekst) => res.write(`data: ${JSON.stringify(tekst)}\n\n`);
-      const afmelden = abonneerRuweOntvangst(stuur, Number.isFinite(vanaf) ? vanaf : undefined);
+      const stuur = (tekst) => res.write(`data: ${JSON.stringify(gemengd ? { khz: 518, tekst } : tekst)}\n\n`);
+      const afmelden518 = abonneerRuweOntvangst(stuur, Number.isFinite(vanaf) ? vanaf : undefined);
+      const afmelden490 = gemengd
+        ? abonneerRuweOntvangstBand(490, (tekst) => res.write(`data: ${JSON.stringify({ khz: 490, tekst })}\n\n`), Number.isFinite(vanaf490) ? vanaf490 : undefined)
+        : () => {};
+      const afmelden = () => { afmelden518(); afmelden490(); };
       // Hartslag elke 20 s zodat proxies/browsers de verbinding niet als dood
       // afsluiten tijdens de stiltes tussen uitzendingen.
       const hartslag = setInterval(() => res.write(': hartslag\n\n'), 20 * 1000);

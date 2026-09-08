@@ -1525,7 +1525,25 @@ let navtexRuwTimer = null;
 
 async function ververNavtexRuw() {
   try {
-    const res = await fetch('/api/navtex-ruw').then((r) => r.json());
+    // 2026-09-08 (Lex: "ik wil het sowieso tussen deze berichten in zien"):
+    // 518 én 490 als één lijst segmenten in tijdvolgorde (?gemengd=1).
+    const res = await fetch('/api/navtex-ruw?gemengd=1').then((r) => r.json());
+    if (Array.isArray(res.segmenten)) {
+      const vastgepindG = navtexRuwVastgepind();
+      NAVTEX_RUW_TEKST_EL.innerHTML = res.segmenten.length ? bouwGemengdeOntvangstHtml(res.segmenten) : '(bestanden zijn nog leeg)';
+      navtexRuwBytes = res.bestandsBytes?.[518] ?? 0;
+      navtexRuwBytes490 = res.bestandsBytes?.[490] ?? 0;
+      navtexRuwLaatsteTeken = '';
+      navtexRuwHuidigeSpan = null;
+      for (const seg of res.segmenten) if (seg.tekst) navtexRuwLaatsteTekenPerKhz[seg.khz] = seg.tekst.slice(-1);
+      plaatsNavtexRuwCursor();
+      const tijdG = res.bijgewerkt
+        ? new Date(res.bijgewerkt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '—';
+      NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst${navtexRuwStream ? ' · live' : ''} · ${Math.round((navtexRuwBytes + navtexRuwBytes490) / 1024)} kB · laatste schrijf ${tijdG}`;
+      if (vastgepindG) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
+      return;
+    }
     if (res.tekst == null) {
       NAVTEX_RUW_TEKST_EL.textContent = 'Nog geen ontvangstbestand gevonden op de server (~/navtex_berichten.txt).';
       NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst';
@@ -1587,6 +1605,20 @@ function bouwRuweOntvangstHtml(tekst, blokken) {
   return html;
 }
 
+// Segmenten [{khz, tijd, tekst}] → HTML: kopregel bij een segment met tijd
+// (met "· 490 kHz" voor de tweede band), 490-tekst in een eigen kleur.
+function bouwGemengdeOntvangstHtml(segmenten) {
+  let html = '';
+  for (const seg of segmenten) {
+    if (seg.tijd) {
+      const tijdTekst = new Date(seg.tijd).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      html += `<span class="ruw-blok-kop${seg.khz === 490 ? ' ruw-490' : ''}">▸ ontvangen ${escapeHtml(tijdTekst)}${seg.khz === 490 ? ' · 490 kHz' : ''}</span>`;
+    }
+    if (seg.tekst) html += seg.khz === 490 ? `<span class="ruw-490">${escapeHtml(seg.tekst)}</span>` : escapeHtml(seg.tekst);
+  }
+  return html;
+}
+
 function openNavtexRuw(doorAuto) {
   if (!NAVTEX_RUW_OVERLAY_EL) return;
   navtexRuwGeopendDoorAuto = doorAuto === true;
@@ -1632,8 +1664,13 @@ const NAVTEX_RUW_TEKEN_MS = 140; // ~7 tekens/s
 const NAVTEX_RUW_MAX_ACHTERSTAND = 21;
 let navtexRuwStream = null;
 let navtexRuwBytes = 0;
+let navtexRuwBytes490 = 0; // 2026-09-08: tweede band in dezelfde viewer
 let navtexRuwLaatsteTeken = '';
-let navtexRuwWachtrij = '';
+const navtexRuwLaatsteTekenPerKhz = { 518: '', 490: '' };
+let navtexRuwHuidigeSpan = null; // lopende <span> voor de band die nu getypt wordt
+let navtexRuwHuidigeKhz = null;
+let navtexRuwWachtrij = []; // [{khz, tekst}] in aankomstvolgorde
+function navtexRuwWachtrijLengte() { return navtexRuwWachtrij.reduce((n, c) => n + c.tekst.length, 0); }
 let navtexRuwTypTimer = null;
 let navtexRuwCursorEl = null;
 
@@ -1656,8 +1693,20 @@ function navtexRuwVoegToe(node) {
   else NAVTEX_RUW_TEKST_EL.appendChild(node);
 }
 
+// Eén teken plaatsen in de span van zijn band (490 = eigen kleur); bij een
+// bandwissel of na een kopregel begint een nieuwe span.
+function navtexRuwVoegTeken(teken, khz) {
+  if (!navtexRuwHuidigeSpan || navtexRuwHuidigeKhz !== khz || navtexRuwHuidigeSpan.parentNode !== NAVTEX_RUW_TEKST_EL) {
+    navtexRuwHuidigeSpan = document.createElement('span');
+    if (khz === 490) navtexRuwHuidigeSpan.className = 'ruw-490';
+    navtexRuwHuidigeKhz = khz;
+    navtexRuwVoegToe(navtexRuwHuidigeSpan);
+  }
+  navtexRuwHuidigeSpan.appendChild(document.createTextNode(teken));
+}
+
 function navtexRuwTypTik() {
-  if (!navtexRuwWachtrij) {
+  if (!navtexRuwWachtrij.length) {
     clearInterval(navtexRuwTypTimer);
     navtexRuwTypTimer = null;
     return;
@@ -1667,20 +1716,27 @@ function navtexRuwTypTik() {
   // komen): in een tabblad op de achtergrond vertraagt de browser timers tot
   // 1x per seconde of zelfs 1x per minuut, en dan blijft de wachtrij staan
   // tot je terugkomt. Onzichtbaar = niet typen maar meteen alles plaatsen.
-  const aantal = document.hidden ? navtexRuwWachtrij.length : Math.max(1, Math.ceil(navtexRuwWachtrij.length / NAVTEX_RUW_MAX_ACHTERSTAND));
-  for (let i = 0; i < aantal && navtexRuwWachtrij; i++) {
+  const totaal = navtexRuwWachtrijLengte();
+  const aantal = document.hidden ? totaal : Math.max(1, Math.ceil(totaal / NAVTEX_RUW_MAX_ACHTERSTAND));
+  for (let i = 0; i < aantal && navtexRuwWachtrij.length; i++) {
+    const kop = navtexRuwWachtrij[0];
+    const khz = kop.khz === 490 ? 490 : 518;
     // Nieuw bericht? Kopregel met het echte ontvangstmoment, zoals de
     // volledige vulling die uit het bloktijdenregister tekent.
-    if ((navtexRuwLaatsteTeken === '\n' || navtexRuwLaatsteTeken === '') && navtexRuwWachtrij.startsWith('ZCZC')) {
-      const kop = document.createElement('span');
-      kop.className = 'ruw-blok-kop';
+    const vorige = navtexRuwLaatsteTekenPerKhz[khz] ?? '';
+    if ((vorige === '\n' || vorige === '') && kop.tekst.startsWith('ZCZC')) {
+      const kopEl = document.createElement('span');
+      kopEl.className = `ruw-blok-kop${khz === 490 ? ' ruw-490' : ''}`;
       const tijd = new Date().toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      kop.textContent = `▸ ontvangen ${tijd}`;
-      navtexRuwVoegToe(kop);
+      kopEl.textContent = `▸ ontvangen ${tijd}${khz === 490 ? ' · 490 kHz' : ''}`;
+      navtexRuwVoegToe(kopEl);
+      navtexRuwHuidigeSpan = null;
     }
-    const teken = navtexRuwWachtrij[0];
-    navtexRuwWachtrij = navtexRuwWachtrij.slice(1);
-    navtexRuwVoegToe(document.createTextNode(teken));
+    const teken = kop.tekst[0];
+    kop.tekst = kop.tekst.slice(1);
+    if (!kop.tekst) navtexRuwWachtrij.shift();
+    navtexRuwVoegTeken(teken, khz);
+    navtexRuwLaatsteTekenPerKhz[khz] = teken;
     navtexRuwLaatsteTeken = teken;
   }
   if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
@@ -1698,7 +1754,7 @@ function startNavtexRuwStream() {
     clearInterval(navtexRuwTimer);
     navtexRuwTimer = null;
   }
-  const es = new EventSource(`/api/navtex-ruw-stream?vanaf=${navtexRuwBytes}`);
+  const es = new EventSource(`/api/navtex-ruw-stream?vanaf=${navtexRuwBytes}&vanaf490=${navtexRuwBytes490}`);
   navtexRuwStream = es;
   es.onopen = () => {
     if (NAVTEX_RUW_STATUS_EL && !/· live/.test(NAVTEX_RUW_STATUS_EL.textContent)) {
@@ -1706,16 +1762,20 @@ function startNavtexRuwStream() {
     }
   };
   es.onmessage = (ev) => {
-    let tekst;
-    try { tekst = JSON.parse(ev.data); } catch { return; }
+    let data;
+    try { data = JSON.parse(ev.data); } catch { return; }
+    const khz = data && typeof data === 'object' && data.khz === 490 ? 490 : 518;
+    const tekst = typeof data === 'string' ? data : data?.tekst;
     if (typeof tekst !== 'string' || !tekst) return;
-    navtexRuwBytes += new TextEncoder().encode(tekst).length;
-    navtexRuwWachtrij += tekst;
+    if (khz === 490) navtexRuwBytes490 += new TextEncoder().encode(tekst).length;
+    else navtexRuwBytes += new TextEncoder().encode(tekst).length;
+    const laatste = navtexRuwWachtrij[navtexRuwWachtrij.length - 1];
+    if (laatste && laatste.khz === khz) laatste.tekst += tekst; else navtexRuwWachtrij.push({ khz, tekst });
     // Statusregel meelaten lopen (de 10 s-verversing die 'm vulde staat
     // tijdens de stream uit) — bytestand en moment van binnenkomst.
     if (NAVTEX_RUW_STATUS_EL) {
       const tijd = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst · live · ${Math.round(navtexRuwBytes / 1024)} kB · laatste schrijf ${tijd}`;
+      NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst · live · ${Math.round((navtexRuwBytes + navtexRuwBytes490) / 1024)} kB · laatste schrijf ${tijd}`;
     }
     if (document.hidden) navtexRuwTypTik(); // achtergrond: direct plaatsen (zie navtexRuwTypTik)
     else if (!navtexRuwTypTimer) navtexRuwTypTimer = setInterval(navtexRuwTypTik, NAVTEX_RUW_TEKEN_MS);
@@ -1737,12 +1797,14 @@ function startNavtexRuwStream() {
 // Terug op het tabblad: wat er in de tussentijd nog in de wachtrij zit
 // eerst in één keer plaatsen, daarna weer op tempo typen.
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden || !navtexRuwWachtrij) return;
+  if (document.hidden || !navtexRuwWachtrij.length) return;
   const vastgepind = navtexRuwVastgepind();
-  const rest = navtexRuwWachtrij;
-  navtexRuwWachtrij = '';
-  navtexRuwVoegToe(document.createTextNode(rest));
-  navtexRuwLaatsteTeken = rest.slice(-1);
+  for (const kop of navtexRuwWachtrij) {
+    const khz = kop.khz === 490 ? 490 : 518;
+    navtexRuwHuidigeSpan = null;
+    if (kop.tekst) { navtexRuwVoegTeken(kop.tekst, khz); navtexRuwLaatsteTekenPerKhz[khz] = kop.tekst.slice(-1); }
+  }
+  navtexRuwWachtrij = [];
   if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
 });
 
@@ -1751,7 +1813,7 @@ function stopNavtexRuwStream() {
     navtexRuwStream.close();
     navtexRuwStream = null;
   }
-  navtexRuwWachtrij = '';
+  navtexRuwWachtrij = [];
   if (navtexRuwTypTimer) {
     clearInterval(navtexRuwTypTimer);
     navtexRuwTypTimer = null;

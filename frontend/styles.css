@@ -741,6 +741,9 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .sdr-paneel { position:relative; min-height:0; overflow:hidden; background:#000018; border:1px solid rgba(59,255,124,0.2); }
 .sdr-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
 @media (max-width:640px) { .sdr-panelen { grid-template-columns:1fr; height:300px; } .sdr-freq { font-size:18px; } }
+/* 2026-09-08: 490 kHz-tekst (nationale taal) in een eigen, koelere tint tussen de 518-tekst. */
+.navtex-ruw-inhoud .ruw-490 { color:#7fd8ff; text-shadow:0 0 4px rgba(127,216,255,0.55), 0 0 9px rgba(127,216,255,0.22); }
+.navtex-ruw-inhoud .ruw-blok-kop.ruw-490 { color:#bfeaff; border-bottom-color:rgba(127,216,255,0.55); text-shadow:0 0 6px rgba(127,216,255,0.6); }
 .navtex-ruw-inhoud .ruw-cursor { color:#8fffb4; animation: ruw-knipper 1s steps(1) infinite; }
 @keyframes ruw-knipper { 50% { opacity:0; } }
 .navtex-ruw-inhoud .ruw-blok-kop { display:block; margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid rgba(59,255,124,0.55); font-size:14px; font-weight:700; color:#8fffb4; letter-spacing:0.03em; text-shadow:0 0 6px rgba(59,255,124,0.6); }
