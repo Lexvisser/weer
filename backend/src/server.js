@@ -39,7 +39,7 @@ import { fetchLifeliner, lifelinerRapportTekst, vluchtlogboekJson } from './sour
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
-import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus } from './sources/navtexLokaal.js';
+import { fetchNavtexLokaal, STATIONS as NAVTEX_STATIONS, leesRuweOntvangst, ruweOntvangstStatus, abonneerRuweOntvangst } from './sources/navtexLokaal.js';
 import { fetchZeeForecast } from './sources/knmiZeeForecast.js';
 import { fetchZeeWaarschuwingen } from './sources/sealagomZeeWaarschuwingen.js';
 import { fetchMetOfficeZeeForecast } from './sources/metOfficeZeeForecast.js';
@@ -1178,6 +1178,32 @@ export function createApp(env) {
         console.error('[weer] /api/navtex-ruw mislukt:', err.message ?? err);
         return sendJson(res, 500, { fout: 'ruwe ontvangst niet leesbaar' });
       }
+    }
+    // 2026-09-08, op verzoek van Lex ("dat binnendruppelen zou leuker zijn"):
+    // live eventstream (SSE) van het ruwe ontvangstbestand — elke aangroei
+    // meteen naar de 📻-viewer, i.p.v. de 10 s-polling hierboven. De client
+    // geeft ?vanaf=<bestandsBytes> mee uit zijn eerste vulling via
+    // /api/navtex-ruw, zodat de stream precies daar verder gaat. Zie
+    // abonneerRuweOntvangst() in navtexLokaal.js. Bewust géén gzip/ETag
+    // (sendJson) — een stream moet ongebufferd door.
+    if (url === '/api/navtex-ruw-stream') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const vanaf = Number.parseInt(params.get('vanaf') ?? '', 10);
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.write('retry: 3000\n\n');
+      const stuur = (tekst) => res.write(`data: ${JSON.stringify(tekst)}\n\n`);
+      const afmelden = abonneerRuweOntvangst(stuur, Number.isFinite(vanaf) ? vanaf : undefined);
+      // Hartslag elke 20 s zodat proxies/browsers de verbinding niet als dood
+      // afsluiten tijdens de stiltes tussen uitzendingen.
+      const hartslag = setInterval(() => res.write(': hartslag\n\n'), 20 * 1000);
+      req.on('close', () => { clearInterval(hartslag); afmelden(); });
+      return;
     }
     // 2026-08-27 (vervolg): alleen de bestandsgrootte/mtime, voor de
     // AUTO-schakelmonitor ("openen zodra er tekst binnenrolt", keuze van

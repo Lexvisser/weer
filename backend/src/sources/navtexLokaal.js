@@ -47,7 +47,7 @@
 // GEEN harde "weiger te plotten bij twijfel"-drempel zoals eerder overwogen,
 // wel een `betrouwbaar`-vlag in detail zodat de kaart het ANDERS kan tonen
 // (bv. gedimd) zonder het te verbergen.
-import { readFileSync, existsSync, writeFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, statSync, openSync, readSync, closeSync, watchFile, unwatchFile } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { makeSignal, afstandKm, navtexErnst } from '../normalize.js';
@@ -1706,6 +1706,72 @@ export function leesRuweOntvangst(maxBytes = 64 * 1024) {
   } finally {
     closeSync(fd);
   }
+}
+
+// 2026-09-08, op verzoek van Lex ("dat binnendruppelen zou leuker zijn dan
+// wat er nu is"): de 📻-viewer haalde elke 10 s de hele staart op en tekende
+// die opnieuw — dat oogt als "een regel per 10 s". Hier het live-alternatief:
+// abonnees krijgen ELKE aangroei van het bestand direct als tekst (voor de
+// eventstream /api/navtex-ruw-stream in server.js). Eén gedeelde
+// fs.watchFile-poller (250 ms) voor alle abonnees; die stopt vanzelf zodra
+// de laatste abonnee weg is. Bewust watchFile i.p.v. fs.watch: inotify
+// meldt op sommige bestandssystemen/`tee -a`-patronen niet betrouwbaar en
+// een stat elke 250 ms kost niets. Wordt het bestand kleiner (roteerd/
+// geleegd), dan begint de lezer opnieuw vanaf 0 — geen verzonnen tekst.
+const RUW_STREAM_POLL_MS = 250;
+const ruwStreamAbonnees = new Set();
+let ruwStreamBestand = null;
+let ruwStreamGelezenTot = 0;
+
+function ruwStreamTik(cur) {
+  if (!cur.isFile?.() && cur.size === 0 && cur.mtimeMs === 0) return; // (nog) niet aanwezig
+  if (cur.size < ruwStreamGelezenTot) ruwStreamGelezenTot = 0;
+  if (cur.size === ruwStreamGelezenTot) return;
+  const lengte = cur.size - ruwStreamGelezenTot;
+  const fd = openSync(ruwStreamBestand, 'r');
+  try {
+    const buf = Buffer.alloc(lengte);
+    const n = readSync(fd, buf, 0, lengte, ruwStreamGelezenTot);
+    ruwStreamGelezenTot += n;
+    const tekst = buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n');
+    if (!tekst) return;
+    for (const cb of ruwStreamAbonnees) {
+      try { cb(tekst); } catch (err) { console.warn('[weer] navtex-ruw-stream abonnee:', err.message ?? err); }
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
+// Meld je aan voor aangroei van het ontvangstbestand vanaf `vanafBytes`
+// (normaal de bestandsgrootte die de eerste vulling via leesRuweOntvangst()
+// teruggaf, zodat er niets dubbel of niets overgeslagen wordt). Geeft een
+// afmeldfunctie terug.
+export function abonneerRuweOntvangst(onTekst, vanafBytes) {
+  const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
+  if (ruwStreamAbonnees.size === 0) {
+    ruwStreamBestand = bestand;
+    ruwStreamGelezenTot = Number.isFinite(vanafBytes) ? vanafBytes : (existsSync(bestand) ? statSync(bestand).size : 0);
+    watchFile(bestand, { interval: RUW_STREAM_POLL_MS, persistent: false }, ruwStreamTik);
+  } else if (Number.isFinite(vanafBytes) && vanafBytes < ruwStreamGelezenTot) {
+    // Late abonnee die nog een stukje mist: dat stuk eenmalig nasturen.
+    try {
+      const fd = openSync(bestand, 'r');
+      try {
+        const buf = Buffer.alloc(ruwStreamGelezenTot - vanafBytes);
+        const n = readSync(fd, buf, 0, buf.length, vanafBytes);
+        onTekst(buf.subarray(0, n).toString('utf-8').replace(/\r\n/g, '\n'));
+      } finally { closeSync(fd); }
+    } catch (err) { console.warn('[weer] navtex-ruw-stream inhalen mislukt:', err.message ?? err); }
+  }
+  ruwStreamAbonnees.add(onTekst);
+  return () => {
+    ruwStreamAbonnees.delete(onTekst);
+    if (ruwStreamAbonnees.size === 0 && ruwStreamBestand) {
+      unwatchFile(ruwStreamBestand, ruwStreamTik);
+      ruwStreamBestand = null;
+    }
+  };
 }
 
 export async function fetchNavtexLokaal(env = {}) {

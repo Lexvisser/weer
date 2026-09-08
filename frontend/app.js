@@ -1545,10 +1545,14 @@ async function ververNavtexRuw() {
     // streep. Opbouw via escapeHtml per stuk — de ruwe tekst zelf blijft
     // altijd data, nooit HTML.
     NAVTEX_RUW_TEKST_EL.innerHTML = bouwRuweOntvangstHtml(res.tekst || '(bestand is nog leeg)', res.blokken ?? []);
+    // 2026-09-08: de live-stream gaat precies hier verder (zie startNavtexRuwStream).
+    navtexRuwBytes = res.bestandsBytes ?? 0;
+    navtexRuwLaatsteTeken = (res.tekst || '').slice(-1);
+    plaatsNavtexRuwCursor();
     const tijd = res.bijgewerkt
       ? new Date(res.bijgewerkt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       : '—';
-    NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst · ${Math.round(res.bestandsBytes / 1024)} kB · laatste schrijf ${tijd}`;
+    NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst${navtexRuwStream ? ' · live' : ''} · ${Math.round(res.bestandsBytes / 1024)} kB · laatste schrijf ${tijd}`;
     if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
   } catch (err) {
     NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst · server niet bereikbaar';
@@ -1590,16 +1594,137 @@ function openNavtexRuw(doorAuto) {
   NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst';
   // Eerste keer: na het renderen meteen onderaan beginnen — de "vastgepind"-
   // check in ververNavtexRuw() is dan al waar (lege inhoud = onderaan).
-  ververNavtexRuw();
-  if (!navtexRuwTimer) navtexRuwTimer = setInterval(ververNavtexRuw, NAVTEX_RUW_VERVERS_MS);
+  // 2026-09-08: eerst de volledige staart (met kopregels), daarna live
+  // verder via de eventstream — de 10 s-polling is alleen nog het vangnet
+  // als de stream niet tot stand komt (zie startNavtexRuwStream).
+  ververNavtexRuw().then(startNavtexRuwStream);
 }
 
 function sluitNavtexRuw() {
   NAVTEX_RUW_OVERLAY_EL?.classList.add('verborgen');
   navtexRuwGeopendDoorAuto = false;
+  stopNavtexRuwStream();
   if (navtexRuwTimer) {
     clearInterval(navtexRuwTimer);
     navtexRuwTimer = null;
+  }
+}
+
+// ---- Live binnendruppelen (2026-09-08) ---------------------------------
+// Op verzoek van Lex ("dat binnendruppelen zou leuker zijn dan wat er nu
+// is"): de viewer haalde elke 10 s de hele staart op — dat oogt als "een
+// regel per 10 s". Nu: /api/navtex-ruw-stream (SSE) stuurt elke aangroei
+// van het bestand direct door, en de viewer TYPT die tekst teken voor teken
+// op SITOR-B-tempo (100 baud, 7 bits, elk teken tweemaal → ~7 tekens/s).
+// Zo rolt ook een regel die in één keer binnenkomt (de decoder is
+// regelgebufferd) eruit zoals de zender 'm uitzond. Loopt de wachtrij toch
+// op (na een herverbinding bv.), dan typt 'ie sneller zodat de achterstand
+// nooit meer dan een paar seconden is. Bij een 'ZCZC' aan het begin van een
+// regel komt meteen de groene kopregel met het ECHTE ontvangstmoment (nu).
+const NAVTEX_RUW_TEKEN_MS = 140; // ~7 tekens/s
+const NAVTEX_RUW_WACHTRIJ_SNEL = 200; // vanaf zoveel tekens achterstand: meerdere tekens per tik
+let navtexRuwStream = null;
+let navtexRuwBytes = 0;
+let navtexRuwLaatsteTeken = '';
+let navtexRuwWachtrij = '';
+let navtexRuwTypTimer = null;
+let navtexRuwCursorEl = null;
+
+function plaatsNavtexRuwCursor() {
+  if (!NAVTEX_RUW_TEKST_EL) return;
+  if (!navtexRuwCursorEl) {
+    navtexRuwCursorEl = document.createElement('span');
+    navtexRuwCursorEl.className = 'ruw-cursor';
+    navtexRuwCursorEl.textContent = '▮';
+  }
+  NAVTEX_RUW_TEKST_EL.appendChild(navtexRuwCursorEl);
+}
+
+function navtexRuwVastgepind() {
+  return NAVTEX_RUW_INHOUD_EL.scrollHeight - NAVTEX_RUW_INHOUD_EL.scrollTop - NAVTEX_RUW_INHOUD_EL.clientHeight < 40;
+}
+
+function navtexRuwVoegToe(node) {
+  if (navtexRuwCursorEl?.parentNode === NAVTEX_RUW_TEKST_EL) NAVTEX_RUW_TEKST_EL.insertBefore(node, navtexRuwCursorEl);
+  else NAVTEX_RUW_TEKST_EL.appendChild(node);
+}
+
+function navtexRuwTypTik() {
+  if (!navtexRuwWachtrij) {
+    clearInterval(navtexRuwTypTimer);
+    navtexRuwTypTimer = null;
+    return;
+  }
+  const vastgepind = navtexRuwVastgepind();
+  const aantal = navtexRuwWachtrij.length > NAVTEX_RUW_WACHTRIJ_SNEL ? Math.ceil(navtexRuwWachtrij.length / 50) : 1;
+  for (let i = 0; i < aantal && navtexRuwWachtrij; i++) {
+    // Nieuw bericht? Kopregel met het echte ontvangstmoment, zoals de
+    // volledige vulling die uit het bloktijdenregister tekent.
+    if ((navtexRuwLaatsteTeken === '\n' || navtexRuwLaatsteTeken === '') && navtexRuwWachtrij.startsWith('ZCZC')) {
+      const kop = document.createElement('span');
+      kop.className = 'ruw-blok-kop';
+      const tijd = new Date().toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      kop.textContent = `▸ ontvangen ${tijd}`;
+      navtexRuwVoegToe(kop);
+    }
+    const teken = navtexRuwWachtrij[0];
+    navtexRuwWachtrij = navtexRuwWachtrij.slice(1);
+    navtexRuwVoegToe(document.createTextNode(teken));
+    navtexRuwLaatsteTeken = teken;
+  }
+  if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
+}
+
+function startNavtexRuwStream() {
+  if (navtexRuwStream || !NAVTEX_RUW_OVERLAY_EL || NAVTEX_RUW_OVERLAY_EL.classList.contains('verborgen')) return;
+  if (typeof EventSource === 'undefined') {
+    if (!navtexRuwTimer) navtexRuwTimer = setInterval(ververNavtexRuw, NAVTEX_RUW_VERVERS_MS);
+    return;
+  }
+  // Zolang de stream loopt geen 10 s-polling (die zou de getypte tekst
+  // steeds overschrijven).
+  if (navtexRuwTimer) {
+    clearInterval(navtexRuwTimer);
+    navtexRuwTimer = null;
+  }
+  const es = new EventSource(`/api/navtex-ruw-stream?vanaf=${navtexRuwBytes}`);
+  navtexRuwStream = es;
+  es.onopen = () => {
+    if (NAVTEX_RUW_STATUS_EL && !/· live/.test(NAVTEX_RUW_STATUS_EL.textContent)) {
+      NAVTEX_RUW_STATUS_EL.textContent = NAVTEX_RUW_STATUS_EL.textContent.replace('📻 Ruwe ontvangst', '📻 Ruwe ontvangst · live');
+    }
+  };
+  es.onmessage = (ev) => {
+    let tekst;
+    try { tekst = JSON.parse(ev.data); } catch { return; }
+    if (typeof tekst !== 'string' || !tekst) return;
+    navtexRuwBytes += new TextEncoder().encode(tekst).length;
+    navtexRuwWachtrij += tekst;
+    if (!navtexRuwTypTimer) navtexRuwTypTimer = setInterval(navtexRuwTypTik, NAVTEX_RUW_TEKEN_MS);
+  };
+  es.onerror = () => {
+    // Niet EventSource zelf laten herverbinden (die zou met de oude
+    // ?vanaf= terugkomen): zelf sluiten, opnieuw vullen (= nieuwe
+    // bytestand), en na 3 s opnieuw aanhaken. Tot die tijd het vangnet.
+    stopNavtexRuwStream();
+    if (NAVTEX_RUW_OVERLAY_EL.classList.contains('verborgen')) return;
+    if (!navtexRuwTimer) navtexRuwTimer = setInterval(ververNavtexRuw, NAVTEX_RUW_VERVERS_MS);
+    setTimeout(() => {
+      if (NAVTEX_RUW_OVERLAY_EL.classList.contains('verborgen') || navtexRuwStream) return;
+      ververNavtexRuw().then(startNavtexRuwStream);
+    }, 3000);
+  };
+}
+
+function stopNavtexRuwStream() {
+  if (navtexRuwStream) {
+    navtexRuwStream.close();
+    navtexRuwStream = null;
+  }
+  navtexRuwWachtrij = '';
+  if (navtexRuwTypTimer) {
+    clearInterval(navtexRuwTypTimer);
+    navtexRuwTypTimer = null;
   }
 }
 
