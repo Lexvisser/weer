@@ -1598,12 +1598,14 @@ function openNavtexRuw(doorAuto) {
   // verder via de eventstream — de 10 s-polling is alleen nog het vangnet
   // als de stream niet tot stand komt (zie startNavtexRuwStream).
   ververNavtexRuw().then(startNavtexRuwStream);
+  startNavtexWaterval();
 }
 
 function sluitNavtexRuw() {
   NAVTEX_RUW_OVERLAY_EL?.classList.add('verborgen');
   navtexRuwGeopendDoorAuto = false;
   stopNavtexRuwStream();
+  stopNavtexWaterval();
   if (navtexRuwTimer) {
     clearInterval(navtexRuwTimer);
     navtexRuwTimer = null;
@@ -1730,6 +1732,213 @@ function stopNavtexRuwStream() {
 
 NAVTEX_RUW_KNOP_EL?.addEventListener('click', openNavtexRuw);
 NAVTEX_RUW_SLUITEN_EL?.addEventListener('click', sluitNavtexRuw);
+
+// ---- SDR-paneel: frequentie, S/N-meter, spectrum + waterval (2026-09-08) --
+// Op verzoek van Lex ("de frequentie en de waterval, zoals je dat in SDR++
+// ziet"). Bron: /api/navtex-waterval-stream — eerst event "geschiedenis"
+// (laatste ~200 regels), daarna per kwart seconde event "regel". Elke regel:
+// { t, midden, breed, zender, zoom, b:[256 dB], z:[256 dB] } — b = breed
+// spectrum ±breed Hz rond midden (520 kHz), z = zoom ±zoom Hz rond zender
+// (518 kHz), zie navtex_usb_demod.py --spectrum. Per canvas: spectrumlijn
+// bovenin (~38%), waterval eronder (nieuwste rij bovenaan, schuift omlaag),
+// frequentie-as tussenin, rode markering op 518 kHz. Kleuren = SDR++
+// "classic". Schaal: ruisvloer (mediaan, traag gevolgd) = onderkant,
+// SDR_BEREIK_DB erboven = wit/geel — dus zelfschalend, geen knopjes.
+const SDR_BEREIK_DB = 70;
+const SDR_WATERVAL_RIJEN = 240;
+const SDR_KLEUREN = ['#000020', '#000030', '#000050', '#000091', '#1E90FF', '#FFFFFF', '#FFFF00', '#FE6D16', '#FE6D16', '#FF0000', '#FF0000', '#C60000', '#9F0000', '#750000', '#4A0000'];
+const SDR_EL = document.getElementById('navtexSdr');
+const SDR_KOP_EL = document.getElementById('sdrKop');
+const SDR_METER_EL = document.getElementById('sdrMeterBalk');
+const SDR_SNR_EL = document.getElementById('sdrSnr');
+let sdrStream = null;
+let sdrLut = null; // 256 x [r,g,b]
+
+function sdrMaakLut() {
+  if (sdrLut) return sdrLut;
+  const stops = SDR_KLEUREN.map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+  sdrLut = new Array(256);
+  for (let i = 0; i < 256; i++) {
+    const p = (i / 255) * (stops.length - 1);
+    const k = Math.min(stops.length - 2, Math.floor(p));
+    const f = p - k;
+    sdrLut[i] = [0, 1, 2].map((c) => Math.round(stops[k][c] + (stops[k + 1][c] - stops[k][c]) * f));
+  }
+  return sdrLut;
+}
+
+// Eén paneel = één zichtbaar canvas + een offscreen waterval-canvas van
+// exact `bins` pixels breed (1 px per bin, later geschaald zonder smoothing).
+function sdrMaakPaneel(canvasId, opties) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  return { canvas, ctx: canvas.getContext('2d'), wv: null, wvCtx: null, bins: 0, vloer: null, laatste: null, ...opties };
+}
+const sdrPanelen = [
+  sdrMaakPaneel('sdrBreed', { sleutel: 'b', midden: 'midden', span: 'breed', stapHz: 4000, decimalen: 0 }),
+  sdrMaakPaneel('sdrZoom', { sleutel: 'z', midden: 'zender', span: 'zoom', stapHz: 500, decimalen: 1 }),
+].filter(Boolean);
+
+function sdrVloer(p, rij) {
+  const kopie = rij.slice().sort((a, b) => a - b);
+  const mediaan = kopie[Math.floor(kopie.length / 2)];
+  p.vloer = p.vloer == null ? mediaan : 0.9 * p.vloer + 0.1 * mediaan;
+  return p.vloer;
+}
+
+function sdrVoegRijToe(p, regel, meteenTekenen) {
+  const rij = regel[p.sleutel];
+  if (!Array.isArray(rij) || !rij.length) return;
+  if (!p.wv || p.bins !== rij.length) {
+    p.bins = rij.length;
+    p.wv = document.createElement('canvas');
+    p.wv.width = p.bins;
+    p.wv.height = SDR_WATERVAL_RIJEN;
+    p.wvCtx = p.wv.getContext('2d');
+    p.wvCtx.fillStyle = '#000020';
+    p.wvCtx.fillRect(0, 0, p.bins, SDR_WATERVAL_RIJEN);
+  }
+  const vloer = sdrVloer(p, rij);
+  const lut = sdrMaakLut();
+  // bestaande rijen één pixel omlaag, nieuwe rij bovenaan
+  p.wvCtx.drawImage(p.wv, 0, 1);
+  const beeld = p.wvCtx.createImageData(p.bins, 1);
+  for (let i = 0; i < p.bins; i++) {
+    const v = Math.max(0, Math.min(255, Math.round(((rij[i] - (vloer - 5)) / SDR_BEREIK_DB) * 255)));
+    const [r, g, b] = lut[v];
+    beeld.data[i * 4] = r; beeld.data[i * 4 + 1] = g; beeld.data[i * 4 + 2] = b; beeld.data[i * 4 + 3] = 255;
+  }
+  p.wvCtx.putImageData(beeld, 0, 0);
+  p.laatste = { rij, regel };
+  if (meteenTekenen) sdrTeken(p);
+}
+
+function sdrTeken(p) {
+  const { canvas, ctx } = p;
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.max(1, Math.round(canvas.clientWidth * dpr));
+  const H = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+  ctx.fillStyle = '#000018';
+  ctx.fillRect(0, 0, W, H);
+  if (!p.laatste) return;
+  const { rij, regel } = p.laatste;
+  const asH = Math.round(14 * dpr);
+  const specH = Math.round(H * 0.38);
+  const wvY = specH + asH;
+  const wvH = H - wvY;
+  const vloer = p.vloer ?? rij[0];
+  const dbNaarY = (db) => specH - Math.max(0, Math.min(1, (db - (vloer - 5)) / SDR_BEREIK_DB)) * (specH - 4 * dpr);
+  // rasterlijnen per 10 dB
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  for (let db = vloer; db < vloer - 5 + SDR_BEREIK_DB; db += 10) {
+    const y = Math.round(dbNaarY(db)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  // spectrumlijn + vulling
+  ctx.beginPath();
+  ctx.moveTo(0, specH);
+  for (let i = 0; i < rij.length; i++) ctx.lineTo((i / (rij.length - 1)) * W, dbNaarY(rij[i]));
+  ctx.lineTo(W, specH);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(30,144,255,0.25)';
+  ctx.fill();
+  ctx.beginPath();
+  for (let i = 0; i < rij.length; i++) {
+    const x = (i / (rij.length - 1)) * W;
+    const y = dbNaarY(rij[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#8fd0ff';
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.stroke();
+  // waterval (1 px/bin → schalen zonder smoothing = knisperend zoals SDR++)
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(p.wv, 0, 0, p.bins, SDR_WATERVAL_RIJEN, 0, wvY, W, wvH);
+  // frequentie-as
+  const midden = Number(regel[p.midden]);
+  const span = Number(regel[p.span]);
+  ctx.fillStyle = 'rgba(0,0,24,0.9)';
+  ctx.fillRect(0, specH, W, asH);
+  ctx.fillStyle = '#3bff7c';
+  ctx.font = `${Math.round(10 * dpr)}px 'JetBrains Mono', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (Number.isFinite(midden) && Number.isFinite(span) && span > 0) {
+    const fVan = midden - span;
+    const fTot = midden + span;
+    const eerste = Math.ceil(fVan / p.stapHz) * p.stapHz;
+    for (let f = eerste; f <= fTot; f += p.stapHz) {
+      const x = ((f - fVan) / (2 * span)) * W;
+      ctx.fillStyle = 'rgba(59,255,124,0.25)';
+      ctx.fillRect(Math.round(x), 0, 1, specH);
+      ctx.fillStyle = '#3bff7c';
+      if (x > 14 * dpr && x < W - 14 * dpr) ctx.fillText((f / 1000).toFixed(p.decimalen), x, specH + asH / 2);
+    }
+    // markering op de zender (518 kHz)
+    const zender = Number(regel.zender);
+    if (Number.isFinite(zender) && zender > fVan && zender < fTot) {
+      const x = Math.round(((zender - fVan) / (2 * span)) * W);
+      ctx.fillStyle = 'rgba(255,80,80,0.75)';
+      ctx.fillRect(x, 0, Math.max(1, dpr), specH);
+      ctx.fillRect(x, wvY, Math.max(1, dpr), wvH);
+    }
+  }
+}
+
+// S/N: piek in de zoom binnen ±150 Hz rond de zender t.o.v. de ruisvloer.
+function sdrUpdateMeter(regel) {
+  const z = regel.z;
+  const span = Number(regel.zoom);
+  if (!Array.isArray(z) || !z.length || !Number.isFinite(span)) return;
+  const p = sdrPanelen.find((q) => q.sleutel === 'z');
+  const vloer = p?.vloer ?? z.slice().sort((a, b) => a - b)[Math.floor(z.length / 2)];
+  const midIdx = (z.length - 1) / 2;
+  const halfBins = Math.round((150 / (2 * span)) * (z.length - 1));
+  let piek = -Infinity;
+  for (let i = Math.max(0, Math.floor(midIdx - halfBins)); i <= Math.min(z.length - 1, Math.ceil(midIdx + halfBins)); i++) piek = Math.max(piek, z[i]);
+  const snr = Math.max(0, Math.round(piek - vloer));
+  if (SDR_METER_EL) SDR_METER_EL.style.width = `${Math.min(100, (snr / 60) * 100)}%`;
+  if (SDR_SNR_EL) SDR_SNR_EL.textContent = `S/N ${snr} dB`;
+}
+
+function sdrVerwerkRegel(regel, meteenTekenen) {
+  if (!regel || typeof regel !== 'object') return;
+  sdrPanelen.forEach((p) => sdrVoegRijToe(p, regel, meteenTekenen));
+  if (meteenTekenen) sdrUpdateMeter(regel);
+}
+
+function startNavtexWaterval() {
+  if (!SDR_EL || sdrStream || typeof EventSource === 'undefined') return;
+  if (SDR_SNR_EL) SDR_SNR_EL.textContent = 'verbinden…';
+  const es = new EventSource('/api/navtex-waterval-stream');
+  sdrStream = es;
+  es.addEventListener('geschiedenis', (ev) => {
+    let regels;
+    try { regels = JSON.parse(ev.data); } catch { return; }
+    if (!Array.isArray(regels)) return;
+    sdrPanelen.forEach((p) => { p.wv = null; p.vloer = null; p.laatste = null; });
+    regels.forEach((r, i) => sdrVerwerkRegel(r, i === regels.length - 1));
+    if (!regels.length && SDR_SNR_EL) SDR_SNR_EL.textContent = 'geen spectrumdata';
+  });
+  es.addEventListener('regel', (ev) => {
+    let regel;
+    try { regel = JSON.parse(ev.data); } catch { return; }
+    sdrVerwerkRegel(regel, true);
+  });
+  es.onerror = () => { if (SDR_SNR_EL) SDR_SNR_EL.textContent = 'geen verbinding'; };
+}
+
+function stopNavtexWaterval() {
+  if (sdrStream) {
+    sdrStream.close();
+    sdrStream = null;
+  }
+}
+
+SDR_KOP_EL?.addEventListener('click', () => SDR_EL?.classList.toggle('ingeklapt'));
+window.addEventListener('resize', () => { if (sdrStream) sdrPanelen.forEach(sdrTeken); });
 
 function renderNavtexUitlegSectie() {
   if (NAVTEX_UITLEG_PIJL_EL) NAVTEX_UITLEG_PIJL_EL.textContent = navtexUitlegSectieUitgeklapt ? '▾' : '▸';

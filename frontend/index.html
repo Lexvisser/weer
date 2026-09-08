@@ -543,6 +543,23 @@
     <span class="navtex-ruw-status" id="navtexRuwStatus">—</span>
     <button id="navtexRuwSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
   </div>
+  <!-- 2026-09-08, op verzoek van Lex ("de frequentie en de waterval, zoals je
+       dat in SDR++ ziet"): SDR-paneel boven de decoder-tekst — frequentie-
+       uitlezing + S/N-meter, breed spectrum+waterval (±12 kHz rond 520 kHz)
+       en zoom (±1,5 kHz rond 518 kHz, de twee FSK-tonen los zichtbaar).
+       Data: /api/navtex-waterval-stream, zie startNavtexWaterval() in app.js.
+       Tik op de kopregel klapt de panelen in/uit. -->
+  <div class="navtex-sdr" id="navtexSdr">
+    <div class="sdr-kop" id="sdrKop" title="Tik om het spectrum in/uit te klappen">
+      <span class="sdr-freq" id="sdrFreq">518.000<small> kHz USB</small></span>
+      <span class="sdr-meter" aria-hidden="true"><span class="sdr-meter-balk" id="sdrMeterBalk"></span></span>
+      <span class="sdr-snr" id="sdrSnr">—</span>
+    </div>
+    <div class="sdr-panelen" id="sdrPanelen">
+      <canvas class="sdr-canvas" id="sdrBreed"></canvas>
+      <canvas class="sdr-canvas sdr-zoom" id="sdrZoom"></canvas>
+    </div>
+  </div>
   <div class="label-popup-inhoud navtex-ruw-inhoud" id="navtexRuwInhoud"><pre id="navtexRuwTekst"></pre></div>
 </div>
 
