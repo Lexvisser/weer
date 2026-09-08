@@ -45,7 +45,7 @@ AUDIO_RATE = 12000
 SPEC_BINS = 256
 SPEC_BREED_HZ = 12000.0
 SPEC_ZOOM_HZ = 1500.0
-SPEC_FFT_BREED = 8192
+SPEC_FFT_BREED = 16384  # 47 Hz per FFT-bin, 4 per schermbin
 SPEC_FFT_ZOOM = 2048  # kwart seconde op 12 kHz = 3000 samples
 SPEC_MAX_BYTES = 1024 * 1024
 AUDIO_MAX_BYTES = 4 * 1024 * 1024  # ~3 minuten op 12 kHz/16 bit
@@ -55,7 +55,10 @@ def spectrum_db(x, nfft, rate, f_mid, span_hz, bins):
     """Gemiddeld vermogensspectrum (dB) van complex signaal x, over
     [f_mid-span, f_mid+span] Hz (basisband-frequenties), herbemonsterd naar
     `bins` waarden. Meerdere FFT-vensters over het blok gemiddeld = rustiger
-    beeld."""
+    beeld. Per schermbin het gemiddelde van de FFT-bins in een SYMMETRISCH
+    venster rond de doelfrequentie (2026-09-08: de eerdere searchsorted-
+    variant pakte steeds de bin erboven, waardoor het hele beeld tot één
+    FFT-bin naar links verschoof — Lex zag het blok naast de 518-streep)."""
     if len(x) < nfft:
         x = np.concatenate([x, np.zeros(nfft - len(x), dtype=x.dtype)])
     nvens = len(x) // nfft
@@ -65,16 +68,17 @@ def spectrum_db(x, nfft, rate, f_mid, span_hz, bins):
         seg = x[i * nfft:(i + 1) * nfft] * venster
         acc += np.abs(np.fft.fft(seg)) ** 2
     acc = np.fft.fftshift(acc / nvens)
-    freqs = np.fft.fftshift(np.fft.fftfreq(nfft, 1.0 / rate))
+    binw = rate / nfft
+    f0 = -rate / 2.0  # frequentie van acc[0] na fftshift (even nfft)
     doel = np.linspace(f_mid - span_hz, f_mid + span_hz, bins)
-    # per doel-bin het gemiddelde van de FFT-bins die erin vallen
-    idx = np.searchsorted(freqs, doel)
-    idx = np.clip(idx, 1, nfft - 1)
-    breedte = max(1, int(round((2 * span_hz / bins) / (rate / nfft))))
+    stap = 2 * span_hz / (bins - 1)
+    half = max(0, int(round(stap / binw / 2)))
+    midden = np.rint((doel - f0) / binw).astype(int)
     uit = np.empty(bins)
-    for k, i in enumerate(idx):
-        lo = max(0, i - breedte // 2)
-        uit[k] = acc[lo:lo + breedte].mean()
+    for k, m in enumerate(midden):
+        lo = max(0, m - half)
+        hi = min(nfft, m + half + 1)
+        uit[k] = acc[lo:hi].mean() if hi > lo else acc[min(max(m, 0), nfft - 1)]
     return (10.0 * np.log10(uit + 1e-20)).round().astype(int).tolist()
 
 
