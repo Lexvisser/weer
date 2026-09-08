@@ -7,10 +7,12 @@ User=lex
 # Airspy op 520 kHz afgestemd (zender op 518 kHz staat dan op -2 kHz in de IQ-stroom,
 # bewust niet op 0 Hz), USB-demodulatie naar 1000 Hz-toon, decoder, en het bestand
 # dat navtexLokaal.js elke 2 minuten uitleest.
+# 2026-09-08: stdbuf -o0 (ongebufferd) i.p.v. -oL, zodat de tekst per teken in het
+# bestand komt en de Ontvangst-viewer in de app 'm live kan laten binnendruppelen.
 ExecStart=/bin/bash -o pipefail -c '\
   airspyhf_rx -r stdout -f 0.520 -a 768000 -g on \
   | /usr/local/bin/navtex_usb_demod.py --rate 768000 --center 520000 \
-  | stdbuf -oL navtex_rx_from_file 12000 \
+  | stdbuf -o0 navtex_rx_from_file 12000 \
   | tee -a /home/lex/navtex_berichten.txt'
 Restart=always
 RestartSec=10
