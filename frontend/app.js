@@ -1662,6 +1662,8 @@ const NAVTEX_RUW_TEKEN_MS = 140; // ~7 tekens/s
 // was"): de achterstand mag hooguit ~3 s zijn (21 tekens op NAVTEX-tempo);
 // daarboven meerdere tekens per tik, zodat tekst en geluid bij elkaar blijven.
 const NAVTEX_RUW_MAX_ACHTERSTAND = 21;
+const NAVTEX_RUW_WACHT_MS = 1500; // zie navtexRuwTypTik: wachten op de rest van een regel van dezelfde band
+let navtexRuwWachtSinds = 0;
 let navtexRuwStream = null;
 let navtexRuwBytes = 0;
 let navtexRuwBytes490 = 0; // 2026-09-08: tweede band in dezelfde viewer
@@ -1727,7 +1729,19 @@ function navtexRuwTypTik() {
     let kop = navtexRuwWachtrij[0];
     if (navtexRuwHuidigeKhz != null && (navtexRuwLaatsteTekenPerKhz[navtexRuwHuidigeKhz] ?? '') !== '\n') {
       const zelfde = navtexRuwWachtrij.find((c) => (c.khz === 490 ? 490 : 518) === navtexRuwHuidigeKhz);
-      if (zelfde) kop = zelfde;
+      if (zelfde) {
+        kop = zelfde;
+        navtexRuwWachtSinds = 0;
+      } else if ((kop.khz === 490 ? 490 : 518) !== navtexRuwHuidigeKhz) {
+        // 2026-09-08 (avond, Lex zag het tóch nog gevlochten): de tekst komt
+        // per teken binnen, dus de lopende band is midden in een regel vaak
+        // even "op" terwijl de andere band wél iets heeft. Dan niet
+        // overspringen maar even wachten (max NAVTEX_RUW_WACHT_MS) op de
+        // rest van de regel; pas daarna mag de andere band erdoor.
+        if (!navtexRuwWachtSinds) navtexRuwWachtSinds = Date.now();
+        if (Date.now() - navtexRuwWachtSinds < NAVTEX_RUW_WACHT_MS) break;
+        navtexRuwWachtSinds = 0;
+      }
     }
     const khz = kop.khz === 490 ? 490 : 518;
     // Nieuw bericht? Kopregel met het echte ontvangstmoment, zoals de
