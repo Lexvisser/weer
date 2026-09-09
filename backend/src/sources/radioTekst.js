@@ -171,9 +171,9 @@ const RICHTING_NL = {
   'north northeast': 'NNO', 'east northeast': 'ONO', 'east southeast': 'OZO', 'south southeast': 'ZZO',
   'south southwest': 'ZZW', 'west southwest': 'WZW', 'west northwest': 'WNW', 'north northwest': 'NNW',
 };
-const RICHTING_RE = '(north\\s*northeast|east\\s*northeast|east\\s*southeast|south\\s*southeast|south\\s*southwest|west\\s*southwest|west\\s*northwest|north\\s*northwest|northeast|northwest|southeast|southwest|north|south|east|west)';
+const RICHTING_RE = '(north\\s*northeast|east\\s*northeast|east\\s*southeast|south\\s*southeast|south\\s*southwest|west\\s*southwest|west\\s*northwest|north\\s*northwest|north\\s*east|north\\s*west|south\\s*east|south\\s*west|north|south|east|west)';
 function richting(txt) {
-  const k = normaliseer(txt);
+  const k = normaliseer(txt).replace(/^(north|south)\s+(east|west)$/, '$1$2'); // "south west" (Whisper) = southwest
   return { graden: RICHTINGEN[k] ?? null, kort: RICHTING_NL[k] ?? txt };
 }
 
@@ -478,7 +478,7 @@ function parseWaarnemingen(blokken, plaatsen) {
   }
   // Dallas-stijl opsomming: "dfw airport sunny 86 dew point 72 relative humidity 62% wind south at 9 pressure 30.11 ...
   // dallas love field sunny 84 south at 7 fort worth region sunny 86 south at 8" (komma's zijn hierboven al spaties)
-  const dre = /\b((?:mostly |partly )?(?:sunny|clear|cloudy|overcast|fair|foggy|fog|hazy|haze|rain(?:ing)?|thunderstorms?|showers|smoke))\s+(\d{2,3})\b(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g;
+  const dre = /\b((?:mostly |partly |light |heavy )?(?:sunny|clear|cloudy|overcast|fair|foggy|fog|hazy|haze|rain(?:ing)?|drizzle|thunderstorms?|showers|smoke))\s*,?\s+(?:(?:and|at)\s+)?(\d{2,3})\b(?:\s*degrees?)?(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g;
   const posities = [];
   while ((m = dre.exec(t)) !== null) posities.push({ index: m.index, eind: m.index + m[0].length, lucht: m[1], f: Number(m[2]) });
   for (let i = 0; i < posities.length; i += 1) {
@@ -490,10 +490,11 @@ function parseWaarnemingen(blokken, plaatsen) {
     if (!gevonden || uit.has(gevonden.plaats.naam)) continue;
     const segment = t.slice(p.eind, i + 1 < posities.length ? posities[i + 1].index : Math.min(t.length, p.eind + 160));
     let wind = null;
-    const w = new RegExp(`(?:winds?\\s+)?(?:(calm)|${RICHTING_RE}\\s+at\\s+(\\d{1,3}))`).exec(segment);
-    if (w) {
+    const w = new RegExp(`(?:winds?\\s+)?(?:(calm)|(?:variable\\s+at\\s+(\\d{1,3}))|${RICHTING_RE}\\s+at\\s+(\\d{1,3}))`).exec(segment);
+    if (w && w[2]) { const kmh = mphNaarKmh(Number(w[2])); wind = { richting: null, graden: null, kmh, bft: kmhNaarBft(kmh), tekst: `variabel ${kmh} km/h (${kmhNaarBft(kmh)} Bft)` }; }
+    else if (w) {
       if (w[1]) wind = { richting: null, graden: null, kmh: 0, bft: 0, tekst: 'windstil' };
-      else { const r = richting(w[2]); const kmh = mphNaarKmh(Number(w[3])); wind = { richting: r.kort, graden: r.graden, kmh, bft: kmhNaarBft(kmh), tekst: `${r.kort} ${kmh} km/h (${kmhNaarBft(kmh)} Bft)` }; }
+      else { const r = richting(w[3]); const kmh = mphNaarKmh(Number(w[4])); wind = { richting: r.kort, graden: r.graden, kmh, bft: kmhNaarBft(kmh), tekst: `${r.kort} ${kmh} km/h (${kmhNaarBft(kmh)} Bft)` }; }
     }
     const dauw = /dew ?point\s+(\d{1,3})/.exec(segment);
     const vocht = /humidity\s+(\d{1,3})/.exec(segment);
@@ -508,7 +509,7 @@ function parseWaarnemingen(blokken, plaatsen) {
       soort: 'plaats',
       tijd: tijdW,
       bron: `${gevonden.gehoord} ${p.lucht} ${p.f}${segment.slice(0, Math.min(segment.length, 80)).trimEnd()}`.trim(),
-      lucht: lucht(p.lucht, isDag(tijdW, plaats.lon)),
+      lucht: lucht(p.lucht, isDag(tijdW, plaats.lon)) ?? neerslag(p.lucht)[0] ?? null,
       tempF: p.f,
       tempC: fNaarC(p.f),
       dauwC: dauw ? fNaarC(Number(dauw[1])) : null,
@@ -558,8 +559,12 @@ const VERTAAL_RE = [
   [/\b(?:highs?|lows?|temperatures?|temps?)\s+(?:will be\s+|from\s+)?(\d{1,3})\s+to\s+(\d{1,3})\b/g, (m) => `🌡️ ${fNaarC(Number(m[1]))}–${fNaarC(Number(m[2]))} °C`],
   [/\b(?:in the\s+)(?:(upper|mid|middle|lower|low)[\s-]*)?(\d)0s\b/g, (m) => { const b = tempBereik(m[0]); return b ? `🌡️ ${tempTekstC(b)}` : null; }],
   // Whisper hoort "heat index" ook als "Pete index" e.d.: elk woord vóór "index values/readings up to N" telt, mits N ≥ 80 (UV-index is nooit zo hoog)
-  [/\b\w+ index(?: values?| readings?)?\s+(?:up to|around|near|of|to|will be)\s+(?:around |near )?(\d{2,3})\b/g, (m) => { const f = Number(m[1]); return f >= 80 ? `🥵 gevoel ${fNaarC(f)} °C` : null; }],
+  [/\b\w+ index(?: values?| readings?)?\s+(?:(?:up to|around|near|of|to|will be|was|is|were|are)\s+)?(?:around |near |the )?(\d{2,3})(?:\s+to\s+(\d{2,3}))?\b/g, (m) => { const f = Number(m[1]); const g = m[2] ? Number(m[2]) : null; if (f < 80) return null; return `🥵 gevoel ${g && g !== f ? `${fNaarC(f)}–${fNaarC(g)}` : fNaarC(f)} °C`; }],
+  // klimaatsamenvatting: "the normal high is 91", "record low of 49" (zonder 'degrees')
+  [/\b(?:normal|record|average)\s+(?:high|low)(?:\s+temperature)?\s+(?:is|was|of|for today is)\s+(-?\d{1,3})\b(?!\s*degrees)/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
+  // "mostly sunny and 79", "cloudy and 68", "light rain and 83 degrees" → lucht-icoon + temperatuur (actueel)
+  [/\b((?:mostly |partly |light |heavy )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke))\s*,?\s+(?:(?:and|at)\s+)?(-?\d{1,3})\b(?:\s*degrees?)?(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g, (m) => { const f = Number(m[2]); if (!(f > -30 && f < 125)) return null; const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return `${l?.icoon ?? '🌡️'} ${fNaarC(f)} °C`; }],
   // luchtvochtigheid is al een percentage — Whisper zegt soms "humidity 57 degrees": niets omrekenen, wel het stuk bezet houden
   [/\b(?:relative\s+)?humidity\s+(?:was|is|of|at|around|near)?\s*(\d{1,3})\s*(?:degrees?|percent|%)?/g, () => ({ negeer: true })],
   // verschil, geen absolute waarde: "4 degrees below normal", "10 degrees above average" → Δ°C
@@ -567,8 +572,6 @@ const VERTAAL_RE = [
   // "between 86 and 88 degrees", "86 to 88 degrees"
   [/\b(?:between\s+)?(-?\d{1,3})\s+(?:and|to)\s+(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const a = Number(m[1]); const b = Number(m[2]); return a > -50 && b < 135 && b >= a ? `🌡️ ${fNaarC(a)}–${fNaarC(b)} °C` : null; }],
   [/\b(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
-  // "mostly sunny and 79", "cloudy and 68" → lucht-icoon + temperatuur (actueel)
-  [/\b((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke))\s*,?\s+(?:(?:and|at)\s+)?(-?\d{1,3})\b(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g, (m) => { const f = Number(m[2]); if (!(f > -30 && f < 125)) return null; const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return `${l?.icoon ?? '🌡️'} ${fNaarC(f)} °C`; }],
   // actuele lucht/neerslag zonder getal: "it was mostly cloudy", "skies were clear", "currently raining"
   [/\b(?:it was|it is|it's|skies? (?:were|are|is)|currently|sky condition(?:s)? (?:were|are|is)?)\s+((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke|light rain|heavy rain))\b/g, (m) => { const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return l ? { woord: true, tekst: `${l.icoon} ${l.nl ?? l.tekst}` } : null; }],
   [/\b(-?\d{1,3})\s+with\s+(?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rainy)\s+skies\b/g, (m) => { const f = Number(m[1]); return f > -30 && f < 125 ? `🌡️ ${fNaarC(f)} °C` : null; }],
@@ -726,15 +729,16 @@ function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
       let tv;
       while ((tv = TIJDVAK_WOORD_RE.exec(tTijdvak)) !== null) { if (tv.index <= van) tijdvak = tv[1]; else break; } // een tijdvak-woord aan het begin van het fragment telt mee
       const record = /\b(record|normal|yesterday|climate summary)\b/.test(context);
-      const actueel = /\b(was|were|currently|right now|now|at this (?:hour|time)|at \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)|observed|reported|reporting)\b/.test(context) || /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|raining|rainy|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:dew ?point|humidity|pressure)\b/.test(context);
+      const actueel = /\b(was|were|currently|right now|now|at this (?:hour|time)|at \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)|observed|reported|reporting)\b/.test(context) || /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain|raining|rainy|drizzle|snow|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:dew ?point|humidity|pressure)\b/.test(context);
       // een echte waarnemingsvorm ("sunny 82", "south at 6", "temperature was 70") is altijd actueel,
       // ook als er vlak ervoor nog verwachtingstaal stond
       // vlakVoor = de paar woorden direct vóór het fragment: "the heat index was 98", "the wind was southeast at 5", "light rain was falling"
       const vlakVoor = `${t.slice(Math.max(0, van - 28), van)} ${m[0]}`;
-      const waarnemingsvorm = /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|raining|rainy|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:temperature|dew ?point|pressure|humidity)\s+(?:was|is)?\s*\d/.test(m[0])
+      const waarnemingsvorm = /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain|raining|rainy|drizzle|snow|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:temperature|dew ?point|pressure|humidity)\s+(?:was|is)?\s*\d/.test(m[0])
+        || raaktFragment(/\b(?:winds?\s+)?(?:variable|calm|light and variable)\s+at\s+\d/, vlakVoor, m[0].length)
         || raaktFragment(/\b(?:heat index|wind ?chill|temperature|winds?|gusts?|visibility|pressure|humidity|dew ?point|seas?|waves?)\s+(?:was|were|is|are)\s+(?:around\s+|near\s+|about\s+|the\s+)?(?:\w+\s+at\s+)?\d/, vlakVoor, m[0].length)
         || /\b(?:light |heavy |moderate )?(?:rain|drizzle|snow|fog|showers|thunderstorms?)\s+(?:was|were|is|are)\s+(?:falling|reported|occurring|in progress)\b/.test(`${m[0]}${t.slice(tot, tot + 24)}`);
-      const nu = waarnemingsvorm || (actueel && !verwachting);
+      const nu = !record && (waarnemingsvorm || (actueel && !verwachting));
       const soort = nu ? 'nu' : (record ? 'overig' : (verwachting || tijdvak ? tijdvakSoort(tijdvak) : 'overig'));
       uit.push({ tijd, index: van, bron: `${voor}${m[0]}`.trim(), fragment: m[0].trim(), vertaling, nu, soort, woord });
     }
