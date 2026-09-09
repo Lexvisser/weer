@@ -7621,7 +7621,8 @@ function toggleNwr() {
 }
 
 function nwrOmschrijving(s) {
-  return `${s.roepletters} · ${s.plaats}, ${s.staat} · ${s.mhz.toFixed(3)} MHz · ${s.bron ?? ''}`;
+  const mhz = s.mhz != null ? ` · ${s.mhz.toFixed(3)} MHz` : '';
+  return `${s.roepletters} · ${s.plaats}, ${s.staat}${mhz} · ${s.bron ?? ''}`;
 }
 
 async function tekenNwr() {
@@ -7639,7 +7640,7 @@ async function tekenNwr() {
   nwrMarkers = new Map();
   for (const s of stations) {
     if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue;
-    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(s.roepletters)} ${s.mhz.toFixed(3)} MHz — ${escapeHtml(s.plaats)}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span></div>`;
+    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(nwrOmschrijving(s))}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span></div>`;
     const marker = L.marker([s.lat, s.lon], {
       icon: L.divIcon({ className: '', html, iconSize: [64, 22], iconAnchor: [11, 11] }),
     });
