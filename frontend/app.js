@@ -8042,7 +8042,8 @@ const NWR_FLITS_MS = 20 * 1000;
 let nwrFlitsLaag = null;
 let nwrFlitsGedaan = new Set(); // "tijd|index"
 let nwrFlitsTeller = 0;
-let nwrFlitsPerPlaats = new Map(); // plaatsnaam -> { marker, t } (één label per plaats, groeit aan)
+let nwrFlitsStapel = new Map(); // plek -> { n } (hoeveel labels er nu op die plek staan → trede)
+let nwrFlitsRecent = new Map(); // plek|vertaling -> tijd (dubbele meldingen overslaan)
 
 function nwrFlits(r, d, index) {
   if (!kaart || !nwrSync) return;
@@ -8055,37 +8056,36 @@ function nwrFlits(r, d, index) {
   if (!station) return;
   const frag = d.tekst.toLowerCase().trim();
   const w = (blok?.waarnemingen ?? []).find((x) => x.tijd === r.tijd && (x.bron ?? '').toLowerCase().includes(frag));
-  let lat; let lon; let naam;
-  if (w) { lat = w.lat; lon = w.lon; naam = w.naam; }
-  else {
-    // kransje rond de zender: hoek per flits, straal ~35 px omgerekend naar graden op deze zoom
-    const n = nwrFlitsTeller++;
-    const hoek = (n % 12) * (Math.PI / 6) - Math.PI / 2;
-    const straal = n % 2 ? 130 : 80; // afwisselend twee ringen, zodat het niet op één hoop komt
-    const px = kaart.latLngToLayerPoint([station.lat, station.lon]);
-    const p = L.point(px.x + Math.cos(hoek) * straal, px.y + Math.sin(hoek) * straal * 0.6);
-    const ll = kaart.layerPointToLatLng(p);
-    lat = ll.lat; lon = ll.lng; naam = station.roepletters ?? '';
-  }
+  const lat = w ? w.lat : station.lat;
+  const lon = w ? w.lon : station.lon;
+  const plek = w ? `plaats|${w.naam}` : `zender|${station.id}`;
+  // dezelfde melding niet twee keer kort na elkaar op dezelfde plek
+  const dubbel = `${plek}|${d.vertaling}`;
+  if (nwrFlitsRecent.has(dubbel) && Date.now() - nwrFlitsRecent.get(dubbel) < NWR_FLITS_MS) return;
+  nwrFlitsRecent.set(dubbel, Date.now());
+  // Trap: alles op dezelfde plek schuin omhoog stapelen (Lex 09/09: "getrapt
+  // schuin omhoog"); de eerste bij de plaats zelf, elke volgende 16 px hoger en
+  // 12 px naar rechts. Bij de zender zonder bekende plaats hetzelfde.
+  const stapel = nwrFlitsStapel.get(plek) ?? { n: 0 };
+  const trede = stapel.n;
+  stapel.n += 1;
+  nwrFlitsStapel.set(plek, stapel);
+  const dx = 12 * trede + (w ? 0 : 20);
+  const dy = 16 * trede + (w ? 0 : 14);
   if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
   const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling ?? '');
-  const regel = mm ? `<div class="nwr-flits-regel"><span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}</div>` : `<div class="nwr-flits-regel">${escapeHtml(d.vertaling ?? '')}</div>`;
+  const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}` : escapeHtml(d.vertaling ?? '');
   const soortKlasse = d.nu ? '' : ' is-vandaag';
-  // Per bekende plaats één label dat aangroeit (Lex 09/09: "op Louisville
-  // gooide hij alles op elkaar"): lucht, temperatuur, wind, druk onder elkaar.
-  if (w) {
-    const bestaand = nwrFlitsPerPlaats.get(naam);
-    if (bestaand && Date.now() - bestaand.t < NWR_FLITS_MS - 3000) {
-      const el = bestaand.marker.getElement()?.querySelector('.nwr-flits');
-      if (el) { el.insertAdjacentHTML('beforeend', regel); el.classList.remove('is-weg'); return; }
-    }
-  }
-  const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : (d.nu ? '' : '<span class="nwr-flits-plaats">vandaag</span>')}${regel}</div>`;
-  const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5, 5] }), interactive: false, zIndexOffset: 900 });
+  const onderschrift = w ? (trede === 0 ? `<span class="nwr-flits-plaats">${escapeHtml(w.naam)}</span>` : '') : (d.nu ? '' : (trede === 0 ? '<span class="nwr-flits-plaats">vandaag</span>' : ''));
+  const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${inhoud}${onderschrift}</div>`;
+  const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5 - dx, 5 + dy] }), interactive: false, zIndexOffset: 900 + trede });
   nwrFlitsLaag.addLayer(marker);
-  if (w) nwrFlitsPerPlaats.set(naam, { marker, t: Date.now() });
   setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), NWR_FLITS_MS - 1200);
-  setTimeout(() => { try { nwrFlitsLaag.removeLayer(marker); } catch (_) { /* weg */ } if (nwrFlitsPerPlaats.get(naam)?.marker === marker) nwrFlitsPerPlaats.delete(naam); }, NWR_FLITS_MS);
+  setTimeout(() => {
+    try { nwrFlitsLaag.removeLayer(marker); } catch (_) { /* weg */ }
+    const st = nwrFlitsStapel.get(plek);
+    if (st) { st.n -= 1; if (st.n <= 0) nwrFlitsStapel.delete(plek); }
+  }, NWR_FLITS_MS);
 }
 
 // Eén tekstregel (blok) als HTML; `zichtbaar` (0..1) = hoeveel van de tekst al
