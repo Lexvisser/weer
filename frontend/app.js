@@ -8065,7 +8065,7 @@ function nwrPaneelVul() {
   let body = '';
   if (!d) {
     const luistert = nwrHuidig?.id === nwrPaneelStation;
-    body = `<div class="nwr-leeg">${nwrKanLuisteren === false ? 'De server heeft whisper.cpp niet — verstaan kan niet.' : (luistert ? '🎧 De server luistert mee — eerste tekst over ~35 s, daarna elke 30 s een blok. Omrekeningen komen in de gele ballon.' : 'Nog geen tekst van deze zender. Klik op de pin om te luisteren; de server luistert dan mee.')}</div>`;
+    body = `<div class="nwr-leeg">${nwrKanLuisteren === false ? 'De server heeft whisper.cpp niet — verstaan kan niet.' : (luistert ? '🎧 De server luistert mee — eerste blok over ~20 s, daarna elke 15 s. Geluid, tekst en ballon lopen gelijk.' : 'Nog geen tekst van deze zender. Klik op de pin om te luisteren; de server luistert dan mee.')}</div>`;
   } else {
     // 2026-09-09 (avond): verwachting-kaartjes eruit (Lex: "meerdaagse skippen"),
     // alleen nog de tekst; de vertaalslag zit in de gele ballon (nwrBallon).
@@ -8075,7 +8075,7 @@ function nwrPaneelVul() {
       return `<div><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}</span> ${escapeHtml(r.tekst)}</div>`;
     });
     if (regels.length) body += `<div class="nwr-tekst">${regels.join('')}</div>`;
-    else body += `<div class="nwr-leeg">${d.luister?.actief ? '🎧 De server luistert mee — eerste tekst over ~35 s.' : 'Nog geen tekst van deze zender.'}</div>`;
+    else body += `<div class="nwr-leeg">${d.luister?.actief ? '🎧 De server luistert mee — eerste blok over ~20 s.' : 'Nog geen tekst van deze zender.'}</div>`;
   }
   // 2026-09-09: de gele ballon hoort "pats na de tekst" (Lex) — vaste plek
   // onder aan het paneel (sticky), niet los op de kaart.

@@ -65,7 +65,7 @@ export function beschikbaar() {
 
 export function luisterStatus(stationId) {
   const a = actief.get(stationId);
-  return a ? { actief: true, tot: new Date(a.tot).toISOString() } : { actief: false, tot: null };
+  return a && !a.gestopt ? { actief: true, tot: new Date(a.tot).toISOString() } : { actief: false, tot: null };
 }
 
 export function alleLuisterStatus() {
@@ -110,8 +110,18 @@ export function startLuisteren(station) {
   if (!id || !station.url) return { ok: false, fout: 'geen zender/stream' };
   if (!beschikbaar()) return { ok: false, fout: 'whisper.cpp of model niet gevonden op de server' };
   const bestaand = actief.get(id);
-  if (bestaand) return { ok: true, ...luisterStatus(id), al: true };
-  if (actief.size >= MAX_TEGELIJK) return { ok: false, fout: `al ${MAX_TEGELIJK} zenders aan het luisteren` };
+  if (bestaand && !bestaand.gestopt) return { ok: true, ...luisterStatus(id), al: true };
+  if (bestaand?.gestopt) return { ok: false, fout: 'vorige sessie van deze zender wordt nog afgerond, probeer zo opnieuw' };
+  // Vol? Dan de oudste luisteraar stoppen — een klik op een nieuwe zender wint
+  // (Lex 09/09: klik op WXX67 deed niets omdat KEC56 nog 12 min bezig was).
+  const lopend = () => [...actief.entries()].filter(([, x]) => !x.gestopt);
+  while (lopend().length >= MAX_TEGELIJK) {
+    const oudste = lopend().sort((x, y) => x[1].tot - y[1].tot)[0];
+    if (!oudste) break;
+    console.log(`[weer] radioLuister ${oudste[0]}: gestopt voor ${id}`);
+    oudste[1].gestopt = true;
+    if (oudste[1].proces) oudste[1].proces.kill('SIGTERM'); // opruimen loopt via het exit-event verder
+  }
 
   const werk = `/dev/shm/radio-luister-${id}`;
   try { rmSync(werk, { recursive: true, force: true }); } catch (_) { /* leeg */ }
@@ -128,7 +138,7 @@ export function startLuisteren(station) {
   proces.stderr.on('data', (d) => console.warn(`[weer] radioLuister ${id} ffmpeg: ${String(d).trim()}`));
   const oudAf = afgerond.get(id);
   if (oudAf) { clearTimeout(oudAf.timer); afgerond.delete(id); }
-  const a = { proces, tot: Date.now() + LUISTER_MS, werk, bezig: false, timer: null, blokken: [] };
+  const a = { proces, tot: Date.now() + LUISTER_MS, werk, bezig: false, timer: null, blokken: [], gestopt: false };
   actief.set(id, a);
   a.timer = setInterval(() => verwerkBlokken(id), 2000);
 
@@ -173,6 +183,7 @@ export function blokAudioPad(stationId, stamp) {
 export function stopLuisteren(stationId) {
   const a = actief.get(stationId);
   if (!a) return { ok: true, actief: false };
+  a.gestopt = true;
   if (a.proces) a.proces.kill('SIGTERM');
   return { ok: true, actief: false };
 }
