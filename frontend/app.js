@@ -8250,6 +8250,9 @@ function nwrSpeel(id) {
 }
 
 function nwrStop() {
+  // 2026-09-09: ⏹ stopt ook het luisteren op de server (Lex: "ik heb alles
+  // gestopt, maar dan is er dus nog een proces")
+  if (nwrHuidig?.id) fetch(`/api/radio-luister?station=${encodeURIComponent(nwrHuidig.id)}&stop=1`).catch(() => {});
   nwrSyncStop();
   if (nwrAudio) {
     nwrAudio.pause();
