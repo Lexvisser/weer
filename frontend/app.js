@@ -7752,6 +7752,25 @@ async function nwrLuisterStart(id) {
 let nwrSync = null; // { id, ctx, gespeeld:Set, bezigMet:Set, timer, volgendeStart, huidig, blokS, timers:[] }
 let nwrSessieStart = 0; // klikmoment; oudere tekst van dezelfde zender blijft buiten het paneel
 let nwrCtx = null; // AudioContext, aangemaakt in de klik (nodig voor iOS)
+let nwrGain = null; // volumeknoop voor mute (2026-09-09, Lex: "daar mag ook een mute-knopje bij")
+let nwrGedempt = false;
+try { nwrGedempt = localStorage.getItem('weerNwrMute') === '1'; } catch (_) { /* privé-modus */ }
+
+function nwrGainNode() {
+  if (!nwrCtx) return null;
+  if (!nwrGain) { nwrGain = nwrCtx.createGain(); nwrGain.connect(nwrCtx.destination); }
+  nwrGain.gain.value = nwrGedempt ? 0 : 1;
+  return nwrGain;
+}
+
+function nwrMuteToggle() {
+  nwrGedempt = !nwrGedempt;
+  try { localStorage.setItem('weerNwrMute', nwrGedempt ? '1' : '0'); } catch (_) { /* privé-modus */ }
+  if (nwrGain) nwrGain.gain.value = nwrGedempt ? 0 : 1;
+  if (nwrAudio) nwrAudio.muted = nwrGedempt;
+  const knop = NWR_PANEEL_EL?.querySelector('#nwrPaneelMute');
+  if (knop) { knop.textContent = nwrGedempt ? '🔇' : '🔊'; knop.title = nwrGedempt ? 'Geluid aan' : 'Geluid uit (tekst loopt door)'; }
+}
 
 function nwrSyncStart(id) {
   nwrSyncStop();
@@ -7819,7 +7838,7 @@ async function nwrSyncPlan(id, b) {
   const start = Math.max(nu + marge, sync.volgendeStart);
   const bron = ctx.createBufferSource();
   bron.buffer = buffer;
-  bron.connect(ctx.destination);
+  bron.connect(nwrGainNode() ?? ctx.destination);
   bron.start(start);
   sync.volgendeStart = start + buffer.duration;
   (sync.bronnen ??= []).push(bron);
@@ -8121,7 +8140,7 @@ function nwrPaneelVul() {
   const st = d?.station ?? nwrStations?.find((x) => x.id === nwrPaneelStation);
   const luister = d?.luister?.actief ? ` · luistert tot ${new Date(d.luister.tot).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}` : (d?.live ? ' · live' : '');
   const speelt = nwrHuidig?.id === nwrPaneelStation;
-  const stopKnop = speelt ? '<button type="button" id="nwrPaneelStop" title="Stoppen met luisteren">⏹</button>' : '';
+  const stopKnop = speelt ? `<button type="button" id="nwrPaneelMute" title="${nwrGedempt ? 'Geluid aan' : 'Geluid uit (tekst loopt door)'}">${nwrGedempt ? '🔇' : '🔊'}</button><button type="button" id="nwrPaneelStop" title="Stoppen met luisteren">⏹</button>` : '';
   const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}${luister}</span>${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
   let body = '';
   if (!d) {
@@ -8142,6 +8161,7 @@ function nwrPaneelVul() {
   NWR_PANEEL_EL.innerHTML = kop + body;
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
   NWR_PANEEL_EL.querySelector('#nwrPaneelStop')?.addEventListener('click', () => { nwrStop(); nwrPaneelSluit(); });
+  NWR_PANEEL_EL.querySelector('#nwrPaneelMute')?.addEventListener('click', nwrMuteToggle);
   if (speelt) nwrPaneelKopStatus();
   const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
   if (tekst) tekst.scrollTop = tekst.scrollHeight;
@@ -8192,6 +8212,7 @@ function nwrSpeel(id) {
     if (ok) { nwrSyncStart(s.id); return; }
     nwrSpelerToon(`${s.roepletters} laden… (live, zonder vertaling)`, 'laden');
     nwrAudio.src = s.url;
+    nwrAudio.muted = nwrGedempt;
     nwrAudio.play().catch((err) => {
       console.warn('[weer] NWR afspelen mislukt:', err);
       nwrSpelerToon(`${s.roepletters} kan niet afspelen (${err.name})`, 'fout');
