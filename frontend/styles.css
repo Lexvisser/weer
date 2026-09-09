@@ -2238,3 +2238,4 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-flits.is-vandaag .nwr-flits-plaats { color:#7fd0ff; }
 .nwr-plaats { color:#ffb020; text-decoration:underline dotted; text-underline-offset:2px; cursor:pointer; }
 .nwr-plaats:hover { color:#ffd27a; }
+.nwr-paneel-plaats { color:#fff1d6; font-weight:400; }

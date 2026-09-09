@@ -8169,7 +8169,9 @@ function nwrPaneelVul() {
   const luister = d?.luister?.actief ? ` · luistert tot ${new Date(d.luister.tot).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}` : (d?.live ? ' · live' : '');
   const speelt = nwrHuidig?.id === nwrPaneelStation;
   const stopKnop = speelt ? `<button type="button" id="nwrPaneelMute" title="${nwrGedempt ? 'Geluid aan' : 'Geluid uit (tekst loopt door)'}">${nwrGedempt ? '🔇' : '🔊'}</button><button type="button" id="nwrPaneelStop" title="Stoppen met luisteren">⏹</button>` : '';
-  const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}${luister}</span>${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
+  // zendernaam vast in de kop (Lex 09/09: "het ging me om de stations zelf"), status apart erachter
+  const plaats = `${st?.plaats ?? ''}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}`;
+  const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}${plaats ? ` · <span class="nwr-paneel-plaats">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}</span>` : ''}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${luister.replace(/^ · /, '')}</span>${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
   let body = '';
   if (!d) {
     const luistert = nwrHuidig?.id === nwrPaneelStation;
