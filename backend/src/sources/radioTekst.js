@@ -23,7 +23,7 @@
 // lat/lon); Whisper hoort namen soms verkeerd ("doton" = Dothan), daarom
 // wordt bij een onbekende naam de dichtstbijzijnde bekende gekozen als het
 // verschil klein is (bewerkingsafstand), net als bij de NAVTEX-kustrapporten.
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -35,16 +35,37 @@ const STATIONS_BESTAND = path.join(HIER, '..', '..', '..', 'frontend', 'data', '
 const MAX_LEEFTIJD_MS = 3 * 60 * 60 * 1000; // waarnemingen/verwachting ouder dan dit niet meer tonen
 const BUFFER_MS = 45 * 60 * 1000; // zoveel tekst kijken we terug (één NWR-cyclus is ~10 min)
 
-let cache = null; // { sleutel, resultaat }
+const caches = new Map(); // pad -> { sleutel, resultaat }
 let plaatsenCache = null;
 let stationsCache = null;
 const gemeldOnbekend = new Set();
 
-function bestand() {
-  if (process.env.RADIO_TEKST_BESTAND) return process.env.RADIO_TEKST_BESTAND;
-  // zelfde map als het NAVTEX-bestand (de app draait als root, de radio als lex)
+// Map met de tekstbestanden: zelfde map als het NAVTEX-bestand (de app draait
+// als root, de radio-dienst als lex). Per zender één bestand:
+// radio_tekst_<ID>.txt; radio_tekst.txt is het (oude) bestand van de
+// systemd-dienst radio-whisper, met een #station-kopregel erin.
+function radioMap() {
+  if (process.env.RADIO_TEKST_MAP) return process.env.RADIO_TEKST_MAP;
   const navtex = process.env.NAVTEX_LOKAAL_BESTAND;
-  return navtex ? path.join(path.dirname(navtex), 'radio_tekst.txt') : path.join(homedir(), 'radio_tekst.txt');
+  return navtex ? path.dirname(navtex) : homedir();
+}
+
+export function radioBestand(stationId) {
+  return path.join(radioMap(), `radio_tekst_${stationId}.txt`);
+}
+
+function alleBestanden() {
+  const map = radioMap();
+  let namen = [];
+  try { namen = readdirSync(map); } catch (_) { return []; }
+  const uit = [];
+  for (const n of namen) {
+    let m = /^radio_tekst_([A-Za-z0-9-]+)\.txt$/.exec(n);
+    if (m) { uit.push({ pad: path.join(map, n), stationId: m[1] }); continue; }
+    if (n === 'radio_tekst.txt' || n === path.basename(process.env.RADIO_TEKST_BESTAND ?? '')) uit.push({ pad: path.join(map, n), stationId: null });
+  }
+  if (process.env.RADIO_TEKST_BESTAND && !uit.some((u) => u.pad === process.env.RADIO_TEKST_BESTAND)) uit.push({ pad: process.env.RADIO_TEKST_BESTAND, stationId: null });
+  return uit;
 }
 
 function laadJson(pad, fallback) {
@@ -63,7 +84,7 @@ function plaatsenVoor(stationId) {
   return lijst.map((p) => ({ ...p, namen: [p.naam, ...(p.aliassen ?? [])].map(normaliseer) }));
 }
 
-function stationInfo(stationId) {
+export function stationInfo(stationId) {
   if (!stationsCache) stationsCache = laadJson(STATIONS_BESTAND, { stations: [] }).stations ?? [];
   return stationsCache.find((s) => s.id === stationId) ?? null;
 }
@@ -391,17 +412,17 @@ function parseStempel(s) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]));
 }
 
-export function fetchRadioTekst() {
-  const pad = bestand();
+function leesBestand(pad, stationIdHint) {
   if (!existsSync(pad)) return { beschikbaar: false, station: null, bijgewerkt: null, regels: [], waarnemingen: [], verwachting: [] };
   const st = statSync(pad);
   const sleutel = `${pad}:${st.mtimeMs}`;
+  const cache = caches.get(pad);
   if (cache && cache.sleutel === sleutel) return cache.resultaat;
 
   const tekst = readFileSync(pad, 'utf-8').slice(-300 * 1024);
   const nu = Date.now();
   const regels = [];
-  let stationId = process.env.RADIO_STATION || null;
+  let stationId = stationIdHint || process.env.RADIO_STATION || null;
   for (const regel of tekst.split('\n')) {
     const m = /^\[(\d{8}-\d{6})\]\s*(.*)$/.exec(regel);
     if (!m) continue;
@@ -432,7 +453,20 @@ export function fetchRadioTekst() {
     waarnemingen,
     verwachting,
   };
-  cache = { sleutel, resultaat };
+  caches.set(pad, { sleutel, resultaat });
   if (waarnemingen.length || verwachting.length) console.log(`[weer] radioTekst: ${station?.roepletters ?? stationId ?? '?'} — ${waarnemingen.length} waarnemingen, ${verwachting.length} tijdvakken`);
   return resultaat;
+}
+
+// Eén zender (radio_tekst_<ID>.txt) of, zonder id, alle zenders waar tekst van is.
+export function fetchRadioTekst(stationId) {
+  if (stationId) return leesBestand(radioBestand(stationId), stationId);
+  const perStation = new Map();
+  for (const b of alleBestanden()) {
+    const r = leesBestand(b.pad, b.stationId);
+    if (!r.beschikbaar || !r.station?.id) continue;
+    const bestaand = perStation.get(r.station.id);
+    if (!bestaand || new Date(r.bijgewerkt ?? 0) > new Date(bestaand.bijgewerkt ?? 0)) perStation.set(r.station.id, r);
+  }
+  return { beschikbaar: true, stations: [...perStation.values()] };
 }
