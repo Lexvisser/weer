@@ -7743,14 +7743,20 @@ async function nwrLuisterStart(id) {
 }
 
 // ---- synchroon meeluisteren --------------------------------------------
-let nwrSync = null; // { id, gespeeld:Set, wachtrij:[], timer, huidig, blokS }
+// 2026-09-09 (avond, v2): niet via het <audio>-element (dat meldde na blok 1
+// nooit 'ended' en daarna botsten de laadverzoeken), maar via Web Audio zoals
+// de NAVTEX-🔊: elk blok ophalen, decoderen en naadloos inplannen achter het
+// vorige. Dan weten we exact wanneer een blok begint en gaat de tekst mee.
+let nwrSync = null; // { id, ctx, gespeeld:Set, bezigMet:Set, timer, volgendeStart, huidig, blokS, timers:[] }
 let nwrSessieStart = 0; // klikmoment; oudere tekst van dezelfde zender blijft buiten het paneel
+let nwrCtx = null; // AudioContext, aangemaakt in de klik (nodig voor iOS)
 
 function nwrSyncStart(id) {
   nwrSyncStop();
-  nwrSync = { id, gespeeld: new Set(), wachtrij: [], timer: null, huidig: null, blokS: 15, bezig: false };
-  nwrAudio.onended = () => { if (nwrSync?.id === id) { clearTimeout(nwrSync.waakhond); nwrSync.bezig = false; nwrSyncVolgende(); } };
-  nwrAudio.onerror = () => { if (nwrSync?.id === id) { nwrSync.bezig = false; setTimeout(nwrSyncVolgende, 500); } };
+  if (!nwrCtx) { try { nwrCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { nwrCtx = null; } }
+  if (!nwrCtx) { nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} geen Web Audio in deze browser`, 'fout'); return; }
+  if (nwrCtx.state === 'suspended') nwrCtx.resume().catch(() => {});
+  nwrSync = { id, ctx: nwrCtx, gespeeld: new Set(), bezigMet: new Set(), timer: null, volgendeStart: 0, huidig: null, blokS: 15, timers: [], verlengd: false, gestart: 0 };
   nwrSync.timer = setInterval(() => nwrSyncPoll(id), 3000);
   nwrSyncPoll(id);
 }
@@ -7758,9 +7764,9 @@ function nwrSyncStart(id) {
 function nwrSyncStop() {
   if (!nwrSync) return;
   clearInterval(nwrSync.timer);
-  clearTimeout(nwrSync.waakhond);
+  for (const t of nwrSync.timers) clearTimeout(t);
+  for (const bron of nwrSync.bronnen ?? []) { try { bron.stop(); } catch (_) { /* al klaar */ } }
   nwrSync = null;
-  if (nwrAudio) { nwrAudio.onended = null; nwrAudio.onerror = null; }
 }
 
 async function nwrSyncPoll(id) {
@@ -7769,15 +7775,12 @@ async function nwrSyncPoll(id) {
   try { d = await fetch(`/api/radio-blokken?station=${encodeURIComponent(id)}`, { cache: 'no-store' }).then((r) => r.json()); } catch (_) { return; }
   if (nwrSync?.id !== id) return;
   nwrSync.blokS = d.blokS ?? 15;
-  for (const b of d.blokken ?? []) {
-    if (nwrSync.gespeeld.has(b.stamp) || nwrSync.wachtrij.some((x) => x.stamp === b.stamp)) continue;
-    nwrSync.wachtrij.push(b);
-  }
-  // niet eindeloos achterlopen: meer dan 4 blokken (1 min) wachtrij → de oudste laten vallen
-  while (nwrSync.wachtrij.length > 4) nwrSync.gespeeld.add(nwrSync.wachtrij.shift().stamp);
-  if (!nwrSync.bezig) nwrSyncVolgende();
-  // 2026-09-09: sessie op de server is 12 min; zolang je nog luistert gewoon
-  // opnieuw starten (Lex: "hierna niets meer" — de sessie was afgelopen).
+  const nieuw = (d.blokken ?? []).filter((b) => !nwrSync.gespeeld.has(b.stamp) && !nwrSync.bezigMet.has(b.stamp));
+  // niet eindeloos achterlopen: alleen de laatste 3 nieuwe blokken meenemen
+  for (const b of nieuw.slice(0, -3)) nwrSync.gespeeld.add(b.stamp);
+  for (const b of nieuw.slice(-3)) nwrSyncPlan(id, b);
+  if (!nwrSync.gestart && !nieuw.length) nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} server luistert… eerste blok over ~${nwrSync.blokS + 5} s`, 'laden');
+  // sessie op de server is 12 min; zolang je nog luistert gewoon opnieuw starten
   if (!d.actief && nwrHuidig?.id === id && !nwrSync.verlengd) {
     nwrSync.verlengd = true;
     nwrLuisterStart(id).then((ok) => { if (nwrSync?.id === id) nwrSync.verlengd = !ok; });
@@ -7785,32 +7788,44 @@ async function nwrSyncPoll(id) {
   if (d.actief && nwrSync.verlengd) nwrSync.verlengd = false;
 }
 
-function nwrSyncVolgende() {
-  if (!nwrSync || nwrSync.bezig) return;
-  const b = nwrSync.wachtrij.shift();
-  if (!b) {
-    if (!nwrSync.gespeeld.size) nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} server luistert… eerste blok over ~${nwrSync.blokS + 5} s`, 'laden');
+// Blok ophalen, decoderen en inplannen direct achter het vorige (of nu, als
+// er niets meer loopt). Bij de start van het blok gaat de tekst mee.
+async function nwrSyncPlan(id, b) {
+  const sync = nwrSync;
+  if (!sync || sync.id !== id) return;
+  sync.bezigMet.add(b.stamp);
+  let buffer;
+  try {
+    const data = await fetch(`/api/radio-audio?station=${encodeURIComponent(id)}&blok=${encodeURIComponent(b.stamp)}`, { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); });
+    buffer = await sync.ctx.decodeAudioData(data);
+  } catch (err) {
+    console.warn('[weer] NWR blok ophalen/decoderen mislukt:', b.stamp, err.message ?? err);
+    sync.bezigMet.delete(b.stamp);
+    sync.gespeeld.add(b.stamp);
     return;
   }
-  nwrSync.bezig = true;
-  nwrSync.gespeeld.add(b.stamp);
-  nwrSync.huidig = b;
-  // waakhond: komt 'ended' niet (2026-09-09: speler bleef hangen), dan na de
-  // bloklengte + 4 s toch door naar het volgende blok
-  clearTimeout(nwrSync.waakhond);
-  nwrSync.waakhond = setTimeout(() => {
-    if (nwrSync?.huidig === b && nwrSync.bezig) { console.warn('[weer] NWR blok zonder ended-event, door naar volgende'); nwrSync.bezig = false; nwrSyncVolgende(); }
-  }, ((b.duurS ?? nwrSync.blokS) + 4) * 1000);
-  nwrAudio.src = `/api/radio-audio?station=${encodeURIComponent(nwrSync.id)}&blok=${encodeURIComponent(b.stamp)}`;
-  nwrAudio.play().then(() => {
+  if (nwrSync !== sync) return;
+  const ctx = sync.ctx;
+  const nu = ctx.currentTime;
+  const start = Math.max(nu + 0.15, sync.volgendeStart);
+  const bron = ctx.createBufferSource();
+  bron.buffer = buffer;
+  bron.connect(ctx.destination);
+  bron.start(start);
+  sync.volgendeStart = start + buffer.duration;
+  (sync.bronnen ??= []).push(bron);
+  bron.onended = () => { const i = sync.bronnen.indexOf(bron); if (i >= 0) sync.bronnen.splice(i, 1); };
+  sync.bezigMet.delete(b.stamp);
+  sync.gespeeld.add(b.stamp);
+  sync.gestart += 1;
+  const wacht = Math.max(0, (start - nu) * 1000);
+  sync.timers.push(setTimeout(() => {
+    if (nwrSync !== sync) return;
+    sync.huidig = b;
     const achter = Math.round((Date.now() - new Date(b.tijd).getTime()) / 1000);
     nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} · synchroon, ${achter} s achter live`, 'live');
-    nwrBlokGestart(nwrSync.id, b);
-  }).catch((err) => {
-    console.warn('[weer] NWR blok afspelen mislukt:', err);
-    nwrSync.bezig = false;
-    setTimeout(nwrSyncVolgende, 500);
-  });
+    nwrBlokGestart(id, b);
+  }, wacht));
 }
 
 // Een blok begint te spelen: tekst in het paneel tot en met dit blok, en de
@@ -8051,6 +8066,8 @@ function nwrSpeel(id) {
   }
   nwrHuidig = s;
   nwrSyncStop();
+  if (!nwrCtx) { try { nwrCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { nwrCtx = null; } } // in de klik, voor iOS
+  if (nwrCtx?.state === 'suspended') nwrCtx.resume().catch(() => {});
   nwrSessieStart = Date.now(); // paneel toont alleen tekst van deze sessie
   nwrPaneelToon(s.id); // meteen open: "luistert mee…", vult zich daarna (Lex: "wat zie ik dan?")
   nwrSpelerToon(`${s.roepletters} server luistert…`, 'laden');
