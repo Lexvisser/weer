@@ -112,7 +112,14 @@ export const STATIONS = [
   // 15:10, 19:10, 23:10. Zelfde locatie als V aangehouden (fysiek dezelfde
   // zendmast) bij gebrek aan een aparte coördinaat voor T specifiek.
   { id: 'T', naam: 'Oostende NAVTEX (Belgische kustberichten)', land: 'BE', lat: 51.1823, lon: 2.8065, navarea: 'I', kleur: '#ff9ec4', zendschema: ['03:10', '07:10', '11:10', '15:10', '19:10', '23:10'] },
-  { id: 'P', naam: 'Scheveningen Radio', land: 'NL', lat: 52.0951, lon: 4.258, navarea: 'I', kleur: '#ffb84c', zendschema: ['02:30', '06:30', '10:30', '14:30', '18:30', '22:30'] },
+  // 2026-09-09, correctie: heette hier 'Scheveningen Radio' met de
+  // coordinaat van Scheveningen. De Nederlandse NAVTEX wordt uitgezonden
+  // vanuit Den Helder (Kustwacht NL); Scheveningen Radio bestaat als
+  // kuststation al lang niet meer. Het projectdocument noemt 'P' overal
+  // Den Helder -- alleen deze tabel liep nog achter, waardoor de pin ~130 km
+  // te ver zuidelijk stond. Coordinaat is de plaatscoordinaat van Den Helder
+  // (benadering, zelfde afspraak als bij S/Pinneberg en J/Gislovshammar).
+  { id: 'P', naam: 'Den Helder (Kustwacht NL)', land: 'NL', lat: 52.96, lon: 4.76, navarea: 'I', kleur: '#ffb84c', zendschema: ['02:30', '06:30', '10:30', '14:30', '18:30', '22:30'] },
   { id: 'E', naam: 'Niton Radio', land: 'UK', lat: 50.6, lon: -1.3, navarea: 'I', kleur: '#ffe14c', zendschema: ['00:40', '04:40', '08:40', '12:40', '16:40', '20:40'] },
   // 'K': zelfde zender/dekkingsgebied als 'E' hierboven (Niton Radio), maar
   // in de live ontvangst kwam die letter herhaaldelijk als 'K' binnen i.p.v.
@@ -170,6 +177,15 @@ export const STATIONS = [
   // zendmastpositie. Zendschema via dezelfde 518 kHz-letterformule als de
   // andere stations hierboven (letterpositie 10 x 10 min = 01:30).
   { id: 'J', naam: 'Gislövshammar Radio', land: 'SE', lat: 55.51, lon: 14.30, navarea: 'I', kleur: '#4cf0c8', zendschema: ['01:30', '05:30', '09:30', '13:30', '17:30', '21:30'] },
+  // 2026-09-09, na eigen nacht-ontvangst: blok UE60 (091920 UTC SEP 26)
+  // noemt zichzelf letterlijk 'MONDOLFO RADIO' en bevat de METEOMAR van het
+  // weercentrum in Rome (Adriatische Zee, Tyrrheense Zee, westelijke
+  // Middellandse Zee). Geen gok dus: het station identificeert zich in de
+  // tekst, en de DTG 19:20 UTC valt exact op het U-slot van de 518 kHz-
+  // letterformule. Eerste NAVAREA III-station in deze tabel; ~1105 km, komt
+  // alleen 's nachts binnen via ruimtegolf. Coordinaat is de plaats
+  // Mondolfo (Marche) -- benadering, zelfde afspraak als hierboven.
+  { id: 'U', naam: 'Mondolfo Radio', land: 'IT', lat: 43.75, lon: 13.10, navarea: 'III', kleur: '#3fb0a0', zendschema: ['03:20', '07:20', '11:20', '15:20', '19:20', '23:20'] },
 ];
 const STATION_PER_ID = new Map(STATIONS.map((s) => [s.id, s]));
 
