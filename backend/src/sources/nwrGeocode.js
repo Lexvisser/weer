@@ -45,12 +45,22 @@ function afstandKm(lat1, lon1, lat2, lon2) {
 
 // Alleen namen die op een plaats kunnen slaan: 4+ tekens, letters, geen
 // weerwoorden of getallen.
-const NIET = /\b(sunny|clear|cloudy|overcast|fair|fog|foggy|haze|hazy|rain|showers|thunderstorms?|wind|winds|calm|south|north|east|west|northeast|northwest|southeast|southwest|degrees|temperature|humidity|pressure|dew|point|airport|reports|weather|following|region|area|station|radio|service|forecast|today|tonight|morning|afternoon|evening|the|and|at|in|of|was|were|is|are|it|hour|miles|knots|percent|inches|feet)\b/;
+const NIET = new Set(('sunny clear cloudy overcast fair fog foggy haze hazy rain showers thunderstorms thunderstorm wind winds calm gusting gusts gust '
+  + 'south north east west northeast northwest southeast southwest degrees temperature humidity pressure dew point airport reports report weather '
+  + 'following region area station radio service forecast today tonight morning afternoon evening the and at in of on was were is are it its hour '
+  + 'miles knots percent inches feet rising falling steady could would should talk with only we have has had you your our a an am pm this that '
+  + 'these those here there now then also again once still just very more most some any all each other such into out up down over under '
+  + 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty '
+  + 'air to from for by as be been being not no yes so if or but than too about after before during between around near across along '
+  + 'reporting observed current currently conditions condition visibility sky skies partly mostly light heavy variable').split(' '));
 export function geschikt(naam) {
   const n = String(naam).toLowerCase().trim();
   if (n.length < 4 || /\d/.test(n)) return false;
-  if (NIET.test(n)) return false;
-  return /^[a-z][a-z .'-]+$/.test(n);
+  if (!/^[a-z][a-z .'-]+$/.test(n)) return false;
+  const woorden = n.split(/\s+/);
+  if (woorden.length > 3) return false;
+  // elk woord moet een plausibel naamwoord zijn: geen stopwoord, minstens 3 letters (behalve st/ft/mt)
+  return woorden.every((w) => !NIET.has(w) && (w.length >= 3 || /^(st|ft|mt)\.?$/.test(w)));
 }
 
 // Synchroon: cache-antwoord of null (en dan op de wachtrij als 'geschikt').
@@ -86,7 +96,7 @@ async function volgende() {
     {
       const lijst = await res.json();
       const ok = (Array.isArray(lijst) ? lijst : [])
-        .map((x) => ({ lat: Number(x.lat), lon: Number(x.lon), naam: (x.name || x.display_name || taak.naam).split(',')[0], soort: `${x.class}/${x.type}`, belang: Number(x.importance ?? 0) }))
+        .map((x) => ({ lat: Number(x.lat), lon: Number(x.lon), naam: (x.name || x.display_name || taak.naam).split(',')[0], soort: `${x.category ?? x.class}/${x.type}`, belang: Number(x.importance ?? 0) }))
         .filter((x) => Number.isFinite(x.lat) && afstandKm(station.lat, station.lon, x.lat, x.lon) <= MAX_KM)
         // plaatsen, vliegvelden, waterlichamen; geen straten/winkels
         .filter((x) => /^(place|aeroway|boundary\/administrative|natural\/(bay|cape|beach|water)|landuse\/military)/.test(x.soort))
