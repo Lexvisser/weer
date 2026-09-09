@@ -116,3 +116,20 @@ async function volgende() {
   bezig = false;
   if (wachtrij.length) setImmediate(volgende);
 }
+
+// Vrij zoeken (zoekveld in de app, 2026-09-09): geen zender-begrenzing, één
+// verzoek per aanroep, zelfde nettigheid (1/s, User-Agent). Geeft de beste
+// treffer terug of null.
+let laatsteVrij = 0;
+export async function zoekVrij(q) {
+  const wacht = Math.max(0, 1100 - (Date.now() - laatsteVrij));
+  await new Promise((r) => setTimeout(r, wacht));
+  laatsteVrij = Date.now();
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`;
+  const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'nl,en' }, signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const lijst = await res.json();
+  const x = Array.isArray(lijst) ? lijst[0] : null;
+  if (!x) return null;
+  return { naam: x.display_name, lat: Number(x.lat), lon: Number(x.lon), soort: `${x.category ?? x.class}/${x.type}` };
+}
