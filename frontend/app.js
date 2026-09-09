@@ -7764,6 +7764,7 @@ function nwrSyncStart(id) {
 function nwrSyncStop() {
   if (!nwrSync) return;
   clearInterval(nwrSync.timer);
+  clearInterval(nwrSync.woordTimer);
   for (const t of nwrSync.timers) clearTimeout(t);
   for (const bron of nwrSync.bronnen ?? []) { try { bron.stop(); } catch (_) { /* al klaar */ } }
   nwrSync = null;
@@ -7828,9 +7829,10 @@ async function nwrSyncPlan(id, b) {
   sync.timers.push(setTimeout(() => {
     if (nwrSync !== sync) return;
     sync.huidig = b;
+    sync.zichtbaar = 0;
     const achter = Math.round((Date.now() - new Date(b.tijd).getTime()) / 1000);
     nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} · synchroon, ${achter} s achter live`, 'live');
-    nwrBlokGestart(id, b);
+    nwrBlokGestart(id, b).then(() => { if (nwrSync === sync && sync.huidig === b) nwrWoordTimerStart(b, start); });
   }, wacht));
 }
 
@@ -8009,6 +8011,58 @@ function nwrVakHtml(v) {
   return `<div class="nwr-vak${v.nacht ? ' is-nacht' : ''}"><div class="nwr-vak-label">${escapeHtml(v.labelNl)}</div><div class="nwr-vak-icoon">${uniek || '·'}</div><div class="nwr-vak-temp">${temp}</div>${regels.join('')}</div>`;
 }
 
+// Eén tekstregel (blok) als HTML; `zichtbaar` (0..1) = hoeveel van de tekst al
+// getoond wordt — het spelende blok groeit woord voor woord mee met de audio
+// (Lex 09/09: "lastig te volgen omdat er een hele alinea tegelijk bijkomt").
+function nwrRegelHtml(r, zichtbaar = 1) {
+  const t = new Date(r.tijd);
+  const spelend = zichtbaar < 1;
+  const delen = Array.isArray(r.delen) && r.delen.length ? r.delen : [{ tekst: r.tekst }];
+  const totaal = delen.reduce((n, d) => n + d.tekst.length, 0);
+  let budget = Math.round(totaal * Math.max(0, Math.min(1, zichtbaar)));
+  const stukken = [];
+  for (const d of delen) {
+    if (budget <= 0) break;
+    const heel = budget >= d.tekst.length;
+    const tekst = heel ? d.tekst : d.tekst.slice(0, budget);
+    budget -= d.tekst.length;
+    if (!d.vertaling || !heel) { stukken.push(escapeHtml(tekst)); continue; }
+    const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
+    stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span></span></span>`);
+  }
+  const cursor = spelend ? '<span class="nwr-cursor">▌</span>' : '';
+  return `<div class="nwr-regel${spelend ? ' is-spelend' : ''}" data-tijd="${escapeHtml(r.tijd)}"><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span> ${stukken.join('')}${cursor}</div>`;
+}
+
+// Tijdens het spelen van een blok: elke 150 ms bepalen hoeveel woorden al
+// gezegd zijn (woord-tijdstempels van Whisper) en alleen die regel bijwerken.
+function nwrWoordTimerStart(b, startCtxTijd) {
+  if (!nwrSync) return;
+  clearInterval(nwrSync.woordTimer);
+  const woorden = Array.isArray(b.woorden) ? b.woorden : [];
+  const totaalChars = woorden.reduce((n, x) => n + x.w.length + 1, 0) || 1;
+  const duur = b.duurS ?? nwrSync.blokS;
+  const tik = () => {
+    if (!nwrSync || nwrSync.huidig !== b) { clearInterval(nwrSync?.woordTimer); return; }
+    const verstreken = nwrSync.ctx.currentTime - startCtxTijd;
+    let chars = 0;
+    if (woorden.length) for (const x of woorden) { if (x.t <= verstreken + 0.15) chars += x.w.length + 1; else break; }
+    nwrSync.zichtbaar = woorden.length ? Math.min(1, chars / totaalChars) : Math.min(1, verstreken / duur);
+    if (verstreken >= duur + 0.5) nwrSync.zichtbaar = 1;
+    const el = NWR_PANEEL_EL?.querySelector(`.nwr-regel[data-tijd="${CSS.escape(b.tijd)}"]`);
+    const blok = nwrTeksten.get(nwrSync.id);
+    const r = blok?.regels?.find((x) => x.tijd === b.tijd);
+    if (el && r) {
+      el.outerHTML = nwrRegelHtml(r, nwrSync.zichtbaar);
+      const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
+      if (tekst) tekst.scrollTop = tekst.scrollHeight;
+    } else if (nwrPaneelOpen) nwrPaneelVul();
+    if (nwrSync.zichtbaar >= 1) clearInterval(nwrSync.woordTimer);
+  };
+  nwrSync.woordTimer = setInterval(tik, 150);
+  tik();
+}
+
 function nwrPaneelVul() {
   if (!NWR_PANEEL_EL) return;
   const d = nwrPaneelStation ? nwrTeksten.get(nwrPaneelStation) : null;
@@ -8025,16 +8079,8 @@ function nwrPaneelVul() {
     const totTijd = nwrSync?.id === d.station?.id && nwrSync.huidig ? new Date(nwrSync.huidig.tijd).getTime() : null;
     const vanaf = nwrHuidig?.id === d.station?.id ? nwrSessieStart - 20 * 1000 : 0;
     const regels = (d.regels ?? []).filter((r) => { const t = new Date(r.tijd).getTime(); return t >= vanaf && (totTijd == null || t <= totTijd); }).slice(-12).map((r) => {
-      const t = new Date(r.tijd);
       const spelend = nwrSync?.huidig?.tijd === r.tijd;
-      const inhoud = Array.isArray(r.delen) && r.delen.length
-        ? r.delen.map((d) => {
-          if (!d.vertaling) return escapeHtml(d.tekst);
-          const m = /^(.*?)(\S+)$/s.exec(d.tekst) ?? [null, '', d.tekst];
-          return `<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span></span></span>`;
-        }).join('')
-        : escapeHtml(r.tekst);
-      return `<div class="nwr-regel${spelend ? ' is-spelend' : ''}"><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span> ${inhoud}</div>`;
+      return nwrRegelHtml(r, spelend ? (nwrSync.zichtbaar ?? 0) : 1);
     });
     if (regels.length) body += `<div class="nwr-tekst">${regels.join('')}</div>`;
     else body += `<div class="nwr-leeg">${d.luister?.actief ? '🎧 De server luistert mee — eerste blok over ~20 s.' : 'Nog geen tekst van deze zender.'}</div>`;

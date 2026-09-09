@@ -155,21 +155,31 @@ function verwerkBlokken(id) {
     if (err) { console.warn(`[weer] radioLuister ${id}: whisper mislukt: ${err.message}`); try { rmSync(pad, { force: true }); } catch (_) { /* weg */ } }
     else {
       const segmenten = parseSegmenten(stdout);
-      // alleen wat in de tweede helft begint (met een halve seconde speling)
-      const eigen = segmenten.filter((sg) => sg.van >= offset - 0.5);
-      let tekst = eigen.map((sg) => sg.tekst).join(' ').replace(/\[[A-Z_ ]+\]/g, ' ').replace(/\s+/g, ' ').trim(); // [BLANK_AUDIO] e.d. eruit
+      // alleen wat in de tweede helft begint (met een halve seconde speling);
+      // per woord de tijd t.o.v. het begin van dit blok (voor het woord-voor-
+      // woord tonen in de app, Lex 09/09: "lastig te volgen, een hele alinea
+      // tegelijk")
+      let woorden = segmenten
+        .filter((sg) => sg.van >= offset - 0.5 && !/^\[[A-Z_ ]+\]$/.test(sg.tekst)) // [BLANK_AUDIO] e.d. eruit
+        .map((sg) => ({ t: Math.max(0, Math.round((sg.van - offset) * 10) / 10), w: sg.tekst }));
+      let tekst = woorden.map((x) => x.w).join(' ').replace(/\s+/g, ' ').trim();
       // dubbel met het vorige blok (zelfde zin twee keer gehoord) wegpoetsen
       if (vorig?.tekst && tekst) {
         const staart = vorig.tekst.slice(-80).toLowerCase();
         for (let n = Math.min(60, tekst.length); n >= 12; n -= 1) {
-          if (staart.endsWith(tekst.slice(0, n).toLowerCase())) { tekst = tekst.slice(n).trim(); break; }
+          if (staart.endsWith(tekst.slice(0, n).toLowerCase())) {
+            tekst = tekst.slice(n).trim();
+            let weg = n; // evenveel woorden vooraan laten vallen
+            while (woorden.length && weg > 0) { weg -= woorden[0].w.length + 1; woorden.shift(); }
+            break;
+          }
         }
       }
       appendFileSync(radioBestand(id), `[${stamp}] ${tekst}\n`);
       // 2026-09-09: blok bewaren voor het synchroon meeluisteren — de browser
       // speelt precies dit blok af op het moment dat de tekst ervan er is.
       const klaarPad = path.join(a.werk, `klaar-${stamp}.wav`);
-      try { renameSync(pad, klaarPad); a.blokken.push({ stamp, tijd: stempelNaarIso(stamp), tekst, pad: klaarPad, duurS: BLOK_S }); } catch (_) { /* dan zonder audio */ }
+      try { renameSync(pad, klaarPad); a.blokken.push({ stamp, tijd: stempelNaarIso(stamp), tekst, woorden, pad: klaarPad, duurS: BLOK_S }); } catch (_) { /* dan zonder audio */ }
       while (a.blokken.length > MAX_BLOKKEN) { const oud = a.blokken.shift(); try { rmSync(oud.pad, { force: true }); } catch (_) { /* weg */ } }
     }
     setImmediate(() => verwerkBlokken(id)); // volgende blok, als dat er al is
@@ -242,7 +252,7 @@ export function startLuisteren(station) {
 export function blokkenStatus(stationId) {
   const a = actief.get(stationId) ?? afgerond.get(stationId);
   if (!a) return { actief: false, tot: null, blokS: BLOK_S, blokken: [] };
-  return { actief: actief.has(stationId), tot: new Date(a.tot).toISOString(), blokS: BLOK_S, blokken: a.blokken.map((b) => ({ stamp: b.stamp, tijd: b.tijd, tekst: b.tekst, duurS: b.duurS })) };
+  return { actief: actief.has(stationId), tot: new Date(a.tot).toISOString(), blokS: BLOK_S, blokken: a.blokken.map((b) => ({ stamp: b.stamp, tijd: b.tijd, tekst: b.tekst, woorden: b.woorden ?? [], duurS: b.duurS })) };
 }
 
 export function blokAudioPad(stationId, stamp) {
