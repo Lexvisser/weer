@@ -20,7 +20,7 @@ const MODEL = process.env.RADIO_WHISPER_MODEL || '/home/lex/whisper.cpp/models/g
 const THREADS = Number(process.env.RADIO_WHISPER_THREADS || 6);
 const BLOK_S = 30;
 const LUISTER_MS = Number(process.env.RADIO_LUISTER_MIN || 12) * 60 * 1000;
-const MAX_TEGELIJK = 2;
+const MAX_TEGELIJK = Number(process.env.RADIO_MAX_TEGELIJK || 2);
 
 const actief = new Map(); // stationId -> { proces, tot, timer, werk, bezig }
 
