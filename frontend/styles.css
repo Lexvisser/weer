@@ -2188,3 +2188,14 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-los-bft { font-size:10px; color:#ffb020; padding:0 3px; border-radius:5px; background:rgba(5,6,10,0.65); }
 .nwr-los-pijl svg { width:22px; height:22px; display:block; }
 @keyframes nwr-los-in { from { opacity:0; transform: scale(0.4); } to { transform: scale(1); } }
+
+/* 2026-09-09 (avond): gele vertaalslag-ballon, onder in het midden (zoals het
+   proefpagina'tje). Zwart op geel, bewust "los" van de app-stijl: dit is het
+   live-momentje. */
+.nwr-ballon { position:absolute; left:50%; bottom:76px; transform: translate(-50%, 24px); z-index:1200; max-width:min(520px, calc(100vw - 24px)); background:#f1c40f; color:#111; border-radius:14px; padding:10px 16px; box-shadow:0 10px 32px rgba(0,0,0,0.55); font-family:'JetBrains Mono',monospace; opacity:0; pointer-events:none; transition: opacity .3s, transform .3s; }
+.nwr-ballon.aan { opacity:1; transform: translate(-50%, 0); }
+.nwr-ballon-kop { font-size:11px; font-weight:700; color:#5a4300; margin-bottom:3px; }
+.nwr-ballon-bron { font-size:12px; font-style:italic; color:#333; }
+.nwr-ballon-pijl { text-align:center; font-size:13px; line-height:1.1; color:#5a4300; }
+.nwr-ballon-vertaling { font-size:17px; font-weight:700; }
+@media (max-width: 640px) { .nwr-ballon { bottom:120px; } }

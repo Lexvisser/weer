@@ -177,10 +177,23 @@ const LUCHT = [
   [/patchy fog|\bfog(gy)?\b|\bmist\b/, { nl: 'mist', icoon: '🌫️' }],
   [/\bhaz(e|y)\b/, { nl: 'heiig', icoon: '🌫️' }],
 ];
-function lucht(txt) {
+// dag: true/false/null — "clear" is overdag ☀️ en 's nachts 🌙
+function lucht(txt, dag = null) {
   const t = txt.toLowerCase();
-  for (const [re, v] of LUCHT) if (re.test(t)) return v;
+  for (const [re, v] of LUCHT) {
+    if (!re.test(t)) continue;
+    if (v.nl === 'helder' && dag === true) return { nl: 'helder', icoon: '☀️' };
+    return v;
+  }
   return null;
+}
+
+// Grof dag/nacht op basis van lengtegraad (zonnetijd ≈ UTC + lon/15 uur).
+function isDag(tijdIso, lon) {
+  if (!tijdIso || !Number.isFinite(lon)) return null;
+  const d = new Date(tijdIso);
+  const uur = ((d.getUTCHours() + d.getUTCMinutes() / 60 + lon / 15) % 24 + 24) % 24;
+  return uur >= 6.5 && uur < 19.5;
 }
 
 const KANS = { 'slight chance': 'kleine kans op', chance: 'kans op', likely: 'waarschijnlijk', definite: '', '': '' };
@@ -334,8 +347,20 @@ function zoekPlaatsInWoorden(plaatsen, woorden) {
   return null;
 }
 
-function parseWaarnemingen(tekst, plaatsen, tijd) {
-  const t = woordenNaarCijfers(tekst.toLowerCase().replace(/[,.;:!?]/g, ' ').replace(/\s+/g, ' '));
+// blokken: [{ tijd, tekst }] — elke waarneming krijgt de tijd van het blok
+// waarin hij gehoord is, plus het Engelse fragment (voor de "vertaalslag").
+function parseWaarnemingen(blokken, plaatsen) {
+  const delen = [];
+  let offset = 0;
+  const grensTijden = [];
+  for (const b of blokken) {
+    const stuk = woordenNaarCijfers(b.tekst.toLowerCase().replace(/[,.;:!?]/g, ' ').replace(/\s+/g, ' ')) + ' ';
+    grensTijden.push({ van: offset, tijd: b.tijd instanceof Date ? b.tijd.toISOString() : b.tijd });
+    delen.push(stuk);
+    offset += stuk.length;
+  }
+  const t = delen.join('');
+  const tijdBij = (index) => { let tijd = grensTijden[0]?.tijd ?? null; for (const g of grensTijden) { if (g.van <= index) tijd = g.tijd; else break; } return tijd; };
   const uit = new Map();
   const grenzen = [];
   const re = /\bit was\b/g;
@@ -363,14 +388,16 @@ function parseWaarnemingen(tekst, plaatsen, tijd) {
     const vocht = /humidity was\s+(\d{1,3})/.exec(segment);
     const druk = /pressure was\s+(\d{2}\.\d{2})/.exec(segment);
     const { plaats } = gevonden;
+    const eind = w ? w.index + w[0].length : temp.index + temp[0].length;
     uit.set(plaats.naam, {
       naam: plaats.naam,
       naamGehoord: gevonden.gehoord,
       lat: plaats.lat,
       lon: plaats.lon,
       soort: 'plaats',
-      tijd,
-      lucht: lucht(segment.slice(0, temp.index)),
+      tijd: tijdBij(grenzen[i]),
+      bron: `${gevonden.gehoord} it was ${segment.slice(0, Math.min(eind, 160)).trim()}`,
+      lucht: lucht(segment.slice(0, temp.index), isDag(tijdBij(grenzen[i]), plaats.lon)),
       tempF: f,
       tempC: fNaarC(f),
       wind,
@@ -393,7 +420,8 @@ function parseWaarnemingen(tekst, plaatsen, tijd) {
       lat: plaats.lat,
       lon: plaats.lon,
       soort: 'boei',
-      tijd,
+      tijd: tijdBij(m.index),
+      bron: m[0].slice(0, 160).trim(),
       lucht: null,
       tempF: null,
       tempC: null,
@@ -441,7 +469,7 @@ function leesBestand(pad, stationIdHint) {
   const laatsteTijd = recent.length ? recent[recent.length - 1].tijd : (regels.length ? regels[regels.length - 1].tijd : null);
   const oud = laatsteTijd ? nu - laatsteTijd.getTime() > MAX_LEEFTIJD_MS : true;
 
-  const waarnemingen = oud ? [] : parseWaarnemingen(buffer, plaatsen, laatsteTijd.toISOString());
+  const waarnemingen = oud ? [] : parseWaarnemingen(recent, plaatsen);
   const verwachting = oud ? [] : parseVerwachting(buffer);
 
   const resultaat = {

@@ -7694,7 +7694,7 @@ let nwrKanLuisteren = null; // server heeft whisper.cpp?
 
 function nwrTekstStart() {
   nwrTekstVervers();
-  if (!nwrTekstTimer) nwrTekstTimer = setInterval(nwrTekstVervers, 30 * 1000);
+  if (!nwrTekstTimer) nwrTekstTimer = setInterval(nwrTekstVervers, 10 * 1000); // 10 s: de ballon moet "live" voelen
 }
 
 function nwrTekstStop() {
@@ -7717,7 +7717,9 @@ async function nwrTekstVervers() {
   }
   if (!nwrActief) return;
   const had = [...nwrTeksten.keys()].sort().join(',');
+  const vorige = nwrTeksten;
   nwrTeksten = new Map((data?.stations ?? []).filter((s) => s.station?.id).map((s) => [s.station.id, s]));
+  nwrBallonNieuw(vorige);
   nwrKanLuisteren = data?.kanLuisteren ?? null;
   if ([...nwrTeksten.keys()].sort().join(',') !== had) tekenNwr(); // 📝 op de juiste pins
   nwrTekenWaarnemingen();
@@ -7777,6 +7779,56 @@ function nwrWaarnemingPopupHtml(w) {
 const NWR_ZOOM_UITWAAIER = 6;
 let nwrWaarnemingMarkers = new Map(); // sleutel -> { marker, w }
 let nwrUitgewaaierd = false;
+const NWR_BALLON_EL = document.getElementById('nwrBallon');
+let nwrBallonGezien = new Set(); // "station|naam|tijd" — al getoond
+let nwrBallonWachtrij = [];
+let nwrBallonTimer = null;
+let nwrBallonEerste = true;
+
+// De "vertaalslag" (Lex, 09/09): elke nieuw verstane waarneming even in een
+// gele ballon onderin — links wat de omroeper zei, rechts wat wij ervan
+// maken — en tegelijk verschijnt het icoon op de kaart. Bij de eerste
+// vulling (app net open) niets tonen, alleen registreren.
+function nwrBallonNieuw() {
+  const nieuw = [];
+  for (const blok of nwrTeksten.values()) for (const w of blok.waarnemingen ?? []) {
+    const sleutel = `${blok.station.id}|${w.naam}|${w.tijd}`;
+    if (nwrBallonGezien.has(sleutel)) continue;
+    nwrBallonGezien.add(sleutel);
+    // alleen vers verstaan (laatste 3 minuten) — anders komt bij het openen alles voorbij
+    if (!nwrBallonEerste && w.tijd && Date.now() - new Date(w.tijd).getTime() < 3 * 60 * 1000) nieuw.push({ w, station: blok.station });
+  }
+  nwrBallonEerste = false;
+  if (nieuw.length) { nwrBallonWachtrij.push(...nieuw); nwrBallonVolgende(); }
+}
+
+function nwrVertaling(w) {
+  const delen = [];
+  if (w.lucht) delen.push(`${w.lucht.icoon} ${w.lucht.nl}`);
+  if (w.tempC != null) delen.push(`🌡️ ${w.tempC} °C`);
+  if (w.wind?.tekst) delen.push(`💨 ${w.wind.tekst}`);
+  if (w.golfM != null) delen.push(`🌊 ${w.golfM} m`);
+  return delen.join(' · ');
+}
+
+function nwrBallonVolgende() {
+  if (nwrBallonTimer || !NWR_BALLON_EL) return;
+  const item = nwrBallonWachtrij.shift();
+  if (!item) { NWR_BALLON_EL.classList.remove('aan'); return; }
+  const { w, station } = item;
+  NWR_BALLON_EL.innerHTML = `<div class="nwr-ballon-kop">📻 ${escapeHtml(station.roepletters)} · ${escapeHtml(w.naam)}</div><div class="nwr-ballon-bron">"${escapeHtml(w.bron ?? w.naamGehoord ?? '')}"</div><div class="nwr-ballon-pijl">↓</div><div class="nwr-ballon-vertaling">${nwrVertaling(w)}</div>`;
+  NWR_BALLON_EL.classList.add('aan');
+  nwrBallonTimer = setTimeout(() => { nwrBallonTimer = null; nwrBallonVolgende(); }, nwrBallonWachtrij.length ? 4500 : 7000);
+}
+
+// Waarneming vrijwel op de zender zelf (< 8 km) niet los tekenen: die zit al
+// in de pin (zie tekenNwr) — anders valt 'ie over de pin heen (Tallahassee).
+function nwrOpZender(w, station) {
+  if (!station) return false;
+  const dLat = (w.lat - station.lat) * 111;
+  const dLon = (w.lon - station.lon) * 111 * Math.cos((station.lat * Math.PI) / 180);
+  return Math.sqrt(dLat * dLat + dLon * dLon) < 8;
+}
 
 function nwrDichtstbijzijndeWaarneming(blok, station) {
   const lijst = (blok?.waarnemingen ?? []).filter((w) => w.tempC != null);
@@ -7812,6 +7864,7 @@ function nwrTekenWaarnemingen() {
     for (const blok of nwrTeksten.values()) for (const w of blok.waarnemingen ?? []) {
       if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) continue;
       w._station = blok.station;
+      if (nwrOpZender(w, blok.station)) continue;
       gewenst.set(`${blok.station.id}|${w.naam}`, w);
     }
   }
@@ -7897,9 +7950,9 @@ function nwrPaneelVul() {
   if (!d) {
     body = `<div class="nwr-leeg">${nwrKanLuisteren === false ? 'De server heeft whisper.cpp niet — verstaan kan niet.' : 'Nog geen tekst van deze zender. Klik op de pin om te luisteren; de server luistert dan mee.'}</div>`;
   } else {
-    if (d.verwachting?.length) body += `<div class="nwr-vakken">${d.verwachting.map(nwrVakHtml).join('')}</div>`;
-    else body += '<div class="nwr-leeg">Nog geen verwachting gehoord (komt elke ~10 min voorbij).</div>';
-    const regels = (d.regels ?? []).slice(-8).map((r) => {
+    // 2026-09-09 (avond): verwachting-kaartjes eruit (Lex: "meerdaagse skippen"),
+    // alleen nog de tekst; de vertaalslag zit in de gele ballon (nwrBallon).
+    const regels = (d.regels ?? []).slice(-12).map((r) => {
       const t = new Date(r.tijd);
       return `<div><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}</span> ${escapeHtml(r.tekst)}</div>`;
     });
