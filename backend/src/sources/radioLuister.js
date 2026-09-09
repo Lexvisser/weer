@@ -157,7 +157,7 @@ function verwerkBlokken(id) {
       const segmenten = parseSegmenten(stdout);
       // alleen wat in de tweede helft begint (met een halve seconde speling)
       const eigen = segmenten.filter((sg) => sg.van >= offset - 0.5);
-      let tekst = eigen.map((sg) => sg.tekst).join(' ').replace(/\s+/g, ' ').trim();
+      let tekst = eigen.map((sg) => sg.tekst).join(' ').replace(/\[[A-Z_ ]+\]/g, ' ').replace(/\s+/g, ' ').trim(); // [BLANK_AUDIO] e.d. eruit
       // dubbel met het vorige blok (zelfde zin twee keer gehoord) wegpoetsen
       if (vorig?.tekst && tekst) {
         const staart = vorig.tekst.slice(-80).toLowerCase();

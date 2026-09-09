@@ -457,6 +457,9 @@ const VERTAAL_RE = [
     const kn = /knots/.test(m[4]); const lo = Number(m[1] ?? m[3]); const hi = Number(m[2] ?? m[3]);
     const a = kn ? knNaarKmh(lo) : mphNaarKmh(lo); const b = kn ? knNaarKmh(hi) : mphNaarKmh(hi);
     return `💨 ${a === b ? a : `${a}–${b}`} km/h (${kmhNaarBft(a) === kmhNaarBft(b) ? kmhNaarBft(b) : `${kmhNaarBft(a)}–${kmhNaarBft(b)}`} Bft)`; }],
+  // kale snelheid: "wind gust observed was 23 miles per hour", "16 miles an hour" (na de specifiekere windpatronen)
+  [/\b(\d{1,3})\s*(miles per hour|miles an hour|mph|knots)\b/g, (m) => {
+    const v = /knots/.test(m[2]) ? knNaarKmh(Number(m[1])) : mphNaarKmh(Number(m[1])); return `💨 ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
   [/\bgusts?\s+(?:up to|to|around|near)\s+(\d{1,3})\s*(miles per hour|miles an hour|mph|knots)/g, (m) => {
     const v = /knots/.test(m[2]) ? knNaarKmh(Number(m[1])) : mphNaarKmh(Number(m[1])); return `💨 stoten ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
   // zee
