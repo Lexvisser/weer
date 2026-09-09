@@ -8067,7 +8067,8 @@ function nwrFlits(r, d, index) {
   if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
   const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling ?? '');
   const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}` : escapeHtml(d.vertaling ?? '');
-  const html = `<div class="nwr-flits" title="${escapeHtml(d.tekst)}">${inhoud}${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : ''}</div>`;
+  const soortKlasse = d.nu ? '' : ' is-vandaag';
+  const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${inhoud}${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : (d.nu ? '' : '<span class="nwr-flits-plaats">vandaag</span>')}</div>`;
   const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5, 5] }), interactive: false, zIndexOffset: 900 });
   nwrFlitsLaag.addLayer(marker);
   setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), NWR_FLITS_MS - 1200);
@@ -8088,10 +8089,11 @@ function nwrRegelHtml(r, zichtbaar = 1) {
     const heel = budget >= d.tekst.length;
     const tekst = heel ? d.tekst : d.tekst.slice(0, budget);
     budget -= d.tekst.length;
-    if (d.vertaling && heel && spelend && d.nu) nwrFlits(r, d, i); // 2026-09-09: alleen actuele waarden even op de kaart (Lex: niet de forecast)
+    if (d.vertaling && heel && spelend && (d.nu || d.soort === 'vandaag')) nwrFlits(r, d, i); // 2026-09-09: actueel (geel) en de verwachting voor vandaag (blauw); later niet
     if (!d.vertaling || !heel) { stukken.push(escapeHtml(tekst)); return; }
     const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
-    stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span></span></span>`);
+    const uitKlasse = d.nu ? '' : (d.soort === 'vandaag' ? ' is-vandaag' : ' is-later');
+    stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit${uitKlasse}">${escapeHtml(d.vertaling)}</span></span></span></span>`);
   });
   const cursor = spelend ? '<span class="nwr-cursor">▌</span>' : '';
   // (tijden per regel weg, Lex 09/09 — lopende tekst leest prettiger)

@@ -496,8 +496,8 @@ function normaliseerMetHoofdletters(tekstRuw) {
 }
 
 // Regel opknippen in stukken tekst en stukken met een vertaling erachter.
-export function regelMetVertalingen(tekstRuw, tijd, lon = null) {
-  const items = vertalingenUitBlok(tekstRuw, tijd, lon);
+export function regelMetVertalingen(tekstRuw, tijd, lon = null, staat = null) {
+  const items = vertalingenUitBlok(tekstRuw, tijd, lon, staat);
   const t = normaliseerMetHoofdletters(tekstRuw);
   const lower = t.toLowerCase();
   const delen = [];
@@ -507,7 +507,7 @@ export function regelMetVertalingen(tekstRuw, tijd, lon = null) {
     const i = lower.indexOf(it.fragment, zoekVanaf);
     if (i < 0) continue;
     if (i > pos) delen.push({ tekst: t.slice(pos, i) });
-    delen.push({ tekst: t.slice(i, i + it.fragment.length), vertaling: it.vertaling, nu: !!it.nu });
+    delen.push({ tekst: t.slice(i, i + it.fragment.length), vertaling: it.vertaling, nu: !!it.nu, soort: it.soort });
     pos = i + it.fragment.length;
     zoekVanaf = pos;
   }
@@ -517,7 +517,16 @@ export function regelMetVertalingen(tekstRuw, tijd, lon = null) {
 
 let vertaalDag = null; // dag/nacht-hint (☀️ of 🌙 bij 'clear') voor de patronen hieronder
 
-function vertalingenUitBlok(tekstRuw, tijd, lon = null) {
+// Tijdvak-woorden in de verwachting; het laatst genoemde geldt tot het volgende
+// (ook over blokgrenzen heen, via `staat.tijdvak`). 2026-09-09, Lex: "de
+// forecast van de dag nemen we wel mee (ander kleurtje dan actueel)".
+const TIJDVAK_WOORD_RE = /\b(today|this afternoon|this evening|tonight|overnight|rest of today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/g;
+function tijdvakSoort(w) {
+  if (!w) return 'later';
+  return /^(today|this afternoon|this evening|tonight|overnight|rest of today)$/.test(w) ? 'vandaag' : 'later';
+}
+
+function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
   vertaalDag = isDag(tijd, lon);
   const t = woordenNaarCijfers(tekstRuw.toLowerCase().replace(/[;:!?]/g, ' ').replace(/\s+/g, ' '));
   const uit = [];
@@ -539,9 +548,25 @@ function vertalingenUitBlok(tekstRuw, tijd, lon = null) {
       // verwachting. Verwachting = highs/lows/tijdvakken/kansen; actueel =
       // verleden tijd of "currently/now/at <uur>".
       const verwachting = /\b(highs?|lows?|tonight|today|tomorrow|overnight|this (?:afternoon|evening|morning)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|expected|forecast|chance|likely|will be|becoming|heat index|wind ?chill|record|normal)\b/.test(context);
+      // laatst genoemde tijdvak vóór dit fragment (in dit blok, anders uit het vorige blok)
+      let tijdvak = staat?.tijdvak ?? null;
+      TIJDVAK_WOORD_RE.lastIndex = 0;
+      let tv;
+      while ((tv = TIJDVAK_WOORD_RE.exec(t)) !== null) { if (tv.index < van) tijdvak = tv[1]; else break; }
+      const record = /\b(record|normal|yesterday|climate summary)\b/.test(context);
       const actueel = /\b(was|were|currently|right now|now|at this (?:hour|time)|at \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)|observed|reported|reporting)\b/.test(context) || /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|raining|rainy|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:dew ?point|humidity|pressure)\b/.test(context);
-      uit.push({ tijd, index: van, bron: `${voor}${m[0]}`.trim(), fragment: m[0].trim(), vertaling, nu: actueel && !verwachting });
+      const nu = actueel && !verwachting;
+      const soort = nu ? 'nu' : (record ? 'overig' : (verwachting || tijdvak ? tijdvakSoort(tijdvak) : 'overig'));
+      uit.push({ tijd, index: van, bron: `${voor}${m[0]}`.trim(), fragment: m[0].trim(), vertaling, nu, soort });
     }
+  }
+  if (staat) {
+    TIJDVAK_WOORD_RE.lastIndex = 0;
+    let laatste = null; let tv;
+    while ((tv = TIJDVAK_WOORD_RE.exec(t)) !== null) laatste = tv[1];
+    if (laatste) staat.tijdvak = laatste;
+    // een waarnemingsrondje ("it was", "sunny, 83") sluit de verwachting af
+    if (/\b(it was|skies were|climate summary|following reports|conditions as of)\b/.test(t)) staat.tijdvak = null;
   }
   return uit.sort((a, b) => a.index - b.index).map(({ index, ...rest }) => rest);
 }
@@ -584,9 +609,10 @@ function leesBestand(pad, stationIdHint) {
   const oud = laatsteTijd ? nu - laatsteTijd.getTime() > MAX_LEEFTIJD_MS : true;
 
   const waarnemingen = oud ? [] : parseWaarnemingen(recent, plaatsen);
+  const vertaalStaat = { tijdvak: null };
   const vertalingen = oud ? [] : recent
     .filter((r) => nu - r.tijd.getTime() <= 10 * 60 * 1000)
-    .flatMap((r) => vertalingenUitBlok(r.tekst, r.tijd.toISOString(), station?.lon ?? null))
+    .flatMap((r) => vertalingenUitBlok(r.tekst, r.tijd.toISOString(), station?.lon ?? null, vertaalStaat))
     .slice(-60);
   const verwachting = oud ? [] : parseVerwachting(buffer);
 
@@ -595,7 +621,7 @@ function leesBestand(pad, stationIdHint) {
     station: station ? { id: station.id, roepletters: station.roepletters, plaats: station.plaats, staat: station.staat, lat: station.lat, lon: station.lon, mhz: station.mhz } : (stationId ? { id: stationId } : null),
     bijgewerkt: laatsteTijd ? laatsteTijd.toISOString() : null,
     live: laatsteTijd ? nu - laatsteTijd.getTime() < 3 * 60 * 1000 : false,
-    regels: regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst, delen: regelMetVertalingen(r.tekst, r.tijd.toISOString(), station?.lon ?? null) })),
+    regels: (() => { const st = { tijdvak: null }; return regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst, delen: regelMetVertalingen(r.tekst, r.tijd.toISOString(), station?.lon ?? null, st) })); })(),
     waarnemingen,
     verwachting,
     vertalingen,
