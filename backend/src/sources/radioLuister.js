@@ -123,7 +123,10 @@ function verwerkBlokken(id) {
   if (vorig && existsSync(vorig.pad)) {
     try { invoer = path.join(a.werk, 'venster-werk.wav'); offset = plakWavs(vorig.pad, pad, invoer); } catch (_) { invoer = pad; offset = 0; }
   }
-  whisperRun(['-m', MODEL, '-f', invoer, '-t', String(THREADS)], (err, stdout) => {
+  // -ml 1 -sow: één woord per regel met tijdstempel, zodat we precies de
+  // woorden uit de tweede helft van het venster kunnen nemen (een doorlopende
+  // spreker gaf anders één segment van 0–30 s en dus niets in de tweede helft)
+  whisperRun(['-m', MODEL, '-f', invoer, '-t', String(THREADS), '-ml', '1', '-sow'], (err, stdout) => {
     a.bezig = false;
     const stamp = f.replace(/\.wav$/, '');
     if (err) { console.warn(`[weer] radioLuister ${id}: whisper mislukt: ${err.message}`); try { rmSync(pad, { force: true }); } catch (_) { /* weg */ } }
