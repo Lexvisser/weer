@@ -8156,12 +8156,15 @@ function nwrPaneelVul() {
     // alleen nog de tekst, met de omrekeningen fel inline (backend: delen per regel).
     const totTijd = nwrSync?.id === d.station?.id && nwrSync.huidig ? new Date(nwrSync.huidig.tijd).getTime() : null;
     const vanaf = nwrHuidig?.id === d.station?.id ? nwrSessieStart - 20 * 1000 : 0;
-    const regels = (d.regels ?? []).filter((r) => { const t = new Date(r.tijd).getTime(); return t >= vanaf && (totTijd == null || t <= totTijd); }).slice(-12).map((r) => {
+    // synchroon maar nog geen blok aan het spelen: niets tonen (anders verschijnt
+    // tekst die daarna weer verdwijnt — Lex: "het begin is een beetje bumpy")
+    const wachtOpEerste = nwrSync?.id === d.station?.id && !nwrSync.huidig;
+    const regels = (wachtOpEerste ? [] : (d.regels ?? [])).filter((r) => { const t = new Date(r.tijd).getTime(); return t >= vanaf && (totTijd == null || t <= totTijd); }).slice(-12).map((r) => {
       const spelend = nwrSync?.huidig?.tijd === r.tijd;
       return nwrRegelHtml(r, spelend ? (nwrSync.zichtbaar ?? 0) : 1);
     });
     if (regels.length) body += `<div class="nwr-tekst">${regels.join('')}</div>`;
-    else body += `<div class="nwr-leeg">${d.luister?.actief ? '🎧 De server luistert mee — eerste blok over ~20 s.' : 'Nog geen tekst van deze zender.'}</div>`;
+    else body += `<div class="nwr-leeg">${(d.luister?.actief || wachtOpEerste) ? '🎧 De server luistert mee — eerste blok over ~20 s.' : 'Nog geen tekst van deze zender.'}</div>`;
   }
   NWR_PANEEL_EL.innerHTML = kop + body;
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
