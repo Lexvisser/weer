@@ -1426,7 +1426,18 @@ export function createApp(env) {
       const pad = blokAudioPad(params.get('station') ?? '', params.get('blok') ?? '');
       if (!pad) { res.writeHead(404); return res.end(); }
       const { createReadStream, statSync: statSyncFs } = await import('node:fs');
-      res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': statSyncFs(pad).size, 'Cache-Control': 'private, max-age=600' });
+      const grootte = statSyncFs(pad).size;
+      // Chrome vraagt media met Range-verzoeken; zonder 206-antwoord komt het
+      // 'ended'-event soms nooit (2026-09-09: speler bleef na blok 1 hangen).
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+      if (range) {
+        const van = range[1] ? Number(range[1]) : 0;
+        const tot = range[2] ? Math.min(Number(range[2]), grootte - 1) : grootte - 1;
+        if (van >= grootte) { res.writeHead(416, { 'Content-Range': `bytes */${grootte}` }); return res.end(); }
+        res.writeHead(206, { 'Content-Type': 'audio/wav', 'Content-Length': tot - van + 1, 'Content-Range': `bytes ${van}-${tot}/${grootte}`, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=600' });
+        return createReadStream(pad, { start: van, end: tot }).pipe(res);
+      }
+      res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': grootte, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=600' });
       return createReadStream(pad).pipe(res);
     }
     if (url === '/api/radio-luister') {

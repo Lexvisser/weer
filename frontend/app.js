@@ -7749,7 +7749,7 @@ let nwrSessieStart = 0; // klikmoment; oudere tekst van dezelfde zender blijft b
 function nwrSyncStart(id) {
   nwrSyncStop();
   nwrSync = { id, gespeeld: new Set(), wachtrij: [], timer: null, huidig: null, blokS: 15, bezig: false };
-  nwrAudio.onended = () => { if (nwrSync?.id === id) { nwrSync.bezig = false; nwrSyncVolgende(); } };
+  nwrAudio.onended = () => { if (nwrSync?.id === id) { clearTimeout(nwrSync.waakhond); nwrSync.bezig = false; nwrSyncVolgende(); } };
   nwrAudio.onerror = () => { if (nwrSync?.id === id) { nwrSync.bezig = false; setTimeout(nwrSyncVolgende, 500); } };
   nwrSync.timer = setInterval(() => nwrSyncPoll(id), 3000);
   nwrSyncPoll(id);
@@ -7758,6 +7758,7 @@ function nwrSyncStart(id) {
 function nwrSyncStop() {
   if (!nwrSync) return;
   clearInterval(nwrSync.timer);
+  clearTimeout(nwrSync.waakhond);
   nwrSync = null;
   if (nwrAudio) { nwrAudio.onended = null; nwrAudio.onerror = null; }
 }
@@ -7794,6 +7795,12 @@ function nwrSyncVolgende() {
   nwrSync.bezig = true;
   nwrSync.gespeeld.add(b.stamp);
   nwrSync.huidig = b;
+  // waakhond: komt 'ended' niet (2026-09-09: speler bleef hangen), dan na de
+  // bloklengte + 4 s toch door naar het volgende blok
+  clearTimeout(nwrSync.waakhond);
+  nwrSync.waakhond = setTimeout(() => {
+    if (nwrSync?.huidig === b && nwrSync.bezig) { console.warn('[weer] NWR blok zonder ended-event, door naar volgende'); nwrSync.bezig = false; nwrSyncVolgende(); }
+  }, ((b.duurS ?? nwrSync.blokS) + 4) * 1000);
   nwrAudio.src = `/api/radio-audio?station=${encodeURIComponent(nwrSync.id)}&blok=${encodeURIComponent(b.stamp)}`;
   nwrAudio.play().then(() => {
     const achter = Math.round((Date.now() - new Date(b.tijd).getTime()) / 1000);
