@@ -7735,10 +7735,99 @@ async function nwrTekstVervers() {
 async function nwrLuisterStart(id) {
   try {
     const r = await fetch(`/api/radio-luister?station=${encodeURIComponent(id)}`).then((x) => x.json());
-    if (!r.ok) console.warn('[weer] radio-luister:', r.fout);
-    else { setTimeout(nwrTekstVervers, 12 * 1000); setTimeout(nwrTekstVervers, 40 * 1000); } // #station-kopregel na ~10 s, eerste blok na ~35 s
+    if (!r.ok) { console.warn('[weer] radio-luister:', r.fout); return false; }
+    setTimeout(nwrTekstVervers, 12 * 1000); // #station-kopregel na ~10 s
+    return true;
   } catch (err) {
     console.warn('[weer] radio-luister mislukt:', err);
+    return false;
+  }
+}
+
+// ---- synchroon meeluisteren --------------------------------------------
+let nwrSync = null; // { id, gespeeld:Set, wachtrij:[], timer, huidig, blokS }
+
+function nwrSyncStart(id) {
+  nwrSyncStop();
+  nwrSync = { id, gespeeld: new Set(), wachtrij: [], timer: null, huidig: null, blokS: 15, bezig: false };
+  nwrAudio.onended = () => { if (nwrSync?.id === id) { nwrSync.bezig = false; nwrSyncVolgende(); } };
+  nwrAudio.onerror = () => { if (nwrSync?.id === id) { nwrSync.bezig = false; setTimeout(nwrSyncVolgende, 500); } };
+  nwrSync.timer = setInterval(() => nwrSyncPoll(id), 3000);
+  nwrSyncPoll(id);
+}
+
+function nwrSyncStop() {
+  if (!nwrSync) return;
+  clearInterval(nwrSync.timer);
+  nwrSync = null;
+  if (nwrAudio) { nwrAudio.onended = null; nwrAudio.onerror = null; }
+}
+
+async function nwrSyncPoll(id) {
+  if (nwrSync?.id !== id) return;
+  let d;
+  try { d = await fetch(`/api/radio-blokken?station=${encodeURIComponent(id)}`, { cache: 'no-store' }).then((r) => r.json()); } catch (_) { return; }
+  if (nwrSync?.id !== id) return;
+  nwrSync.blokS = d.blokS ?? 15;
+  for (const b of d.blokken ?? []) {
+    if (nwrSync.gespeeld.has(b.stamp) || nwrSync.wachtrij.some((x) => x.stamp === b.stamp)) continue;
+    nwrSync.wachtrij.push(b);
+  }
+  // niet eindeloos achterlopen: meer dan 4 blokken (1 min) wachtrij → de oudste laten vallen
+  while (nwrSync.wachtrij.length > 4) nwrSync.gespeeld.add(nwrSync.wachtrij.shift().stamp);
+  if (!nwrSync.bezig) nwrSyncVolgende();
+  if (!d.actief && !nwrSync.wachtrij.length && !nwrSync.bezig && nwrSync.gespeeld.size) {
+    nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} luistersessie klaar (12 min)`, 'fout');
+  }
+}
+
+function nwrSyncVolgende() {
+  if (!nwrSync || nwrSync.bezig) return;
+  const b = nwrSync.wachtrij.shift();
+  if (!b) {
+    if (!nwrSync.gespeeld.size) nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} server luistert… eerste blok over ~${nwrSync.blokS + 5} s`, 'laden');
+    return;
+  }
+  nwrSync.bezig = true;
+  nwrSync.gespeeld.add(b.stamp);
+  nwrSync.huidig = b;
+  nwrAudio.src = `/api/radio-audio?station=${encodeURIComponent(nwrSync.id)}&blok=${encodeURIComponent(b.stamp)}`;
+  nwrAudio.play().then(() => {
+    const achter = Math.round((Date.now() - new Date(b.tijd).getTime()) / 1000);
+    nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} · synchroon, ${achter} s achter live`, 'live');
+    nwrBlokGestart(nwrSync.id, b);
+  }).catch((err) => {
+    console.warn('[weer] NWR blok afspelen mislukt:', err);
+    nwrSync.bezig = false;
+    setTimeout(nwrSyncVolgende, 500);
+  });
+}
+
+// Een blok begint te spelen: tekst in het paneel tot en met dit blok, en de
+// vertalingen van precies dit blok in de ballon — dáár zit de synchroniteit.
+async function nwrBlokGestart(id, b) {
+  let d;
+  try { d = await fetch(`/api/radio-tekst?station=${encodeURIComponent(id)}`, { cache: 'no-store' }).then((r) => r.json()); } catch (_) { d = null; }
+  if (nwrSync?.id !== id) return;
+  if (d?.beschikbaar) {
+    d.luister = d.luister ?? { actief: true };
+    nwrTeksten.set(id, d);
+    nwrTekenWaarnemingen();
+  }
+  if (nwrPaneelOpen) nwrPaneelVul();
+  const blok = nwrTeksten.get(id);
+  const nieuw = [];
+  for (const w of blok?.waarnemingen ?? []) if (w.tijd === b.tijd) nieuw.push({ w, station: blok.station, tijd: w.tijd });
+  for (const v of blok?.vertalingen ?? []) {
+    if (v.tijd !== b.tijd) continue;
+    if ((blok.waarnemingen ?? []).some((w) => w.tijd === v.tijd && (w.bron ?? '').includes(v.fragment))) continue;
+    nieuw.push({ v, station: blok.station, tijd: v.tijd });
+  }
+  if (nieuw.length) {
+    nwrBallonWachtrij.length = 0; // vorige blok is voorbij
+    nwrBallonWachtrij.push(...nieuw);
+    if (nwrBallonTimer) { clearTimeout(nwrBallonTimer); nwrBallonTimer = null; }
+    nwrBallonVolgende();
   }
 }
 
@@ -7790,6 +7879,7 @@ let nwrBallonEerste = true;
 // maken — en tegelijk verschijnt het icoon op de kaart. Bij de eerste
 // vulling (app net open) niets tonen, alleen registreren.
 function nwrBallonNieuw() {
+  if (nwrSync) return; // synchroon: de ballon volgt het spelende blok (nwrBlokGestart)
   const nieuw = [];
   const vers = (tijd) => !nwrBallonEerste && tijd && Date.now() - new Date(tijd).getTime() < 3 * 60 * 1000; // alleen vers verstaan
   const actieveZender = nwrHuidig?.id ?? nwrPaneelStation; // Lex 09/09: "ik zie zaken door elkaar" — alleen de zender waar je naar luistert
@@ -7842,7 +7932,7 @@ function nwrBallonVolgende() {
   const vertaling = w ? nwrVertaling(w) : escapeHtml(v.vertaling ?? '');
   NWR_BALLON_EL.innerHTML = `<div class="nwr-ballon-kop">${kop}</div><div class="nwr-ballon-bron">"${escapeHtml(bron)}"</div><div class="nwr-ballon-pijl">↓</div><div class="nwr-ballon-vertaling">${vertaling}</div>`;
   NWR_BALLON_EL.classList.add('aan');
-  const duur = nwrBallonWachtrij.length > 4 ? 2800 : (nwrBallonWachtrij.length ? 4000 : 6500);
+  const duur = nwrSync ? Math.max(2500, Math.min(6000, (nwrSync.blokS * 1000) / (nwrBallonWachtrij.length + 1))) : (nwrBallonWachtrij.length > 4 ? 2800 : (nwrBallonWachtrij.length ? 4000 : 6500));
   nwrBallonTimer = setTimeout(() => { nwrBallonTimer = null; nwrBallonVolgende(); }, duur);
 }
 
@@ -7979,7 +8069,8 @@ function nwrPaneelVul() {
   } else {
     // 2026-09-09 (avond): verwachting-kaartjes eruit (Lex: "meerdaagse skippen"),
     // alleen nog de tekst; de vertaalslag zit in de gele ballon (nwrBallon).
-    const regels = (d.regels ?? []).slice(-12).map((r) => {
+    const totTijd = nwrSync?.id === d.station?.id && nwrSync.huidig ? new Date(nwrSync.huidig.tijd).getTime() : null;
+    const regels = (d.regels ?? []).filter((r) => totTijd == null || new Date(r.tijd).getTime() <= totTijd).slice(-12).map((r) => {
       const t = new Date(r.tijd);
       return `<div><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}</span> ${escapeHtml(r.tekst)}</div>`;
     });
@@ -8023,18 +8114,29 @@ function nwrSpeel(id) {
     });
   }
   nwrHuidig = s;
-  nwrLuisterStart(s.id); // 2026-09-09: server verstaat mee
+  nwrSyncStop();
   nwrPaneelToon(s.id); // meteen open: "luistert mee…", vult zich daarna (Lex: "wat zie ik dan?")
-  nwrSpelerToon(`${s.roepletters} laden…`, 'laden');
-  nwrAudio.src = s.url;
-  nwrAudio.play().catch((err) => {
-    console.warn('[weer] NWR afspelen mislukt:', err);
-    nwrSpelerToon(`${s.roepletters} kan niet afspelen (${err.name})`, 'fout');
-  });
+  nwrSpelerToon(`${s.roepletters} server luistert…`, 'laden');
   nwrMarkeerSpelend();
+  // 2026-09-09 (avond), Lex: "eerst proberen synchroon te komen". De server
+  // haalt de stream op en verstaat 'm in blokken van 15 s; de browser speelt
+  // precies die blokken af zodra de tekst ervan klaar is — geluid, tekst en
+  // ballon lopen dan gelijk, ~20 s achter op de echte uitzending. Lukt het
+  // luisteren op de server niet, dan gewoon de live stream zoals voorheen.
+  nwrLuisterStart(s.id).then((ok) => {
+    if (nwrHuidig?.id !== s.id) return;
+    if (ok) { nwrSyncStart(s.id); return; }
+    nwrSpelerToon(`${s.roepletters} laden… (live, zonder vertaling)`, 'laden');
+    nwrAudio.src = s.url;
+    nwrAudio.play().catch((err) => {
+      console.warn('[weer] NWR afspelen mislukt:', err);
+      nwrSpelerToon(`${s.roepletters} kan niet afspelen (${err.name})`, 'fout');
+    });
+  });
 }
 
 function nwrStop() {
+  nwrSyncStop();
   if (nwrAudio) {
     nwrAudio.pause();
     nwrAudio.removeAttribute('src');

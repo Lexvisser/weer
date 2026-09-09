@@ -10,7 +10,7 @@
 // radio_whisper.sh, alleen nu vanuit node zodat er niets geïnstalleerd hoeft
 // te worden behalve ffmpeg en whisper.cpp.
 import { spawn, execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync, appendFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, appendFileSync, statSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { radioBestand } from './radioTekst.js';
 
@@ -18,11 +18,16 @@ const FFMPEG = process.env.RADIO_FFMPEG || 'ffmpeg';
 const WHISPER = process.env.RADIO_WHISPER_BIN || '/home/lex/whisper.cpp/build/bin/whisper-cli';
 const MODEL = process.env.RADIO_WHISPER_MODEL || '/home/lex/whisper.cpp/models/ggml-small.en.bin';
 const THREADS = Number(process.env.RADIO_WHISPER_THREADS || 4);
-const BLOK_S = 30;
+const BLOK_S = Number(process.env.RADIO_BLOK_S || 15); // 2026-09-09: 15 s — korter = minder vertraging voor het synchroon meeluisteren
 const LUISTER_MS = Number(process.env.RADIO_LUISTER_MIN || 12) * 60 * 1000;
 const MAX_TEGELIJK = Number(process.env.RADIO_MAX_TEGELIJK || 1); // 2026-09-09 14:00: drie tegelijk + inventarisatie legde de Minisforum plat (load 85, geheugen op)
 
-const actief = new Map(); // stationId -> { proces, tot, timer, werk, bezig }
+const actief = new Map(); // stationId -> { proces, tot, timer, werk, bezig, blokken }
+// Afgeronde luistersessies blijven nog even beschikbaar voor de browser die
+// achterloopt (synchroon meeluisteren): stationId -> { werk, blokken, tot }
+const afgerond = new Map();
+const NABLIJF_MS = 15 * 60 * 1000;
+const MAX_BLOKKEN = 60; // ~15 min audio op tmpfs (wav 16 kHz mono ≈ 0,5 MB per 15 s)
 
 // Eén Whisper tegelijk op de hele server, met nice: elk proces laadt het model
 // (~0,5 GB bij small) en trekt THREADS kernen; meer dan één tegelijk vrat op
@@ -42,6 +47,11 @@ function whisperVolgende() {
     whisperBezig = false;
     try { taak.klaar(err, stdout); } finally { setImmediate(whisperVolgende); }
   });
+}
+
+function stempelNaarIso(s) {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(s);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])).toISOString() : null;
 }
 
 function stempel(d = new Date()) {
@@ -68,7 +78,7 @@ function verwerkBlokken(id) {
   if (!a || a.bezig) return;
   let bestanden;
   try {
-    bestanden = readdirSync(a.werk).filter((f) => f.endsWith('.wav')).sort();
+    bestanden = readdirSync(a.werk).filter((f) => f.endsWith('.wav') && !f.startsWith('klaar-')).sort();
   } catch (_) {
     return;
   }
@@ -80,11 +90,16 @@ function verwerkBlokken(id) {
   const pad = path.join(a.werk, f);
   whisperRun(['-m', MODEL, '-f', pad, '-t', String(THREADS), '-nt'], (err, stdout) => {
     a.bezig = false;
-    try { rmSync(pad, { force: true }); } catch (_) { /* weg is weg */ }
-    if (err) console.warn(`[weer] radioLuister ${id}: whisper mislukt: ${err.message}`);
+    const stamp = f.replace(/\.wav$/, '');
+    if (err) { console.warn(`[weer] radioLuister ${id}: whisper mislukt: ${err.message}`); try { rmSync(pad, { force: true }); } catch (_) { /* weg */ } }
     else {
       const tekst = String(stdout).split('\n').map((r) => r.trim()).filter(Boolean).join(' ');
-      if (tekst) appendFileSync(radioBestand(id), `[${f.replace(/\.wav$/, '')}] ${tekst}\n`);
+      appendFileSync(radioBestand(id), `[${stamp}] ${tekst}\n`);
+      // 2026-09-09: blok bewaren voor het synchroon meeluisteren — de browser
+      // speelt precies dit blok af op het moment dat de tekst ervan er is.
+      const klaarPad = path.join(a.werk, `klaar-${stamp}.wav`);
+      try { renameSync(pad, klaarPad); a.blokken.push({ stamp, tijd: stempelNaarIso(stamp), tekst, pad: klaarPad, duurS: BLOK_S }); } catch (_) { /* dan zonder audio */ }
+      while (a.blokken.length > MAX_BLOKKEN) { const oud = a.blokken.shift(); try { rmSync(oud.pad, { force: true }); } catch (_) { /* weg */ } }
     }
     setImmediate(() => verwerkBlokken(id)); // volgende blok, als dat er al is
   });
@@ -111,7 +126,9 @@ export function startLuisteren(station) {
     path.join(werk, '%Y%m%d-%H%M%S.wav'),
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   proces.stderr.on('data', (d) => console.warn(`[weer] radioLuister ${id} ffmpeg: ${String(d).trim()}`));
-  const a = { proces, tot: Date.now() + LUISTER_MS, werk, bezig: false, timer: null };
+  const oudAf = afgerond.get(id);
+  if (oudAf) { clearTimeout(oudAf.timer); afgerond.delete(id); }
+  const a = { proces, tot: Date.now() + LUISTER_MS, werk, bezig: false, timer: null, blokken: [] };
   actief.set(id, a);
   a.timer = setInterval(() => verwerkBlokken(id), 2000);
 
@@ -121,11 +138,15 @@ export function startLuisteren(station) {
     // laatste blokken nog verwerken, dan de map weg
     const rest = () => {
       if (a.bezig) { setTimeout(rest, 1000); return; }
-      const over = (() => { try { return readdirSync(werk).some((f) => f.endsWith('.wav') && statSync(path.join(werk, f)).size > 32000); } catch (_) { return false; } })();
+      const over = (() => { try { return readdirSync(werk).some((f) => f.endsWith('.wav') && !f.startsWith('klaar-') && statSync(path.join(werk, f)).size > 32000); } catch (_) { return false; } })();
       if (over) { verwerkBlokken(id); setTimeout(rest, 1000); return; }
-      try { rmSync(werk, { recursive: true, force: true }); } catch (_) { /* leeg */ }
       actief.delete(id);
-      console.log(`[weer] radioLuister ${id}: klaar`);
+      const oudAfgerond = afgerond.get(id);
+      if (oudAfgerond?.timer) clearTimeout(oudAfgerond.timer);
+      const na = { werk, blokken: a.blokken, tot: a.tot, timer: null };
+      na.timer = setTimeout(() => { try { rmSync(werk, { recursive: true, force: true }); } catch (_) { /* leeg */ } if (afgerond.get(id) === na) afgerond.delete(id); }, NABLIJF_MS);
+      afgerond.set(id, na);
+      console.log(`[weer] radioLuister ${id}: klaar (${a.blokken.length} blokken blijven ${NABLIJF_MS / 60000} min beschikbaar)`);
     };
     rest();
   };
@@ -133,6 +154,20 @@ export function startLuisteren(station) {
   setTimeout(() => { if (actief.get(id) === a && a.proces) a.proces.kill('SIGTERM'); }, LUISTER_MS);
   console.log(`[weer] radioLuister ${id}: gestart, ${LUISTER_MS / 60000} min (${station.url})`);
   return { ok: true, ...luisterStatus(id) };
+}
+
+// Voor het synchroon meeluisteren: lijst van klare blokken (tijd + tekst) en
+// het pad van de audio van één blok.
+export function blokkenStatus(stationId) {
+  const a = actief.get(stationId) ?? afgerond.get(stationId);
+  if (!a) return { actief: false, tot: null, blokS: BLOK_S, blokken: [] };
+  return { actief: actief.has(stationId), tot: new Date(a.tot).toISOString(), blokS: BLOK_S, blokken: a.blokken.map((b) => ({ stamp: b.stamp, tijd: b.tijd, tekst: b.tekst, duurS: b.duurS })) };
+}
+
+export function blokAudioPad(stationId, stamp) {
+  const a = actief.get(stationId) ?? afgerond.get(stationId);
+  const b = a?.blokken.find((x) => x.stamp === stamp);
+  return b && existsSync(b.pad) ? b.pad : null;
 }
 
 export function stopLuisteren(stationId) {

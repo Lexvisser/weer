@@ -22,7 +22,7 @@ import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, we
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
 import { fetchNavtexKustrapporten } from './sources/navtexKustrapporten.js'; // 2026-09-08, Niton-490 kustrapporten (zelfde laag)
 import { fetchRadioTekst, stationInfo as nwrStationInfo } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
-import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar } from './sources/radioLuister.js'; // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
+import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar, blokkenStatus, blokAudioPad } from './sources/radioLuister.js'; // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
@@ -1415,6 +1415,20 @@ export function createApp(env) {
     // 2026-09-09: op verzoek luisteren naar een NWR-zender (één cyclus, ~12
     // min), gestart vanuit de app bij het aanklikken van een pin. Zie
     // sources/radioLuister.js.
+    // 2026-09-09: synchroon meeluisteren — de browser speelt de blokken die
+    // de server al verstaan heeft (lijst + audio per blok, wav 16 kHz mono).
+    if (url === '/api/radio-blokken') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      return sendJson(res, 200, blokkenStatus(params.get('station') ?? ''));
+    }
+    if (url === '/api/radio-audio') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const pad = blokAudioPad(params.get('station') ?? '', params.get('blok') ?? '');
+      if (!pad) { res.writeHead(404); return res.end(); }
+      const { createReadStream, statSync: statSyncFs } = await import('node:fs');
+      res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': statSyncFs(pad).size, 'Cache-Control': 'private, max-age=600' });
+      return createReadStream(pad).pipe(res);
+    }
     if (url === '/api/radio-luister') {
       const params = new URL(req.url, 'http://localhost').searchParams;
       const id = params.get('station');
