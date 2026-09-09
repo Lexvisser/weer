@@ -7608,6 +7608,7 @@ let nwrLaag = null;
 let nwrStations = null; // uit nwr-stations.json, eenmalig geladen
 let nwrAudio = null; // het ene <audio>-element
 let nwrHuidig = null; // station dat nu speelt/laadt
+let nwrSpelerStatus = null; // laatste { tekst, staat } voor de paneelkop
 let nwrMarkers = new Map(); // id -> marker, om de spelende pin te markeren
 
 async function laadNwrStations() {
@@ -7996,6 +7997,7 @@ function nwrPaneelToon(stationId) {
 function nwrPaneelSluit() {
   nwrPaneelOpen = false;
   NWR_PANEEL_EL?.classList.add('verborgen');
+  if (nwrHuidig && nwrSpelerStatus) { NWR_SPELER_EL?.classList.remove('verborgen'); }
 }
 
 function nwrVakHtml(v) {
@@ -8055,7 +8057,6 @@ function nwrFlits(r, d, index) {
 // getoond wordt — het spelende blok groeit woord voor woord mee met de audio
 // (Lex 09/09: "lastig te volgen omdat er een hele alinea tegelijk bijkomt").
 function nwrRegelHtml(r, zichtbaar = 1) {
-  const t = new Date(r.tijd);
   const spelend = zichtbaar < 1;
   const delen = Array.isArray(r.delen) && r.delen.length ? r.delen : [{ tekst: r.tekst }];
   const totaal = delen.reduce((n, d) => n + d.tekst.length, 0);
@@ -8066,13 +8067,14 @@ function nwrRegelHtml(r, zichtbaar = 1) {
     const heel = budget >= d.tekst.length;
     const tekst = heel ? d.tekst : d.tekst.slice(0, budget);
     budget -= d.tekst.length;
-    if (d.vertaling && heel && spelend) nwrFlits(r, d, i); // 2026-09-09: waarde even op de kaart
+    if (d.vertaling && heel && spelend && d.nu) nwrFlits(r, d, i); // 2026-09-09: alleen actuele waarden even op de kaart (Lex: niet de forecast)
     if (!d.vertaling || !heel) { stukken.push(escapeHtml(tekst)); return; }
     const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
     stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span></span></span>`);
   });
   const cursor = spelend ? '<span class="nwr-cursor">▌</span>' : '';
-  return `<div class="nwr-regel${spelend ? ' is-spelend' : ''}" data-tijd="${escapeHtml(r.tijd)}"><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span> ${stukken.join('')}${cursor}</div>`;
+  // (tijden per regel weg, Lex 09/09 — lopende tekst leest prettiger)
+  return `<div class="nwr-regel${spelend ? ' is-spelend' : ''}" data-tijd="${escapeHtml(r.tijd)}">${stukken.join('')}${cursor}</div>`;
 }
 
 // Tijdens het spelen van een blok: elke 150 ms bepalen hoeveel woorden al
@@ -8104,12 +8106,23 @@ function nwrWoordTimerStart(b, startCtxTijd) {
   tik();
 }
 
+// Speler-status (laden/synchroon/…) in de paneelkop i.p.v. het losse balkje
+function nwrPaneelKopStatus() {
+  const el = NWR_PANEEL_EL?.querySelector('#nwrPaneelSub');
+  if (!el || !nwrSpelerStatus) return;
+  const s = nwrSpelerStatus;
+  const led = `<span class="nwr-speler-led is-${s.staat}" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>`;
+  el.innerHTML = led + escapeHtml(s.tekst);
+}
+
 function nwrPaneelVul() {
   if (!NWR_PANEEL_EL) return;
   const d = nwrPaneelStation ? nwrTeksten.get(nwrPaneelStation) : null;
   const st = d?.station ?? nwrStations?.find((x) => x.id === nwrPaneelStation);
   const luister = d?.luister?.actief ? ` · luistert tot ${new Date(d.luister.tot).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}` : (d?.live ? ' · live' : '');
-  const kop = `<div class="nwr-paneel-kop"><span>📝 ${escapeHtml(st?.roepletters ?? 'NWR')}</span><span class="nwr-paneel-sub">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''} · verstaan op lexdev-nw${luister}</span><button type="button" id="nwrPaneelSluit">✕</button></div>`;
+  const speelt = nwrHuidig?.id === nwrPaneelStation;
+  const stopKnop = speelt ? '<button type="button" id="nwrPaneelStop" title="Stoppen met luisteren">⏹</button>' : '';
+  const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}${luister}</span>${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
   let body = '';
   if (!d) {
     const luistert = nwrHuidig?.id === nwrPaneelStation;
@@ -8128,12 +8141,16 @@ function nwrPaneelVul() {
   }
   NWR_PANEEL_EL.innerHTML = kop + body;
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
+  NWR_PANEEL_EL.querySelector('#nwrPaneelStop')?.addEventListener('click', () => { nwrStop(); nwrPaneelSluit(); });
+  if (speelt) nwrPaneelKopStatus();
   const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
   if (tekst) tekst.scrollTop = tekst.scrollHeight;
 }
 
 function nwrSpelerToon(tekst, staat) {
   if (!NWR_SPELER_EL) return;
+  nwrSpelerStatus = { tekst, staat };
+  if (nwrPaneelOpen) { NWR_SPELER_EL.classList.add('verborgen'); if (nwrPaneelStation === nwrHuidig?.id) nwrPaneelKopStatus(); return; } // 2026-09-09: banner dubbel met de paneelkop (Lex)
   NWR_SPELER_EL.classList.remove('verborgen');
   if (NWR_SPELER_TEKST_EL) NWR_SPELER_TEKST_EL.textContent = tekst;
   if (NWR_SPELER_LED_EL) NWR_SPELER_LED_EL.className = `nwr-speler-led is-${staat}`;
