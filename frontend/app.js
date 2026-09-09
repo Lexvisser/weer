@@ -8039,6 +8039,7 @@ function nwrVakHtml(v) {
 // ging (waarneming met dit fragment), anders in een kransje rond de zender.
 // Na NWR_FLITS_MS vervaagt het en gaat het weg.
 const NWR_FLITS_MS = 20 * 1000;
+const NWR_VANDAAG_MS = 12 * 60 * 1000; // verwachting voor vandaag blijft een cyclus staan
 let nwrFlitsLaag = null;
 let nwrFlitsGedaan = new Set(); // "tijd|index"
 let nwrFlitsTeller = 0;
@@ -8060,8 +8061,11 @@ function nwrFlits(r, d, index) {
   const lon = w ? w.lon : station.lon;
   const plek = w ? `plaats|${w.naam}` : `zender|${station.id}`;
   // dezelfde melding niet twee keer kort na elkaar op dezelfde plek
+  // Verwachting voor vandaag blijft staan tot de volgende cyclus (Lex 09/09:
+  // "dan kan ik ook beoordelen hoe ze worden neergezet"); actuele flitsen kort.
+  const duurMs = d.nu ? NWR_FLITS_MS : NWR_VANDAAG_MS;
   const dubbel = `${plek}|${d.vertaling}`;
-  if (nwrFlitsRecent.has(dubbel) && Date.now() - nwrFlitsRecent.get(dubbel) < NWR_FLITS_MS) return;
+  if (nwrFlitsRecent.has(dubbel) && Date.now() - nwrFlitsRecent.get(dubbel) < duurMs) return;
   nwrFlitsRecent.set(dubbel, Date.now());
   // Trap: alles op dezelfde plek schuin omhoog stapelen (Lex 09/09: "getrapt
   // schuin omhoog"); de eerste bij de plaats zelf, elke volgende 16 px hoger en
@@ -8082,12 +8086,12 @@ function nwrFlits(r, d, index) {
   const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${inhoud}${onderschrift}</div>`;
   const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5 - dx, 5 + dy] }), interactive: false, zIndexOffset: 900 + trede });
   nwrFlitsLaag.addLayer(marker);
-  setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), NWR_FLITS_MS - 1200);
+  setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), duurMs - 1200);
   setTimeout(() => {
     try { nwrFlitsLaag.removeLayer(marker); } catch (_) { /* weg */ }
     const st = nwrFlitsStapel.get(plek);
     if (st) { st.n -= 1; if (st.n <= 0) nwrFlitsStapel.delete(plek); }
-  }, NWR_FLITS_MS);
+  }, duurMs);
 }
 
 // Eén tekstregel (blok) als HTML; `zichtbaar` (0..1) = hoeveel van de tekst al
