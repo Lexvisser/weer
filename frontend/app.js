@@ -7746,6 +7746,7 @@ async function nwrLuisterStart(id) {
 
 // ---- synchroon meeluisteren --------------------------------------------
 let nwrSync = null; // { id, gespeeld:Set, wachtrij:[], timer, huidig, blokS }
+let nwrSessieStart = 0; // klikmoment; oudere tekst van dezelfde zender blijft buiten het paneel
 
 function nwrSyncStart(id) {
   nwrSyncStop();
@@ -8070,7 +8071,8 @@ function nwrPaneelVul() {
     // 2026-09-09 (avond): verwachting-kaartjes eruit (Lex: "meerdaagse skippen"),
     // alleen nog de tekst; de vertaalslag zit in de gele ballon (nwrBallon).
     const totTijd = nwrSync?.id === d.station?.id && nwrSync.huidig ? new Date(nwrSync.huidig.tijd).getTime() : null;
-    const regels = (d.regels ?? []).filter((r) => totTijd == null || new Date(r.tijd).getTime() <= totTijd).slice(-12).map((r) => {
+    const vanaf = nwrHuidig?.id === d.station?.id ? nwrSessieStart - 20 * 1000 : 0;
+    const regels = (d.regels ?? []).filter((r) => { const t = new Date(r.tijd).getTime(); return t >= vanaf && (totTijd == null || t <= totTijd); }).slice(-12).map((r) => {
       const t = new Date(r.tijd);
       return `<div><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}</span> ${escapeHtml(r.tekst)}</div>`;
     });
@@ -8115,6 +8117,7 @@ function nwrSpeel(id) {
   }
   nwrHuidig = s;
   nwrSyncStop();
+  nwrSessieStart = Date.now(); // paneel toont alleen tekst van deze sessie
   nwrPaneelToon(s.id); // meteen open: "luistert mee…", vult zich daarna (Lex: "wat zie ik dan?")
   nwrSpelerToon(`${s.roepletters} server luistert…`, 'laden');
   nwrMarkeerSpelend();

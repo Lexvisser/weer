@@ -10,7 +10,7 @@
 // radio_whisper.sh, alleen nu vanuit node zodat er niets geïnstalleerd hoeft
 // te worden behalve ffmpeg en whisper.cpp.
 import { spawn, execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync, appendFileSync, statSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, appendFileSync, statSync, renameSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { radioBestand } from './radioTekst.js';
 
@@ -72,6 +72,34 @@ export function alleLuisterStatus() {
   return Object.fromEntries([...actief.keys()].map((id) => [id, luisterStatus(id)]));
 }
 
+// 2026-09-09 (avond): blokgrenzen knippen midden in woorden ("up to 1" /
+// "10."), en dan slaat de vertaling op hol. Daarom hoort Whisper steeds het
+// VORIGE + huidige blok (30 s) en nemen we alleen de tekst over die volgens
+// Whisper's eigen tijdstempels in de tweede helft begint. Elk woord wordt zo
+// één keer heel gehoord; de vertraging blijft één blok.
+function plakWavs(padA, padB, uit) {
+  const a = readFileSync(padA); const b = readFileSync(padB);
+  const dataA = a.subarray(44); const dataB = b.subarray(44);
+  const kop = Buffer.from(a.subarray(0, 44));
+  kop.writeUInt32LE(36 + dataA.length + dataB.length, 4);
+  kop.writeUInt32LE(dataA.length + dataB.length, 40);
+  writeFileSync(uit, Buffer.concat([kop, dataA, dataB]));
+  return dataA.length / (16000 * 2); // duur van A in seconden
+}
+
+// "[00:00:12.340 --> 00:00:15.900]   tekst" → { van, tot, tekst }
+function parseSegmenten(stdout) {
+  const uit = [];
+  for (const regel of String(stdout).split('\n')) {
+    const m = /^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3}) --> (\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s*(.*)$/.exec(regel.trim());
+    if (!m) continue;
+    const t = (h, mi, se, ms) => Number(h) * 3600 + Number(mi) * 60 + Number(se) + Number(ms) / 1000;
+    const tekst = m[9].trim();
+    if (tekst) uit.push({ van: t(m[1], m[2], m[3], m[4]), tot: t(m[5], m[6], m[7], m[8]), tekst });
+  }
+  return uit;
+}
+
 // Verwerkt afgeronde blokken (alle wav's behalve de nieuwste, die is nog in opname).
 function verwerkBlokken(id) {
   const a = actief.get(id);
@@ -88,12 +116,29 @@ function verwerkBlokken(id) {
   if (!f) return;
   a.bezig = true;
   const pad = path.join(a.werk, f);
-  whisperRun(['-m', MODEL, '-f', pad, '-t', String(THREADS), '-nt'], (err, stdout) => {
+  // venster = vorig blok + dit blok (als er een vorig blok is)
+  const vorig = a.blokken.length ? a.blokken[a.blokken.length - 1] : null;
+  let invoer = pad;
+  let offset = 0;
+  if (vorig && existsSync(vorig.pad)) {
+    try { invoer = path.join(a.werk, 'venster.wav'); offset = plakWavs(vorig.pad, pad, invoer); } catch (_) { invoer = pad; offset = 0; }
+  }
+  whisperRun(['-m', MODEL, '-f', invoer, '-t', String(THREADS)], (err, stdout) => {
     a.bezig = false;
     const stamp = f.replace(/\.wav$/, '');
     if (err) { console.warn(`[weer] radioLuister ${id}: whisper mislukt: ${err.message}`); try { rmSync(pad, { force: true }); } catch (_) { /* weg */ } }
     else {
-      const tekst = String(stdout).split('\n').map((r) => r.trim()).filter(Boolean).join(' ');
+      const segmenten = parseSegmenten(stdout);
+      // alleen wat in de tweede helft begint (met een halve seconde speling)
+      const eigen = segmenten.filter((sg) => sg.van >= offset - 0.5);
+      let tekst = eigen.map((sg) => sg.tekst).join(' ').replace(/\s+/g, ' ').trim();
+      // dubbel met het vorige blok (zelfde zin twee keer gehoord) wegpoetsen
+      if (vorig?.tekst && tekst) {
+        const staart = vorig.tekst.slice(-80).toLowerCase();
+        for (let n = Math.min(60, tekst.length); n >= 12; n -= 1) {
+          if (staart.endsWith(tekst.slice(0, n).toLowerCase())) { tekst = tekst.slice(n).trim(); break; }
+        }
+      }
       appendFileSync(radioBestand(id), `[${stamp}] ${tekst}\n`);
       // 2026-09-09: blok bewaren voor het synchroon meeluisteren — de browser
       // speelt precies dit blok af op het moment dat de tekst ervan er is.
