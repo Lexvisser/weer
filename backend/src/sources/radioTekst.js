@@ -449,9 +449,9 @@ const VERTAAL_RE = [
   [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
   [/\b(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // "mostly sunny and 79", "cloudy and 68" → lucht-icoon + temperatuur (actueel)
-  [/\b((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke))\s+(?:and|at)\s+(-?\d{1,3})\b(?!\s*(?:percent|%|miles|mph|knots|inches|feet))/g, (m) => { const f = Number(m[2]); if (!(f > -30 && f < 125)) return null; const l = lucht(m[1]) ?? neerslag(m[1])[0]; return `${l?.icoon ?? '🌡️'} ${fNaarC(f)} °C`; }],
+  [/\b((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke))\s*,?\s+(?:(?:and|at)\s+)?(-?\d{1,3})\b(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g, (m) => { const f = Number(m[2]); if (!(f > -30 && f < 125)) return null; const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return `${l?.icoon ?? '🌡️'} ${fNaarC(f)} °C`; }],
   // actuele lucht/neerslag zonder getal: "it was mostly cloudy", "skies were clear", "currently raining"
-  [/\b(?:it was|it is|it's|skies? (?:were|are|is)|currently|sky condition(?:s)? (?:were|are|is)?)\s+((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke|light rain|heavy rain))\b/g, (m) => { const l = lucht(m[1]) ?? neerslag(m[1])[0]; return l ? `${l.icoon} ${l.nl ?? l.tekst}` : null; }],
+  [/\b(?:it was|it is|it's|skies? (?:were|are|is)|currently|sky condition(?:s)? (?:were|are|is)?)\s+((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke|light rain|heavy rain))\b/g, (m) => { const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return l ? `${l.icoon} ${l.nl ?? l.tekst}` : null; }],
   [/\b(-?\d{1,3})\s+with\s+(?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rainy)\s+skies\b/g, (m) => { const f = Number(m[1]); return f > -30 && f < 125 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // "the temperature was 70" (zonder "degrees"), "dew point 65"
   [/\b(?:temperature|temp|dew ?point)\s+(?:was|is|of|around|near|at)?\s*(-?\d{1,3})\b(?!\s*(?:percent|%|degrees|miles|mph|knots))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
@@ -465,6 +465,10 @@ const VERTAAL_RE = [
   // kale snelheid: "wind gust observed was 23 miles per hour", "16 miles an hour" (na de specifiekere windpatronen)
   [/\b(\d{1,3})\s*(miles per hour|miles an hour|mph|knots)\b/g, (m) => {
     const v = /knots/.test(m[2]) ? knNaarKmh(Number(m[1])) : mphNaarKmh(Number(m[1])); return `💨 ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
+  // "wind south at 8", "southeast at 3" (geen eenheid: NWS bedoelt mph)
+  [new RegExp(`\\b(?:winds?\\s+)?${RICHTING_RE}\\s+at\\s+(\\d{1,2})\\b(?!\\s*(?:miles|mph|knots|percent|%|a\\.?m|p\\.?m|degrees))`, 'g'), (m) => {
+    const r = richting(m[1]); const v = mphNaarKmh(Number(m[2])); return `💨 ${r.kort} ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
+  [/\bwinds?\s+(?:were\s+|was\s+)?calm\b/g, () => '💨 windstil'],
   [/\bgusts?\s+(?:up to|to|around|near)\s+(\d{1,3})\s*(miles per hour|miles an hour|mph|knots)/g, (m) => {
     const v = /knots/.test(m[2]) ? knNaarKmh(Number(m[1])) : mphNaarKmh(Number(m[1])); return `💨 stoten ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
   // zee
@@ -490,8 +494,8 @@ function normaliseerMetHoofdletters(tekstRuw) {
 }
 
 // Regel opknippen in stukken tekst en stukken met een vertaling erachter.
-export function regelMetVertalingen(tekstRuw, tijd) {
-  const items = vertalingenUitBlok(tekstRuw, tijd);
+export function regelMetVertalingen(tekstRuw, tijd, lon = null) {
+  const items = vertalingenUitBlok(tekstRuw, tijd, lon);
   const t = normaliseerMetHoofdletters(tekstRuw);
   const lower = t.toLowerCase();
   const delen = [];
@@ -509,7 +513,10 @@ export function regelMetVertalingen(tekstRuw, tijd) {
   return delen;
 }
 
-function vertalingenUitBlok(tekstRuw, tijd) {
+let vertaalDag = null; // dag/nacht-hint (☀️ of 🌙 bij 'clear') voor de patronen hieronder
+
+function vertalingenUitBlok(tekstRuw, tijd, lon = null) {
+  vertaalDag = isDag(tijd, lon);
   const t = woordenNaarCijfers(tekstRuw.toLowerCase().replace(/[;:!?]/g, ' ').replace(/\s+/g, ' '));
   const uit = [];
   const bezet = []; // [van, tot] al gebruikte stukken tekst
@@ -530,7 +537,7 @@ function vertalingenUitBlok(tekstRuw, tijd) {
       // verwachting. Verwachting = highs/lows/tijdvakken/kansen; actueel =
       // verleden tijd of "currently/now/at <uur>".
       const verwachting = /\b(highs?|lows?|tonight|today|tomorrow|overnight|this (?:afternoon|evening|morning)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|expected|forecast|chance|likely|will be|becoming|heat index|wind ?chill|record|normal)\b/.test(context);
-      const actueel = /\b(was|were|currently|right now|now|at this (?:hour|time)|at \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)|observed|reported|reporting)\b/.test(context) || /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|raining|rainy|snowing|thunderstorms?|showers)\s+(?:and|at)\s+\d/.test(m[0]);
+      const actueel = /\b(was|were|currently|right now|now|at this (?:hour|time)|at \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)|observed|reported|reporting)\b/.test(context) || /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|raining|rainy|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:dew ?point|humidity|pressure)\b/.test(context);
       uit.push({ tijd, index: van, bron: `${voor}${m[0]}`.trim(), fragment: m[0].trim(), vertaling, nu: actueel && !verwachting });
     }
   }
@@ -577,7 +584,7 @@ function leesBestand(pad, stationIdHint) {
   const waarnemingen = oud ? [] : parseWaarnemingen(recent, plaatsen);
   const vertalingen = oud ? [] : recent
     .filter((r) => nu - r.tijd.getTime() <= 10 * 60 * 1000)
-    .flatMap((r) => vertalingenUitBlok(r.tekst, r.tijd.toISOString()))
+    .flatMap((r) => vertalingenUitBlok(r.tekst, r.tijd.toISOString(), station?.lon ?? null))
     .slice(-60);
   const verwachting = oud ? [] : parseVerwachting(buffer);
 
@@ -586,7 +593,7 @@ function leesBestand(pad, stationIdHint) {
     station: station ? { id: station.id, roepletters: station.roepletters, plaats: station.plaats, staat: station.staat, lat: station.lat, lon: station.lon, mhz: station.mhz } : (stationId ? { id: stationId } : null),
     bijgewerkt: laatsteTijd ? laatsteTijd.toISOString() : null,
     live: laatsteTijd ? nu - laatsteTijd.getTime() < 3 * 60 * 1000 : false,
-    regels: regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst, delen: regelMetVertalingen(r.tekst, r.tijd.toISOString()) })),
+    regels: regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst, delen: regelMetVertalingen(r.tekst, r.tijd.toISOString(), station?.lon ?? null) })),
     waarnemingen,
     verwachting,
     vertalingen,
