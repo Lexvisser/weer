@@ -142,6 +142,8 @@ function zoekPlaats(plaatsen, naamRuw, stil = false) {
 const WOORDGETAL = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100 };
 function woordenNaarCijfers(t) {
   return t
+    .replace(/\b(sixties|seventies|eighties|nineties|ninties|netties)\b/gi, (m) => ({ sixties: '60s', seventies: '70s', eighties: '80s', nineties: '90s', ninties: '90s', netties: '90s' })[m.toLowerCase()])
+    .replace(/\bthe the\b/g, 'the')
     .replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](one|two|three|four|five|six|seven|eight|nine)\b/gi, (m, a, b) => String(WOORDGETAL[a.toLowerCase()] + WOORDGETAL[b.toLowerCase()]))
     .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?=\s+(?:to\s+\w+\s+)?(?:miles|mph|knots|feet|foot|degrees|percent|seconds))/gi, (m) => String(WOORDGETAL[m.toLowerCase()]))
     // "south at six", "wind north at ten" (windsnelheid als woord, zonder eenheid)
@@ -383,6 +385,8 @@ function parseWaarnemingen(blokken, plaatsen) {
   const t = delen.join('');
   const tijdBij = (index) => { let tijd = grensTijden[0]?.tijd ?? null; for (const g of grensTijden) { if (g.van <= index) tijd = g.tijd; else break; } return tijd; };
   const uit = new Map();
+  // later in de tekst = nieuwer: alleen overschrijven als deze waarneming verder in de tekst staat
+  const zet = (naam, index, obj) => { const oud = uit.get(naam); if (!oud || index >= oud._index) uit.set(naam, { ...obj, _index: index }); };
   const grenzen = [];
   const re = /\bit was\b/g;
   let m;
@@ -392,7 +396,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const gevonden = zoekPlaatsInWoorden(plaatsen, voor);
     if (!gevonden) continue;
     const segment = t.slice(grenzen[i] + 6, i + 1 < grenzen.length ? grenzen[i + 1] : Math.min(t.length, grenzen[i] + 260));
-    const temp = /the temperature was\s+(\d{1,3})\s*degrees?/.exec(segment);
+    const temp = /(?:the\s+)?temperature was\s+(\d{1,3})\s*degrees?/.exec(segment) ?? /^\s*(\d{1,3})\s*degrees?\b/.exec(segment);
     if (!temp) continue;
     const f = Number(temp[1]);
     if (f < -40 || f > 130) continue;
@@ -410,7 +414,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const druk = /pressure was\s+(\d{2}\.\d{2})/.exec(segment);
     const { plaats } = gevonden;
     const eind = w ? w.index + w[0].length : temp.index + temp[0].length;
-    uit.set(plaats.naam, {
+    zet(plaats.naam, grenzen[i], {
       naam: plaats.naam,
       naamGehoord: gevonden.gehoord,
       lat: plaats.lat,
@@ -428,23 +432,23 @@ function parseWaarnemingen(blokken, plaatsen) {
   }
   // Tampa-stijl: "at tampa international light rain was falling the temperature was 86 degrees
   // the humidity was 79 percent the wind was southeast at 8 miles an hour the pressure was 29.98 ..."
-  const tre = /the temperature was\s+(\d{1,3})\s*degrees?/g;
+  const tre = /\b(?:the\s+)?temperature was\s+(\d{1,3})\s*degrees?/g;
   while ((m = tre.exec(t)) !== null) {
     const f = Number(m[1]);
     if (f < -40 || f > 130) continue;
     const voorTekst = t.slice(Math.max(0, m.index - 140), m.index);
     // laatste "at <plaats>" vóór de temperatuur, zonder "it was" ertussen (dat deed de eerste lus al)
-    const atRe = /\bat\s+((?:[a-z']+\s+){1,4}?)(?=(?:(?:light|heavy|moderate|mostly|partly)\s+)?(?:rain|drizzle|snow|fog|showers|thunderstorms?|clear|sunny|cloudy|overcast|fair|foggy|hazy|haze|smoke|skies|sky|the temperature|the wind|the sky))/g;
+    const atRe = /\bat\s+((?:[a-z']+\s+){1,4}?)(?=(?:(?:light|heavy|moderate|mostly|partly)\s+)?(?:rain|drizzle|snow|fog|showers|thunderstorms?|clear|sunny|cloudy|overcast|fair|foggy|hazy|haze|smoke|skies|sky|(?:the\s+)?temperature|the wind|the sky|it was|visibility))/g;
     let at = null; let am;
-    while ((am = atRe.exec(voorTekst)) !== null) at = am;
-    if (!at || /\bit was\b/.test(voorTekst.slice(at.index))) continue;
+    while ((am = atRe.exec(voorTekst + t.slice(m.index, m.index + 24))) !== null) { if (am.index < voorTekst.length) at = am; } // lookahead mag tot in 'temperature' kijken
+    if (!at) continue;
     const woorden = at[1].trim().split(' ').filter(Boolean);
     const gevonden = zoekPlaatsInWoorden(plaatsen, woorden);
-    if (!gevonden || uit.has(gevonden.plaats.naam)) continue;
+    if (!gevonden) continue;
     const segment = t.slice(m.index + m[0].length, Math.min(t.length, m.index + m[0].length + 220));
     const luchtTekst = voorTekst.slice(at.index + at[0].length);
     let wind = null;
-    const w = new RegExp(`the winds? (?:was|were)\\s+(?:(calm|light and variable)|${RICHTING_RE}\\s+at\\s+(\\d{1,3})\\s*(miles an hour|miles per hour|mph|knots)?)`).exec(segment);
+    const w = new RegExp(`(?:the\\s+)?winds? (?:was|were)\\s+(?:(calm|light and variable)|${RICHTING_RE}\\s+at\\s+(\\d{1,3})\\s*(miles an hour|miles per hour|mph|knots)?)`).exec(segment);
     if (w) {
       if (w[1]) wind = { richting: null, graden: null, kmh: 0, bft: 0, tekst: 'windstil' };
       else {
@@ -459,7 +463,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const tijdW = tijdBij(m.index);
     const { plaats } = gevonden;
     const eind = w ? w.index + w[0].length : 0;
-    uit.set(plaats.naam, {
+    zet(plaats.naam, m.index, {
       naam: plaats.naam,
       naamGehoord: gevonden.gehoord,
       lat: plaats.lat,
@@ -487,7 +491,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     // plaatsnaam: de (max 4) woorden vóór het weerwoord
     const voor = t.slice(Math.max(0, p.index - 50), p.index).trim().split(' ').filter(Boolean).slice(-4);
     const gevonden = zoekPlaatsInWoorden(plaatsen, voor);
-    if (!gevonden || uit.has(gevonden.plaats.naam)) continue;
+    if (!gevonden) continue;
     const segment = t.slice(p.eind, Math.min(i + 1 < posities.length ? posities[i + 1].index : t.length, p.eind + 70));
     let wind = null;
     const w = new RegExp(`(?:winds?\\s+)?(?:(calm)|(?:variable\\s+at\\s+(\\d{1,3}))|${RICHTING_RE}\\s+at\\s+(\\d{1,3}))`).exec(segment);
@@ -501,7 +505,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const druk = /pressure\s+(\d{2}\.\d{2})/.exec(segment);
     const tijdW = tijdBij(p.index);
     const { plaats } = gevonden;
-    uit.set(plaats.naam, {
+    zet(plaats.naam, p.index, {
       naam: plaats.naam,
       naamGehoord: gevonden.gehoord,
       lat: plaats.lat,
@@ -527,7 +531,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const kn = Number(m[3]);
     const kmh = knNaarKmh(kn);
     const zee = /seas?\s+(?:were|was|are|is)?\s*(\d{1,2})\s+feet/.exec(m[4]);
-    uit.set(plaats.naam, {
+    zet(plaats.naam, m.index, {
       naam: plaats.naam,
       naamGehoord: `buoy ${m[1].trim()}`,
       lat: plaats.lat,
@@ -542,7 +546,7 @@ function parseWaarnemingen(blokken, plaatsen) {
       golfM: zee ? ftNaarM(Number(zee[1])) : null,
     });
   }
-  const lijst = [...uit.values()];
+  const lijst = [...uit.values()].map(({ _index, ...w }) => w);
   const uniek = [];
   for (const w of lijst) {
     const km = (a, b) => 111 * Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos((a.lat * Math.PI) / 180));
@@ -629,7 +633,7 @@ const VERTAAL_RE = [
   [/\b(\d{1,3})\s+miles?\s+(?:offshore|out|from)\b/g, (m) => `📏 ${Math.round(Number(m[1]) * 1.609)} km`],
   [/\b(?:pressure|barometer)\s+(?:was|is|of)?\s*(\d{2}\.\d{2})\b/g, (m) => `🔵 ${Math.round(Number(m[1]) * 33.8639)} hPa`],
   [/\b(\d{1,2}(?:\.\d{1,2})?)\s+inch(?:es)?\s+of\s+(?:rain|precipitation|snow)\b/g, (m) => `🌧️ ${Math.round(Number(m[1]) * 25.4)} mm`],
-  [/\b(\d{1,2}(?:\.\d{1,2})?)\s+inch(?:es)?\b/g, (m) => `📐 ${Math.round(Number(m[1]) * 25.4)} mm`],
+  [/\b(\d{1,2}(?:\.\d{1,2})?)\s+inch(?:es)?\b/g, (m) => (/^(?:2[89]|3[01])\.\d\d$/.test(m[1]) ? `🔵 ${Math.round(Number(m[1]) * 33.8639)} hPa` : `📐 ${Math.round(Number(m[1]) * 25.4)} mm`)],
 ];
 
 // Zelfde tekst, maar met hoofdletters behouden en getalwoorden → cijfers, zodat
@@ -744,6 +748,7 @@ function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
       const waarnemingsvorm = /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain|raining|rainy|drizzle|snow|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:temperature|dew ?point|pressure|humidity)\s+(?:was|is)?\s*\d/.test(m[0])
         || raaktFragment(/\b(?:winds?\s+)?(?:variable|calm|light and variable)\s+at\s+\d/, vlakVoor, m[0].length)
         || raaktFragment(/\bwinds?\s+(?:is|was|were|are)\s+(?:at\s+)?\d/, vlakVoor, m[0].length)
+        || raaktFragment(/\b(?:visibility\s+(?:was\s+|is\s+)?|gusting to\s+)\d/, vlakVoor, m[0].length)
         || raaktFragment(/\b(?:heat index|wind ?chill|temperature|winds?|gusts?|visibility|pressure|humidity|dew ?point|seas?|waves?)\s+(?:was|were|is|are)\s+(?:around\s+|near\s+|about\s+|the\s+)?(?:\w+\s+at\s+)?\d/, vlakVoor, m[0].length)
         || /\b(?:light |heavy |moderate )?(?:rain|drizzle|snow|fog|showers|thunderstorms?)\s+(?:was|were|is|are)\s+(?:falling|reported|occurring|in progress)\b/.test(`${m[0]}${t.slice(tot, tot + 24)}`);
       const nu = !record && (waarnemingsvorm || (actueel && !verwachting));
