@@ -432,6 +432,68 @@ function parseWaarnemingen(blokken, plaatsen) {
   return [...uit.values()];
 }
 
+
+// ---- losse vertalingen ---------------------------------------------------
+// 2026-09-09 (avond), Lex: "anders is het live luisteren zinloos" — elke zin
+// met een getal-met-eenheid krijgt een omrekening voor de gele ballon, ook
+// zonder plaats of pin: "highs in the lower 90s", "heat index up to 105",
+// "winds 5 to 10 knots", "seas 2 feet", "visibility 5 miles", "29.98 inches".
+const VERTAAL_RE = [
+  // temperatuur-bereiken ("in the lower 90s", "highs around 90", "lows near 74")
+  [/\b(?:highs?|lows?|temperatures?|temps?)\s+(?:will be\s+)?(?:in the\s+)?(?:(upper|mid|middle|lower|low)[\s-]*)?(\d)0s\b/g, (m) => {
+    const b = tempBereik(m[0]); return b ? `🌡️ ${tempTekstC(b)}` : null; }],
+  [/\b(?:highs?|lows?|temperatures?|temps?)\s+(?:will be\s+)?(?:around|near|about|of)\s+(\d{1,3})\b/g, (m) => `🌡️ ${fNaarC(Number(m[1]))} °C`],
+  [/\b(?:in the\s+)(?:(upper|mid|middle|lower|low)[\s-]*)?(\d)0s\b/g, (m) => { const b = tempBereik(m[0]); return b ? `🌡️ ${tempTekstC(b)}` : null; }],
+  [/\bheat index(?: values?)?\s+(?:up to|around|near|of|to)\s+(\d{2,3})\b/g, (m) => `🥵 gevoel ${fNaarC(Number(m[1]))} °C`],
+  [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
+  [/\b(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
+  // wind
+  [new RegExp(`\\b${RICHTING_RE}\\s+winds?\\s+(?:(\\d{1,3})\\s+to\\s+(\\d{1,3})|(?:around|near|about|at)\\s+(\\d{1,3}))\\s*(miles per hour|miles an hour|mph|knots)`, 'g'), (m) => {
+    const w = windUitVerwachting(m[0]); return w ? `💨 ${w.tekst}` : null; }],
+  [/\bwinds?\s+(?:(\d{1,3})\s+to\s+(\d{1,3})|(?:around|near|about|at)\s+(\d{1,3}))\s*(miles per hour|miles an hour|mph|knots)/g, (m) => {
+    const kn = /knots/.test(m[4]); const lo = Number(m[1] ?? m[3]); const hi = Number(m[2] ?? m[3]);
+    const a = kn ? knNaarKmh(lo) : mphNaarKmh(lo); const b = kn ? knNaarKmh(hi) : mphNaarKmh(hi);
+    return `💨 ${a === b ? a : `${a}–${b}`} km/h (${kmhNaarBft(a) === kmhNaarBft(b) ? kmhNaarBft(b) : `${kmhNaarBft(a)}–${kmhNaarBft(b)}`} Bft)`; }],
+  [/\bgusts?\s+(?:up to|to|around|near)\s+(\d{1,3})\s*(miles per hour|miles an hour|mph|knots)/g, (m) => {
+    const v = /knots/.test(m[2]) ? knNaarKmh(Number(m[1])) : mphNaarKmh(Number(m[1])); return `💨 stoten ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
+  // zee
+  [/\b(?:seas?|waves?|swells?)\s+(?:were|was|are|is|will be|of|around|near)?\s*(\d{1,2})(?:\s+to\s+(\d{1,2}))?\s+(?:feet|foot|ft)\b/g, (m) => {
+    const a = ftNaarM(Number(m[1])); const b = m[2] ? ftNaarM(Number(m[2])) : null; return `🌊 ${b != null && b !== a ? `${a}–${b}` : a} m`; }],
+  [/\b(\d{1,2})(?:\s+to\s+(\d{1,2}))?\s+(?:feet|foot|ft)\b(?:\s+at\s+(\d{1,2})\s+seconds?)?/g, (m) => {
+    const a = ftNaarM(Number(m[1])); const b = m[2] ? ftNaarM(Number(m[2])) : null; const p = m[3] ? ` · ${m[3]} s` : '';
+    return `🌊 ${b != null && b !== a ? `${a}–${b}` : a} m${p}`; }],
+  // zicht, afstand, druk, neerslag
+  [/\bvisibility\s+(?:was|is|of|around|near)?\s*(?:less than\s+|under\s+)?(\d{1,2}(?:\.\d)?|one quarter|one half|a quarter|a half)\s*(?:miles?|mi)\b/g, (m) => {
+    const v = { 'one quarter': 0.25, 'a quarter': 0.25, 'one half': 0.5, 'a half': 0.5 }[m[1]] ?? Number(m[1]); return `👁️ zicht ${Math.round(v * 1.609 * 10) / 10} km`; }],
+  [/\b(\d{1,3})\s+nautical miles?\b/g, (m) => `📏 ${Math.round(Number(m[1]) * 1.852)} km`],
+  [/\b(\d{1,3})\s+miles?\s+(?:offshore|out|from)\b/g, (m) => `📏 ${Math.round(Number(m[1]) * 1.609)} km`],
+  [/\b(?:pressure|barometer)\s+(?:was|is|of)?\s*(\d{2}\.\d{2})\b/g, (m) => `🔵 ${Math.round(Number(m[1]) * 33.8639)} hPa`],
+  [/\b(\d{1,2}(?:\.\d{1,2})?)\s+inch(?:es)?\s+of\s+(?:rain|precipitation|snow)\b/g, (m) => `🌧️ ${Math.round(Number(m[1]) * 25.4)} mm`],
+  [/\b(\d{1,2}(?:\.\d{1,2})?)\s+inch(?:es)?\b/g, (m) => `📐 ${Math.round(Number(m[1]) * 25.4)} mm`],
+];
+
+function vertalingenUitBlok(tekstRuw, tijd) {
+  const t = woordenNaarCijfers(tekstRuw.toLowerCase().replace(/[;:!?]/g, ' ').replace(/\s+/g, ' '));
+  const uit = [];
+  const bezet = []; // [van, tot] al gebruikte stukken tekst
+  for (const [re, maak] of VERTAAL_RE) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(t)) !== null) {
+      const van = m.index; const tot = van + m[0].length;
+      if (bezet.some(([a, b]) => van < b && tot > a)) continue; // overlapt met een eerdere (specifiekere) treffer
+      let vertaling = null;
+      try { vertaling = maak(m); } catch (_) { vertaling = null; }
+      if (!vertaling) continue;
+      bezet.push([van, tot]);
+      // wat context erbij: tot 40 tekens vóór het fragment, afgekapt op woordgrens
+      const voor = t.slice(Math.max(0, van - 40), van).replace(/^\S*\s/, '');
+      uit.push({ tijd, index: van, bron: `${voor}${m[0]}`.trim(), fragment: m[0].trim(), vertaling });
+    }
+  }
+  return uit.sort((a, b) => a.index - b.index).map(({ index, ...rest }) => rest);
+}
+
 // ---- bestand lezen ------------------------------------------------------
 function parseStempel(s) {
   // [20260909-112627] = lokale tijd op de server
@@ -470,6 +532,10 @@ function leesBestand(pad, stationIdHint) {
   const oud = laatsteTijd ? nu - laatsteTijd.getTime() > MAX_LEEFTIJD_MS : true;
 
   const waarnemingen = oud ? [] : parseWaarnemingen(recent, plaatsen);
+  const vertalingen = oud ? [] : recent
+    .filter((r) => nu - r.tijd.getTime() <= 10 * 60 * 1000)
+    .flatMap((r) => vertalingenUitBlok(r.tekst, r.tijd.toISOString()))
+    .slice(-60);
   const verwachting = oud ? [] : parseVerwachting(buffer);
 
   const resultaat = {
@@ -480,6 +546,7 @@ function leesBestand(pad, stationIdHint) {
     regels: regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst })),
     waarnemingen,
     verwachting,
+    vertalingen,
   };
   caches.set(pad, { sleutel, resultaat });
   if (waarnemingen.length || verwachting.length) console.log(`[weer] radioTekst: ${station?.roepletters ?? stationId ?? '?'} — ${waarnemingen.length} waarnemingen, ${verwachting.length} tijdvakken`);

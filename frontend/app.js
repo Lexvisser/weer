@@ -7791,15 +7791,34 @@ let nwrBallonEerste = true;
 // vulling (app net open) niets tonen, alleen registreren.
 function nwrBallonNieuw() {
   const nieuw = [];
-  for (const blok of nwrTeksten.values()) for (const w of blok.waarnemingen ?? []) {
-    const sleutel = `${blok.station.id}|${w.naam}|${w.tijd}`;
-    if (nwrBallonGezien.has(sleutel)) continue;
-    nwrBallonGezien.add(sleutel);
-    // alleen vers verstaan (laatste 3 minuten) — anders komt bij het openen alles voorbij
-    if (!nwrBallonEerste && w.tijd && Date.now() - new Date(w.tijd).getTime() < 3 * 60 * 1000) nieuw.push({ w, station: blok.station });
+  const vers = (tijd) => !nwrBallonEerste && tijd && Date.now() - new Date(tijd).getTime() < 3 * 60 * 1000; // alleen vers verstaan
+  for (const blok of nwrTeksten.values()) {
+    const waarnemingen = blok.waarnemingen ?? [];
+    for (const w of waarnemingen) {
+      const sleutel = `${blok.station.id}|${w.naam}|${w.tijd}`;
+      if (nwrBallonGezien.has(sleutel)) continue;
+      nwrBallonGezien.add(sleutel);
+      if (vers(w.tijd)) nieuw.push({ w, station: blok.station, tijd: w.tijd });
+    }
+    // 2026-09-09 (avond): losse zinnen met een getal-met-eenheid ("highs in the
+    // lower 90s", "seas 2 feet") — Lex: "anders is het live luisteren zinloos".
+    // Overgeslagen als het fragment al in een waarneming zit (dubbel).
+    for (const v of blok.vertalingen ?? []) {
+      const sleutel = `${blok.station.id}|${v.tijd}|${v.bron}`;
+      if (nwrBallonGezien.has(sleutel)) continue;
+      nwrBallonGezien.add(sleutel);
+      if (!vers(v.tijd)) continue;
+      if (waarnemingen.some((w) => w.tijd === v.tijd && (w.bron ?? '').includes(v.fragment))) continue;
+      nieuw.push({ v, station: blok.station, tijd: v.tijd });
+    }
   }
   nwrBallonEerste = false;
-  if (nieuw.length) { nwrBallonWachtrij.push(...nieuw); nwrBallonVolgende(); }
+  if (nieuw.length) {
+    nieuw.sort((a, b) => new Date(a.tijd) - new Date(b.tijd));
+    nwrBallonWachtrij.push(...nieuw);
+    if (nwrBallonWachtrij.length > 12) nwrBallonWachtrij.splice(0, nwrBallonWachtrij.length - 12); // niet eindeloos achterlopen
+    nwrBallonVolgende();
+  }
 }
 
 function nwrVertaling(w) {
@@ -7815,10 +7834,14 @@ function nwrBallonVolgende() {
   if (nwrBallonTimer || !NWR_BALLON_EL) return;
   const item = nwrBallonWachtrij.shift();
   if (!item) { NWR_BALLON_EL.classList.remove('aan'); return; }
-  const { w, station } = item;
-  NWR_BALLON_EL.innerHTML = `<div class="nwr-ballon-kop">📻 ${escapeHtml(station.roepletters)} · ${escapeHtml(w.naam)}</div><div class="nwr-ballon-bron">"${escapeHtml(w.bron ?? w.naamGehoord ?? '')}"</div><div class="nwr-ballon-pijl">↓</div><div class="nwr-ballon-vertaling">${nwrVertaling(w)}</div>`;
+  const { w, v, station } = item;
+  const kop = w ? `📻 ${escapeHtml(station.roepletters)} · ${escapeHtml(w.naam)}` : `📻 ${escapeHtml(station.roepletters)}`;
+  const bron = w ? (w.bron ?? w.naamGehoord ?? '') : (v.bron ?? '');
+  const vertaling = w ? nwrVertaling(w) : escapeHtml(v.vertaling ?? '');
+  NWR_BALLON_EL.innerHTML = `<div class="nwr-ballon-kop">${kop}</div><div class="nwr-ballon-bron">"${escapeHtml(bron)}"</div><div class="nwr-ballon-pijl">↓</div><div class="nwr-ballon-vertaling">${vertaling}</div>`;
   NWR_BALLON_EL.classList.add('aan');
-  nwrBallonTimer = setTimeout(() => { nwrBallonTimer = null; nwrBallonVolgende(); }, nwrBallonWachtrij.length ? 4500 : 7000);
+  const duur = nwrBallonWachtrij.length > 4 ? 2800 : (nwrBallonWachtrij.length ? 4000 : 6500);
+  nwrBallonTimer = setTimeout(() => { nwrBallonTimer = null; nwrBallonVolgende(); }, duur);
 }
 
 // Waarneming vrijwel op de zender zelf (< 8 km) niet los tekenen: die zit al
