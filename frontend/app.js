@@ -8065,7 +8065,9 @@ function nwrFlits(r, d, index) {
     lat = ll.lat; lon = ll.lng; naam = station.roepletters ?? '';
   }
   if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
-  const html = `<div class="nwr-flits" title="${escapeHtml(d.tekst)}">${escapeHtml(d.vertaling)}${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : ''}</div>`;
+  const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling ?? '');
+  const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}` : escapeHtml(d.vertaling ?? '');
+  const html = `<div class="nwr-flits" title="${escapeHtml(d.tekst)}">${inhoud}${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : ''}</div>`;
   const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5, 5] }), interactive: false, zIndexOffset: 900 });
   nwrFlitsLaag.addLayer(marker);
   setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), NWR_FLITS_MS - 1200);

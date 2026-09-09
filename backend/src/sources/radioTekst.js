@@ -135,7 +135,9 @@ const WOORDGETAL = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6
 function woordenNaarCijfers(t) {
   return t
     .replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](one|two|three|four|five|six|seven|eight|nine)\b/gi, (m, a, b) => String(WOORDGETAL[a.toLowerCase()] + WOORDGETAL[b.toLowerCase()]))
-    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?=\s+(?:to\s+\w+\s+)?(?:miles|mph|knots|feet|foot|degrees|percent|seconds))/gi, (m) => String(WOORDGETAL[m.toLowerCase()]));
+    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?=\s+(?:to\s+\w+\s+)?(?:miles|mph|knots|feet|foot|degrees|percent|seconds))/gi, (m) => String(WOORDGETAL[m.toLowerCase()]))
+    // "south at six", "wind north at ten" (windsnelheid als woord, zonder eenheid)
+    .replace(/\b((?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+)(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/gi, (m, a, b) => a + String(WOORDGETAL[b.toLowerCase()]));
 }
 
 // ---- eenheden -----------------------------------------------------------
