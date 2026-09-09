@@ -834,6 +834,7 @@ function initMap() {
   kaart.on('mousemove', (e) => { if (gradenActief) toonGradenVak(e.latlng); });
   kaart.on('mouseout', () => { if (gradenActief) verbergGradenVak(); });
   kaart.on('click', (e) => { if (gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
+  kaart.on('click', () => { if (nwrHuidig) nwrStop(); }); // 2026-09-09: NWR — klik naast een zender = stoppen
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(STATIONS_KEY) === 'aan') toggleStations(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(NWR_KEY) === 'aan') toggleNwr(); } catch (_) { /* privé-modus */ }
@@ -7565,7 +7566,12 @@ const VLIEGRADAR_KLIK_ZOOM = 12;
 // (bilawalsidhu/gods-eye-view) met een Radio Browser-laag; Lex: "het gaat me
 // met name om zaken als NOAA radio". NOAA Weather Radio (NWR, VS, 162 MHz)
 // als losse kaartlaag (📻 NWR-knop, rechts naast Zee). Per zender een pin met
-// roepletters; klik = popup met frequentie/plaats/bron en een ▶-knop.
+// roepletters. Bediening bewust minimaal (Lex, 2026-09-09, na de eerste
+// versie met popup: "gelijk luisteren, klik ik buiten een station dan stop"):
+// klik op een pin = meteen luisteren, klik op dezelfde pin of ergens op de
+// kaart = stop, andere pin = wisselen. Géén Leaflet-popup — die zou via de
+// globale popupopen-handler (schermvullende overlay) meeliften, en daar
+// blijven we vanaf. Zenderinfo staat in het speler-balkje linksboven.
 //
 // Bronkeuze (onderzocht 2026-09-09): Radio Browser heeft maar ~17 NWR-
 // streams en de tag "weather" is rommel; vrijwel alle NWR-streams komen van
@@ -7614,20 +7620,8 @@ function toggleNwr() {
   try { localStorage.setItem(NWR_KEY, nwrActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
 }
 
-function nwrPopupHtml(s) {
-  const speelt = nwrHuidig?.id === s.id;
-  const mixed = location.protocol === 'https:' && /^http:/i.test(s.url);
-  const regels = [
-    `<div class="station-stat"><span class="station-stat-label">Frequentie:</span> <span class="station-stat-waarde">${s.mhz.toFixed(3)} MHz</span></div>`,
-    `<div class="station-stat"><span class="station-stat-label">Stream:</span> <span class="station-stat-waarde">${escapeHtml(s.bron ?? '')}</span></div>`,
-  ];
-  if (s.marine) regels.push('<div class="popup-sub">Marine-zender (kustwateren)</div>');
-  if (!s.getest) regels.push('<div class="popup-sub">Stream nog niet bevestigd — probeer maar</div>');
-  if (mixed) regels.push('<div class="popup-sub nwr-waarschuwing">http-stream: werkt alleen als de app zelf over http draait</div>');
-  const knop = speelt
-    ? `<button type="button" class="nwr-popup-knop is-actief" onclick="nwrStop()">⏹ Stop</button>`
-    : `<button type="button" class="nwr-popup-knop" onclick="nwrSpeel('${escapeHtml(s.id)}')">▶ Luister</button>`;
-  return `<div class="popup-titel">📻 ${escapeHtml(s.roepletters)} · ${escapeHtml(s.plaats)}, ${escapeHtml(s.staat)}</div><div class="popup-sub">NOAA Weather Radio</div><div class="popup-stats">${regels.join('')}</div><div class="nwr-popup-acties">${knop}</div>`;
+function nwrOmschrijving(s) {
+  return `${s.roepletters} · ${s.plaats}, ${s.staat} · ${s.mhz.toFixed(3)} MHz · ${s.bron ?? ''}`;
 }
 
 async function tekenNwr() {
@@ -7648,7 +7642,8 @@ async function tekenNwr() {
     const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(s.roepletters)} ${s.mhz.toFixed(3)} MHz — ${escapeHtml(s.plaats)}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span></div>`;
     const marker = L.marker([s.lat, s.lon], {
       icon: L.divIcon({ className: '', html, iconSize: [64, 22], iconAnchor: [11, 11] }),
-    }).bindPopup(() => nwrPopupHtml(s), { maxWidth: 280 });
+    });
+    marker.on('click', () => (nwrHuidig?.id === s.id ? nwrStop() : nwrSpeel(s.id)));
     nwrLaag.addLayer(marker);
     nwrMarkers.set(s.id, marker);
   }
@@ -7662,12 +7657,7 @@ function nwrSpelerToon(tekst, staat) {
 }
 
 function nwrMarkeerSpelend() {
-  // spelende pin oplichten; popup (indien open) verversen zodat de knop klopt
-  for (const [id, m] of nwrMarkers) {
-    const el = m.getElement()?.querySelector('.nwr-pin');
-    el?.classList.toggle('is-spelend', nwrHuidig?.id === id);
-    if (m.isPopupOpen()) m.getPopup().setContent(nwrPopupHtml(nwrStations.find((s) => s.id === id)));
-  }
+  for (const [id, m] of nwrMarkers) m.getElement()?.querySelector('.nwr-pin')?.classList.toggle('is-spelend', nwrHuidig?.id === id);
 }
 
 function nwrSpeel(id) {
@@ -7676,11 +7666,12 @@ function nwrSpeel(id) {
   if (!nwrAudio) {
     nwrAudio = new Audio();
     nwrAudio.preload = 'none';
-    nwrAudio.addEventListener('playing', () => nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} ${nwrHuidig?.plaats ?? ''} · ${nwrHuidig?.mhz?.toFixed(3) ?? ''} MHz`, 'live'));
+    nwrAudio.addEventListener('playing', () => { if (nwrHuidig) nwrSpelerToon(nwrOmschrijving(nwrHuidig), 'live'); });
     nwrAudio.addEventListener('waiting', () => nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} laden…`, 'laden'));
     nwrAudio.addEventListener('error', () => {
       console.warn('[weer] NWR-stream fout:', nwrHuidig?.url, nwrAudio.error?.code);
-      nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} stream offline of geblokkeerd`, 'fout');
+      const mixed = location.protocol === 'https:' && /^http:/i.test(nwrHuidig?.url ?? '');
+      nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} ${mixed ? 'http-stream geblokkeerd (app draait over https)' : 'stream offline'}`, 'fout');
     });
   }
   nwrHuidig = s;
@@ -7703,10 +7694,6 @@ function nwrStop() {
   NWR_SPELER_EL?.classList.add('verborgen');
   nwrMarkeerSpelend();
 }
-// De ▶/⏹-knoppen in de popup-HTML roepen deze functies via onclick aan en
-// hebben dus globale namen nodig — expliciet aan window gehangen.
-window.nwrSpeel = nwrSpeel;
-window.nwrStop = nwrStop;
 
 // 2026-09-07, op verzoek van Lex ("kan ik de app nog verder optuigen? Ik
 // denk aan weerstations in de buurt"): KNMI-weerstations als losse kaartlaag

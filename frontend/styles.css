@@ -2137,10 +2137,6 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-pin.is-ongetest { opacity:0.6; border-style:dashed; }
 .nwr-pin.is-spelend { border-color:#3bff7c; color:#3bff7c; opacity:1; animation: nwr-puls 1.6s ease-in-out infinite; }
 @keyframes nwr-puls { 0%,100% { box-shadow:0 0 0 0 rgba(59,255,124,0.45); } 50% { box-shadow:0 0 0 6px rgba(59,255,124,0); } }
-.nwr-popup-acties { margin-top:8px; }
-.nwr-popup-knop { font:inherit; font-size:12px; font-weight:600; padding:5px 12px; border-radius:8px; border:1px solid rgba(255,176,32,0.6); background:rgba(255,176,32,0.12); color:#ffb020; cursor:pointer; }
-.nwr-popup-knop.is-actief { border-color:rgba(59,255,124,0.6); background:rgba(59,255,124,0.12); color:#3bff7c; }
-.nwr-waarschuwing { color:#ffb020; }
 /* Speler-balkje linksboven, rechts van de zoomknoppen; zelfde plaquette-stijl
    als .graden-vak maar in amber. Alleen zichtbaar tijdens laden/spelen. */
 .nwr-speler { position:absolute; top:8px; left:56px; z-index:1000; display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#ffb020; background:rgba(5,6,10,0.8); border:1px solid rgba(255,176,32,0.4); border-radius:8px; padding:4px 6px 4px 9px; max-width:60%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
