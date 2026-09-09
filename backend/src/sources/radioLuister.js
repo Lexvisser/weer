@@ -16,7 +16,11 @@ import { radioBestand } from './radioTekst.js';
 
 const FFMPEG = process.env.RADIO_FFMPEG || 'ffmpeg';
 const WHISPER = process.env.RADIO_WHISPER_BIN || '/home/lex/whisper.cpp/build/bin/whisper-cli';
-const MODEL = process.env.RADIO_WHISPER_MODEL || '/home/lex/whisper.cpp/models/ggml-small.en.bin';
+// Model: base.en als het er staat (2026-09-09: small.en deed 12–20 s per blok
+// naast Frigate — te traag voor blokken van 15 s; base.en is ~3× sneller en
+// verstaat de NWR-omroepers prima), anders small.en. RADIO_WHISPER_MODEL wint.
+const MODEL = process.env.RADIO_WHISPER_MODEL
+  || (existsSync('/home/lex/whisper.cpp/models/ggml-base.en.bin') ? '/home/lex/whisper.cpp/models/ggml-base.en.bin' : '/home/lex/whisper.cpp/models/ggml-small.en.bin');
 const THREADS = Number(process.env.RADIO_WHISPER_THREADS || 4);
 const BLOK_S = Number(process.env.RADIO_BLOK_S || 15); // 2026-09-09: 15 s — korter = minder vertraging voor het synchroon meeluisteren
 const LUISTER_MS = Number(process.env.RADIO_LUISTER_MIN || 12) * 60 * 1000;
@@ -247,7 +251,7 @@ export function startLuisteren(station) {
   };
   proces.on('exit', (code) => { if (actief.get(id)?.proces === proces) { console.log(`[weer] radioLuister ${id}: ffmpeg gestopt (${code})`); opruimen(); } });
   setTimeout(() => { if (actief.get(id) === a && a.proces) a.proces.kill('SIGTERM'); }, LUISTER_MS);
-  console.log(`[weer] radioLuister ${id}: gestart, ${LUISTER_MS / 60000} min (${station.url})`);
+  console.log(`[weer] radioLuister ${id}: gestart, ${LUISTER_MS / 60000} min (${station.url}), model ${path.basename(MODEL)}`);
   return { ok: true, ...luisterStatus(id) };
 }
 
