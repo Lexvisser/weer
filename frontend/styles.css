@@ -2256,5 +2256,5 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    als de pin; verwachting-voor-vandaag iets blauwer dan actueel. */
 .leaflet-marker-icon.nwr-sv-marker { background:none; border:0; overflow:visible; }
 .nwr-sv { position:absolute; left:0; top:50%; transform:translateY(-50%); display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:11px; background:rgba(5,6,10,0.82); border:1px solid rgba(255,176,32,0.45); color:#fff1d6; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; white-space:nowrap; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
-.nwr-sv-item.is-vandaag { color:#8fdcff; }
+.nwr-sv-plaats { color:#ffb020; font-weight:400; margin-right:2px; }
 .nwr-sv-sep { color:rgba(255,176,32,0.5); }

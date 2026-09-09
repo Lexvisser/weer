@@ -7784,6 +7784,7 @@ async function nwrTekstVervers() {
   nwrKanLuisteren = data?.kanLuisteren ?? null;
   if ([...nwrTeksten.keys()].sort().join(',') !== had) tekenNwr(); // 📝 op de juiste pins
   nwrTekenWaarnemingen();
+  nwrSamenvattingTeken();
   if (nwrPaneelOpen) nwrPaneelVul();
   // luister-status in het spelerbalkje
   const l = nwrHuidig && nwrTeksten.get(nwrHuidig.id)?.luister;
@@ -7929,6 +7930,7 @@ async function nwrBlokGestart(id, b) {
     d.luister = d.luister ?? { actief: true };
     nwrTeksten.set(id, d);
     nwrTekenWaarnemingen();
+    nwrSamenvattingTeken();
   }
   if (nwrPaneelOpen) nwrPaneelVul();
 }
@@ -8095,47 +8097,43 @@ function nwrVakHtml(v) {
   return `<div class="nwr-vak${v.nacht ? ' is-nacht' : ''}"><div class="nwr-vak-label">${escapeHtml(v.labelNl)}</div><div class="nwr-vak-icoon">${uniek || '·'}</div><div class="nwr-vak-temp">${temp}</div>${regels.join('')}</div>`;
 }
 
-// 2026-09-09 (avond, v2): de "flits"-labels (gele omrekeningen die als een
-// trap schuin omhoog bij de zender stapelden) zijn eruit — Lex: "deze
-// opeenstapeling van icons gaat aan zijn doel voorbij". Daarvoor in de plaats
-// één vast samenvattingsblokje rechts naast de spelende pin: per soort
-// (🌡️ 💨 🌊 ☔ …) de LAATST gehoorde waarde; een nieuwe waarde overschrijft de
-// oude, dus het groeit nooit. Het blokje leeft zolang die zender speelt.
-// Alle herkende waarden blijven daarnaast gewoon als chips in het paneel.
-let nwrSamenvatting = new Map(); // icoon -> { tekst, tijd }
+// 2026-09-09 (avond, v3): de "flits"-labels (gele omrekeningen die als een
+// trap bij de zender stapelden) zijn eruit — Lex: "deze opeenstapeling van
+// icons gaat aan zijn doel voorbij". Daarna kort een blokje met "de laatste
+// gehoorde waarde per soort" geprobeerd; dat toonde telkens de laatste stad
+// uit het rondje "current conditions" (Lex: "alle temperaturen en
+// windsnelheden die voorbij komen, dat kan niet kloppen — die horen bij
+// Tallahassee"). Nu: één vast blokje rechts naast de spelende pin met de
+// waarneming die de backend al aan een PLAATS koppelt, en dan alleen de
+// dichtstbijzijnde bij de zender (binnen NWR_SV_MAX_KM), met plaatsnaam.
+// De waarnemingen van de andere plaatsen blijven gewoon op hún plek op de
+// kaart staan (nwrTekenWaarnemingen) — Lex: "die wil ik geplot blijven zien".
+// Ververst als er een nieuw tekstblok binnenkomt; weg bij stop.
+const NWR_SV_MAX_KM = 80;
 let nwrSamenvattingMarker = null;
-const NWR_SAMENVATTING_MAX = 6;
-
-function nwrSamenvattingBij(d) {
-  if (!nwrHuidig || !d?.vertaling) return;
-  const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling);
-  if (!mm) return;
-  const oud = nwrSamenvatting.get(mm[1]);
-  if (oud && oud.tekst === mm[2]) return; // zelfde waarde (de regel wordt elke 150 ms opnieuw opgebouwd): niets doen, anders knippert het blokje
-  nwrSamenvatting.delete(mm[1]); // opnieuw achteraan: nieuwste rechts
-  nwrSamenvatting.set(mm[1], { tekst: mm[2], tijd: Date.now(), soort: d.nu ? 'nu' : 'vandaag' });
-  while (nwrSamenvatting.size > NWR_SAMENVATTING_MAX) nwrSamenvatting.delete(nwrSamenvatting.keys().next().value);
-  nwrSamenvattingTeken();
-}
+let nwrSamenvattingHtml = '';
 
 function nwrSamenvattingWis() {
-  nwrSamenvatting = new Map();
-  nwrSamenvattingTeken();
+  if (nwrSamenvattingMarker && kaart) { kaart.removeLayer(nwrSamenvattingMarker); nwrSamenvattingMarker = null; }
+  nwrSamenvattingHtml = '';
 }
 
-let nwrSamenvattingHtml = '';
 function nwrSamenvattingTeken() {
   if (!kaart) return;
   const st = nwrHuidig;
-  if (!st || !nwrSamenvatting.size) {
-    if (nwrSamenvattingMarker) { kaart.removeLayer(nwrSamenvattingMarker); nwrSamenvattingMarker = null; }
-    nwrSamenvattingHtml = '';
-    return;
-  }
-  const delen = [...nwrSamenvatting].map(([icoon, v]) => `<span class="nwr-sv-item${v.soort === 'vandaag' ? ' is-vandaag' : ''}" title="${v.soort === 'vandaag' ? 'verwachting vandaag' : 'actueel'}">${escapeHtml(icoon)} ${escapeHtml(v.tekst)}</span>`);
-  const html = `<div class="nwr-sv">${delen.join('<span class="nwr-sv-sep">·</span>')}</div>`;
+  const blok = st ? nwrTeksten.get(st.id) : null;
+  const w = st ? nwrDichtstbijzijndeWaarneming(blok, st) : null;
+  if (!st || !w || stationsAfstandKm(w, st) > NWR_SV_MAX_KM) { nwrSamenvattingWis(); return; }
+  const delen = [];
+  if (w.lucht?.icoon) delen.push(`<span class="nwr-sv-item" title="${escapeHtml(w.lucht.nl ?? '')}">${w.lucht.icoon}</span>`);
+  if (w.tempC != null) delen.push(`<span class="nwr-sv-item">🌡️ ${w.tempC} °C</span>`);
+  if (w.wind?.tekst) delen.push(`<span class="nwr-sv-item">💨 ${escapeHtml(w.wind.tekst)}</span>`);
+  if (w.golfM != null) delen.push(`<span class="nwr-sv-item">🌊 ${w.golfM} m</span>`);
+  if (!delen.length) { nwrSamenvattingWis(); return; }
+  const t = w.tijd ? new Date(w.tijd).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  const html = `<div class="nwr-sv" title="gehoord ${t}"><span class="nwr-sv-plaats">${escapeHtml(w.naam)}</span>${delen.join('<span class="nwr-sv-sep">·</span>')}</div>`;
   const sleutel = `${st.id}|${html}`;
-  if (nwrSamenvattingMarker && sleutel === nwrSamenvattingHtml) return; // ongewijzigd: niet hertekenen
+  if (nwrSamenvattingMarker && sleutel === nwrSamenvattingHtml) return; // ongewijzigd: niet hertekenen (knipperde)
   nwrSamenvattingHtml = sleutel;
   // rechts van de pin (die is ~84 px breed vanaf anker 11): negatief anker = naar rechts
   const icon = L.divIcon({ className: 'nwr-sv-marker', html, iconSize: [10, 22], iconAnchor: [-78, 11] });
@@ -8158,7 +8156,6 @@ function nwrRegelHtml(r, zichtbaar = 1) {
     const heel = budget >= d.tekst.length;
     const tekst = heel ? d.tekst : d.tekst.slice(0, budget);
     budget -= d.tekst.length;
-    if (d.vertaling && heel && spelend && !d.woord && (d.nu || d.soort === 'vandaag')) nwrSamenvattingBij(d); // 2026-09-09: laatste waarde per soort in het blokje bij de pin
     // Lex 09/09: in de tekst alleen omrekeningen (°C, km/h, Bft, hPa…); woorden
     // als "zonnig"/"buien" niet als label — die zijn alleen voor het icoon op de kaart.
     if (d.plaats && heel) { stukken.push(`<span class="nwr-plaats" data-lat="${d.lat}" data-lon="${d.lon}" title="${escapeHtml(d.plaats)} — klik om ernaartoe te gaan">${escapeHtml(tekst)}</span>`); return; } // 2026-09-09: herkende plaats, aanklikbaar
