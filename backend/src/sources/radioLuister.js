@@ -17,12 +17,32 @@ import { radioBestand } from './radioTekst.js';
 const FFMPEG = process.env.RADIO_FFMPEG || 'ffmpeg';
 const WHISPER = process.env.RADIO_WHISPER_BIN || '/home/lex/whisper.cpp/build/bin/whisper-cli';
 const MODEL = process.env.RADIO_WHISPER_MODEL || '/home/lex/whisper.cpp/models/ggml-small.en.bin';
-const THREADS = Number(process.env.RADIO_WHISPER_THREADS || 6);
+const THREADS = Number(process.env.RADIO_WHISPER_THREADS || 4);
 const BLOK_S = 30;
 const LUISTER_MS = Number(process.env.RADIO_LUISTER_MIN || 12) * 60 * 1000;
-const MAX_TEGELIJK = Number(process.env.RADIO_MAX_TEGELIJK || 2);
+const MAX_TEGELIJK = Number(process.env.RADIO_MAX_TEGELIJK || 1); // 2026-09-09 14:00: drie tegelijk + inventarisatie legde de Minisforum plat (load 85, geheugen op)
 
 const actief = new Map(); // stationId -> { proces, tot, timer, werk, bezig }
+
+// Eén Whisper tegelijk op de hele server, met nice: elk proces laadt het model
+// (~0,5 GB bij small) en trekt THREADS kernen; meer dan één tegelijk vrat op
+// 2026-09-09 al het geheugen op naast Frigate/Immich.
+let whisperBezig = false;
+const whisperWachtrij = [];
+function whisperRun(args, klaar) {
+  whisperWachtrij.push({ args, klaar });
+  whisperVolgende();
+}
+function whisperVolgende() {
+  if (whisperBezig) return;
+  const taak = whisperWachtrij.shift();
+  if (!taak) return;
+  whisperBezig = true;
+  execFile('nice', ['-n', '15', WHISPER, ...taak.args], { timeout: 180000, maxBuffer: 1 << 20 }, (err, stdout) => {
+    whisperBezig = false;
+    try { taak.klaar(err, stdout); } finally { setImmediate(whisperVolgende); }
+  });
+}
 
 function stempel(d = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
@@ -58,7 +78,7 @@ function verwerkBlokken(id) {
   if (!f) return;
   a.bezig = true;
   const pad = path.join(a.werk, f);
-  execFile(WHISPER, ['-m', MODEL, '-f', pad, '-t', String(THREADS), '-nt'], { timeout: 120000, maxBuffer: 1 << 20 }, (err, stdout) => {
+  whisperRun(['-m', MODEL, '-f', pad, '-t', String(THREADS), '-nt'], (err, stdout) => {
     a.bezig = false;
     try { rmSync(pad, { force: true }); } catch (_) { /* weg is weg */ }
     if (err) console.warn(`[weer] radioLuister ${id}: whisper mislukt: ${err.message}`);

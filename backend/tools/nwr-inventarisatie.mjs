@@ -7,7 +7,8 @@
 // namen die nog niet in data/nwr-plaatsen.json staan.
 //
 // Draaien op lexdev-nw, als lex, vanuit ~/weer-app/backend:
-//   RADIO_MAX_TEGELIJK=3 RADIO_WHISPER_THREADS=4 nohup node tools/nwr-inventarisatie.mjs > ~/radio_inventarisatie.log 2>&1 &
+//   (LET OP 2026-09-09: drie tegelijk legde de server plat — gebruik 1)
+//   RADIO_MAX_TEGELIJK=1 RADIO_WHISPER_THREADS=4 nohup node tools/nwr-inventarisatie.mjs > ~/radio_inventarisatie.log 2>&1 &
 // Voortgang: tail -f ~/radio_inventarisatie.log ; rapport: ~/radio_inventarisatie.txt
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -18,7 +19,7 @@ import { fetchRadioTekst } from '../src/sources/radioTekst.js';
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const STATIONS = JSON.parse(readFileSync(path.join(HIER, '..', '..', 'frontend', 'data', 'nwr-stations.json'), 'utf-8')).stations;
-const TEGELIJK = Number(process.env.RADIO_MAX_TEGELIJK || 3);
+const TEGELIJK = Number(process.env.RADIO_MAX_TEGELIJK || 1);
 const DUUR_MIN = Number(process.env.RADIO_LUISTER_MIN || 12);
 const RAPPORT = path.join(homedir(), 'radio_inventarisatie.txt');
 const alleen = process.argv.slice(2); // optioneel: alleen deze ids
