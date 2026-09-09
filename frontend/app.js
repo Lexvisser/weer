@@ -7807,7 +7807,13 @@ async function nwrSyncPlan(id, b) {
   if (nwrSync !== sync) return;
   const ctx = sync.ctx;
   const nu = ctx.currentTime;
-  const start = Math.max(nu + 0.15, sync.volgendeStart);
+  // Buffer tegen jitter (Lex 09/09: "er zijn onderbrekingen"): het eerste blok
+  // start pas na NWR_BUFFER_S, zodat de volgende blokken al binnen zijn
+  // voordat ze aan de beurt zijn; loopt de speler toch leeg, dan opnieuw een
+  // kleine marge nemen in plaats van op de rand te blijven balanceren.
+  const NWR_BUFFER_S = 8;
+  const marge = sync.gestart ? 2.5 : NWR_BUFFER_S;
+  const start = Math.max(nu + marge, sync.volgendeStart);
   const bron = ctx.createBufferSource();
   bron.buffer = buffer;
   bron.connect(ctx.destination);
