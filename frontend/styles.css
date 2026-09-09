@@ -2174,3 +2174,17 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-leeg { padding:14px 10px; color:#9fb2c8; }
 .nwr-pin-tekst.is-luisterend { color:#3bff7c; animation: nwr-knipper 1.2s steps(2) infinite; }
 @media (max-width: 640px) { .nwr-paneel { right:6px; left:6px; bottom:64px; width:auto; max-height:55vh; } }
+
+/* 2026-09-09 (avond): NWR-waarnemingen als losse iconen die uit de zenderpin
+   waaieren (zie nwrTekenWaarnemingen in app.js). Geen pil-kader; icoon +
+   temperatuur, tekstschaduw voor leesbaarheid op de kaart. */
+.nwr-pin-weer { margin-left:4px; padding-left:5px; border-left:1px solid rgba(255,176,32,0.4); color:#fff1d6; font-weight:700; }
+.leaflet-marker-icon.nwr-los-marker { background:none; border:0; }
+.leaflet-marker-icon.is-glijdend { transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.nwr-los { display:inline-flex; align-items:center; gap:2px; font-family:'JetBrains Mono',monospace; font-weight:700; color:#fff1d6; text-shadow: 0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.8); white-space:nowrap; pointer-events:auto; cursor:pointer; transition: opacity 0.4s, transform 0.4s; animation: nwr-los-in 0.45s ease-out; }
+.nwr-los.is-weg { opacity:0 !important; transform: scale(0.4); }
+.nwr-los-icoon { font-size:20px; line-height:1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
+.nwr-los-temp { font-size:12px; }
+.nwr-los-bft { font-size:10px; color:#ffb020; padding:0 3px; border-radius:5px; background:rgba(5,6,10,0.65); }
+.nwr-los-pijl svg { width:22px; height:22px; display:block; }
+@keyframes nwr-los-in { from { opacity:0; transform: scale(0.4); } to { transform: scale(1); } }

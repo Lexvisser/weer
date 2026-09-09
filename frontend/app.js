@@ -835,6 +835,7 @@ function initMap() {
   kaart.on('mouseout', () => { if (gradenActief) verbergGradenVak(); });
   kaart.on('click', (e) => { if (gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
   kaart.on('click', () => { if (nwrHuidig) nwrStop(); }); // 2026-09-09: NWR — klik naast een zender = stoppen
+  kaart.on('zoomend', nwrZoomGewijzigd); // 2026-09-09: NWR-waarnemingen uitwaaieren/intrekken
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(STATIONS_KEY) === 'aan') toggleStations(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(NWR_KEY) === 'aan') toggleNwr(); } catch (_) { /* privé-modus */ }
@@ -7656,9 +7657,13 @@ async function tekenNwr() {
     const blok = nwrTeksten.get(s.id);
     const verstaan = !!blok;
     const tekstKnop = verstaan ? `<span class="nwr-pin-tekst${blok.luister?.actief ? ' is-luisterend' : ''}" title="Wat de zender zegt (verstaan op de server)">📝</span>` : '';
-    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(nwrOmschrijving(s))}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span>${tekstKnop}</div>`;
+    // 2026-09-09: het actuele weer bij de zender zelf (dichtstbijzijnde
+    // waarneming) in de pin — uitgezoomd is dat alles wat je ziet.
+    const dichtst = nwrDichtstbijzijndeWaarneming(blok, s);
+    const weer = dichtst ? `<span class="nwr-pin-weer" title="${escapeHtml(dichtst.naam)}">${dichtst.lucht?.icoon ?? '🌡️'}${dichtst.tempC != null ? `${dichtst.tempC}°` : ''}</span>` : '';
+    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(nwrOmschrijving(s))}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span>${weer}${tekstKnop}</div>`;
     const marker = L.marker([s.lat, s.lon], {
-      icon: L.divIcon({ className: '', html, iconSize: [verstaan ? 84 : 64, 22], iconAnchor: [11, 11] }),
+      icon: L.divIcon({ className: '', html, iconSize: [verstaan ? 120 : 64, 22], iconAnchor: [11, 11] }),
     });
     marker.on('click', (e) => {
       // 2026-09-09: klik op 📝 opent het tekst-paneel i.p.v. te gaan spelen
@@ -7695,6 +7700,7 @@ function nwrTekstStart() {
 function nwrTekstStop() {
   if (nwrTekstTimer) { clearInterval(nwrTekstTimer); nwrTekstTimer = null; }
   if (nwrTekstLaag && kaart) { kaart.removeLayer(nwrTekstLaag); nwrTekstLaag = null; }
+  nwrWaarnemingMarkers = new Map();
   nwrTeksten = new Map();
   nwrPaneelOpen = false;
   NWR_PANEEL_EL?.classList.add('verborgen');
@@ -7757,22 +7763,102 @@ function nwrWaarnemingPopupHtml(w) {
   return `<div class="popup-titel">📻 ${escapeHtml(w.naam)}</div><div class="popup-sub">${tijd}${escapeHtml(st?.roepletters ?? '')} ${escapeHtml(st?.plaats ?? '')} · verstaan als "${escapeHtml(w.naamGehoord ?? '')}"</div><div class="popup-stats">${regels.join('')}</div>`;
 }
 
+// 2026-09-09 (avond), Lex: "losse iconen los van een pil, die op een
+// magische manier te tonen zijn maar ook weer verbergen, want het zullen er
+// veel worden". Drie standen, gestuurd door de zoom:
+//  - uitgezoomd (< NWR_ZOOM_UITWAAIER): alleen de zenderpin, met daarin het
+//    actuele weer bij de zender (zie tekenNwr);
+//  - ingezoomd: de waarnemingen waaieren als losse iconen uit de pin (ze
+//    starten op de zenderpositie en glijden naar hun eigen plek; bij
+//    uitzoomen glijden ze terug en verdwijnen) — icoon + temperatuur, geen
+//    pil-kader, windpijl alleen vanaf 3 Bft;
+//  - tik op een icoon: de volledige popup.
+// Iconen vervagen met de ouderdom van de waarneming (na 3 uur weg).
+const NWR_ZOOM_UITWAAIER = 6;
+let nwrWaarnemingMarkers = new Map(); // sleutel -> { marker, w }
+let nwrUitgewaaierd = false;
+
+function nwrDichtstbijzijndeWaarneming(blok, station) {
+  const lijst = (blok?.waarnemingen ?? []).filter((w) => w.tempC != null);
+  if (!lijst.length) return null;
+  let beste = null; let besteD = Infinity;
+  for (const w of lijst) {
+    const d = (w.lat - station.lat) ** 2 + (w.lon - station.lon) ** 2;
+    if (d < besteD) { besteD = d; beste = w; }
+  }
+  return beste;
+}
+
+function nwrOuderdomOpacity(w) {
+  const t = w.tijd ? Date.now() - new Date(w.tijd).getTime() : 0;
+  const u = t / (3 * 60 * 60 * 1000);
+  return Math.max(0.35, 1 - u * 0.65);
+}
+
+function nwrWaarnemingIcoonHtml(w) {
+  const icoon = w.soort === 'boei' ? '🛟' : (w.lucht?.icoon ?? '🌡️');
+  const temp = w.tempC != null ? `<span class="nwr-los-temp">${w.tempC}°</span>` : (w.golfM != null ? `<span class="nwr-los-temp">${w.golfM} m</span>` : '');
+  const pijl = w.wind?.graden != null && w.wind.bft >= 3 ? `<span class="nwr-los-pijl">${windVaanPijlSvg(w.wind.graden, '#ffb020', '#7a5200')}</span>` : '';
+  const bft = w.wind?.bft >= 3 ? `<span class="nwr-los-bft">${w.wind.bft}</span>` : '';
+  return `<div class="nwr-los" style="opacity:${nwrOuderdomOpacity(w).toFixed(2)}" title="${escapeHtml(w.naam)}">${pijl}<span class="nwr-los-icoon">${icoon}</span>${temp}${bft}</div>`;
+}
+
 function nwrTekenWaarnemingen() {
   if (!kaart) return;
   if (!nwrTekstLaag) nwrTekstLaag = L.layerGroup().addTo(kaart);
-  nwrTekstLaag.clearLayers();
-  for (const blok of nwrTeksten.values()) for (const w of blok.waarnemingen ?? []) {
-    if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) continue;
-    w._station = blok.station;
-    const pijl = w.wind?.graden != null && w.wind.kmh >= 2
-      ? windVaanPijlSvg(w.wind.graden, '#ffb020', '#7a5200')
-      : '<span class="station-stil">○</span>';
-    const html = `<div class="station-pin" title="${escapeHtml(w.naam)}">${pijl}<span class="station-label">${nwrWaarnemingVakHtml(w)}</span></div>`;
-    const marker = L.marker([w.lat, w.lon], {
-      icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
+  const uitwaaieren = kaart.getZoom() >= NWR_ZOOM_UITWAAIER;
+  const gewenst = new Map();
+  if (uitwaaieren) {
+    for (const blok of nwrTeksten.values()) for (const w of blok.waarnemingen ?? []) {
+      if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) continue;
+      w._station = blok.station;
+      gewenst.set(`${blok.station.id}|${w.naam}`, w);
+    }
+  }
+  // weg: terugglijden naar de zender en dan verwijderen
+  for (const [sleutel, item] of [...nwrWaarnemingMarkers]) {
+    if (gewenst.has(sleutel)) continue;
+    nwrWaarnemingMarkers.delete(sleutel);
+    const st = item.w._station;
+    const el = item.marker.getElement();
+    if (st && el) {
+      el.classList.add('is-glijdend');
+      item.marker.setLatLng([st.lat, st.lon]);
+      el.querySelector('.nwr-los')?.classList.add('is-weg');
+      setTimeout(() => { try { nwrTekstLaag.removeLayer(item.marker); } catch (_) { /* al weg */ } }, 450);
+    } else {
+      nwrTekstLaag.removeLayer(item.marker);
+    }
+  }
+  // erbij: vanaf de zender naar de eigen plek glijden
+  for (const [sleutel, w] of gewenst) {
+    const bestaand = nwrWaarnemingMarkers.get(sleutel);
+    if (bestaand) {
+      bestaand.w = w;
+      bestaand.marker.setIcon(L.divIcon({ className: 'nwr-los-marker', html: nwrWaarnemingIcoonHtml(w), iconSize: [64, 28], iconAnchor: [14, 14] }));
+      continue;
+    }
+    const st = w._station;
+    const marker = L.marker([st?.lat ?? w.lat, st?.lon ?? w.lon], {
+      icon: L.divIcon({ className: 'nwr-los-marker', html: nwrWaarnemingIcoonHtml(w), iconSize: [64, 28], iconAnchor: [14, 14] }),
     }).bindPopup(() => nwrWaarnemingPopupHtml(w), { maxWidth: 280 });
     nwrTekstLaag.addLayer(marker);
+    nwrWaarnemingMarkers.set(sleutel, { marker, w });
+    const el = marker.getElement();
+    if (el && st) {
+      el.classList.add('is-glijdend');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        marker.setLatLng([w.lat, w.lon]);
+        setTimeout(() => el.classList.remove('is-glijdend'), 500);
+      }));
+    }
   }
+  nwrUitgewaaierd = uitwaaieren;
+}
+
+function nwrZoomGewijzigd() {
+  if (!nwrActief) return;
+  if ((kaart.getZoom() >= NWR_ZOOM_UITWAAIER) !== nwrUitgewaaierd) nwrTekenWaarnemingen();
 }
 
 function nwrPaneelToon(stationId) {
