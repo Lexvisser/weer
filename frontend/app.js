@@ -7700,6 +7700,7 @@ function nwrTekstStart() {
 function nwrTekstStop() {
   if (nwrTekstTimer) { clearInterval(nwrTekstTimer); nwrTekstTimer = null; }
   if (nwrTekstLaag && kaart) { kaart.removeLayer(nwrTekstLaag); nwrTekstLaag = null; }
+  if (nwrFlitsLaag && kaart) { kaart.removeLayer(nwrFlitsLaag); nwrFlitsLaag = null; }
   nwrWaarnemingMarkers = new Map();
   nwrTeksten = new Map();
   nwrPaneelOpen = false;
@@ -8011,6 +8012,45 @@ function nwrVakHtml(v) {
   return `<div class="nwr-vak${v.nacht ? ' is-nacht' : ''}"><div class="nwr-vak-label">${escapeHtml(v.labelNl)}</div><div class="nwr-vak-icoon">${uniek || '·'}</div><div class="nwr-vak-temp">${temp}</div>${regels.join('')}</div>`;
 }
 
+// 2026-09-09 (avond), Lex: "die waarden on the fly plotten en heel kort laten
+// staan". Zodra een omrekening in de lopende tekst compleet is: een geel
+// labeltje op de kaart — bij de plaats als de zin over een bekende plaats
+// ging (waarneming met dit fragment), anders in een kransje rond de zender.
+// Na NWR_FLITS_MS vervaagt het en gaat het weg.
+const NWR_FLITS_MS = 20 * 1000;
+let nwrFlitsLaag = null;
+let nwrFlitsGedaan = new Set(); // "tijd|index"
+let nwrFlitsTeller = 0;
+
+function nwrFlits(r, d, index) {
+  if (!kaart || !nwrSync) return;
+  const sleutel = `${r.tijd}|${index}`;
+  if (nwrFlitsGedaan.has(sleutel)) return;
+  nwrFlitsGedaan.add(sleutel);
+  if (nwrFlitsGedaan.size > 400) nwrFlitsGedaan = new Set([...nwrFlitsGedaan].slice(-200));
+  const blok = nwrTeksten.get(nwrSync.id);
+  const station = blok?.station ?? nwrHuidig;
+  if (!station) return;
+  const frag = d.tekst.toLowerCase().trim();
+  const w = (blok?.waarnemingen ?? []).find((x) => x.tijd === r.tijd && (x.bron ?? '').toLowerCase().includes(frag));
+  let lat; let lon; let naam;
+  if (w) { lat = w.lat; lon = w.lon; naam = w.naam; }
+  else {
+    // kransje rond de zender: hoek per flits, straal ~35 px omgerekend naar graden op deze zoom
+    const hoek = (nwrFlitsTeller++ % 8) * (Math.PI / 4) - Math.PI / 2;
+    const px = kaart.latLngToLayerPoint([station.lat, station.lon]);
+    const p = L.point(px.x + Math.cos(hoek) * 48, px.y + Math.sin(hoek) * 34);
+    const ll = kaart.layerPointToLatLng(p);
+    lat = ll.lat; lon = ll.lng; naam = station.roepletters ?? '';
+  }
+  if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
+  const html = `<div class="nwr-flits" title="${escapeHtml(d.tekst)}">${escapeHtml(d.vertaling)}${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : ''}</div>`;
+  const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5, 5] }), interactive: false, zIndexOffset: 900 });
+  nwrFlitsLaag.addLayer(marker);
+  setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), NWR_FLITS_MS - 1200);
+  setTimeout(() => { try { nwrFlitsLaag.removeLayer(marker); } catch (_) { /* weg */ } }, NWR_FLITS_MS);
+}
+
 // Eén tekstregel (blok) als HTML; `zichtbaar` (0..1) = hoeveel van de tekst al
 // getoond wordt — het spelende blok groeit woord voor woord mee met de audio
 // (Lex 09/09: "lastig te volgen omdat er een hele alinea tegelijk bijkomt").
@@ -8021,15 +8061,16 @@ function nwrRegelHtml(r, zichtbaar = 1) {
   const totaal = delen.reduce((n, d) => n + d.tekst.length, 0);
   let budget = Math.round(totaal * Math.max(0, Math.min(1, zichtbaar)));
   const stukken = [];
-  for (const d of delen) {
-    if (budget <= 0) break;
+  delen.forEach((d, i) => {
+    if (budget <= 0) return;
     const heel = budget >= d.tekst.length;
     const tekst = heel ? d.tekst : d.tekst.slice(0, budget);
     budget -= d.tekst.length;
-    if (!d.vertaling || !heel) { stukken.push(escapeHtml(tekst)); continue; }
+    if (d.vertaling && heel && spelend) nwrFlits(r, d, i); // 2026-09-09: waarde even op de kaart
+    if (!d.vertaling || !heel) { stukken.push(escapeHtml(tekst)); return; }
     const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
     stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span></span></span>`);
-  }
+  });
   const cursor = spelend ? '<span class="nwr-cursor">▌</span>' : '';
   return `<div class="nwr-regel${spelend ? ' is-spelend' : ''}" data-tijd="${escapeHtml(r.tijd)}"><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span> ${stukken.join('')}${cursor}</div>`;
 }

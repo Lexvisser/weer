@@ -2219,3 +2219,10 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-tekst { max-height:260px; font-size:11.5px; }
 .nwr-vert-vast { white-space:nowrap; }
 .nwr-cursor { color:#ffb020; animation: nwr-knipper 0.9s steps(2) infinite; }
+
+/* 2026-09-09 (avond): flits-labels op de kaart — omrekening even tonen (20 s) */
+.leaflet-marker-icon.nwr-flits-marker { background:none; border:0; overflow:visible; }
+.nwr-flits { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(1); background:#f1c40f; color:#111; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700; padding:3px 8px; border-radius:8px; white-space:nowrap; box-shadow:0 3px 10px rgba(0,0,0,0.6); animation: nwr-flits-in 0.35s ease-out; transition: opacity 1.2s, transform 1.2s; pointer-events:none; }
+.nwr-flits.is-weg { opacity:0; transform:translate(-50%,-50%) scale(0.7); }
+.nwr-flits-plaats { display:block; font-size:9.5px; font-weight:400; color:#5a4300; }
+@keyframes nwr-flits-in { from { opacity:0; transform:translate(-50%,-50%) scale(0.4); } to { opacity:1; transform:translate(-50%,-50%) scale(1); } }
