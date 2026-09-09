@@ -139,6 +139,8 @@ function verwerkBlokken(id) {
   if (!f) return;
   a.bezig = true;
   const pad = path.join(a.werk, f);
+  const t0 = Date.now();
+  const achterstand = klaar.length - 1; // blokken die nog wachten
   // venster = vorig blok + dit blok (als er een vorig blok is)
   const vorig = a.blokken.length ? a.blokken[a.blokken.length - 1] : null;
   let invoer = pad;
@@ -152,6 +154,8 @@ function verwerkBlokken(id) {
   whisperRun(['-m', MODEL, '-f', invoer, '-t', String(THREADS), '-ml', '1', '-sow'], (err, stdout) => {
     a.bezig = false;
     const stamp = f.replace(/\.wav$/, '');
+    const duurS = (Date.now() - t0) / 1000;
+    if (duurS > BLOK_S * 0.8 || achterstand > 0) console.log(`[weer] radioLuister ${id}: blok ${stamp} in ${duurS.toFixed(1)} s${achterstand ? `, ${achterstand} blok(ken) achterstand` : ''}`);
     if (err) { console.warn(`[weer] radioLuister ${id}: whisper mislukt: ${err.message}`); try { rmSync(pad, { force: true }); } catch (_) { /* weg */ } }
     else {
       const segmenten = parseSegmenten(stdout);
