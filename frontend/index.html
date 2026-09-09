@@ -93,6 +93,13 @@
     <!-- 2026-09-09: NWR-speler (zie toggleNwr()/nwrSpeel() in app.js) —
          linksboven naast de zoomknoppen, alleen zichtbaar zolang er een
          stream loopt of laadt. -->
+    <!-- 2026-09-09: zoekveld (Lex: "iets typen en dat dat gevonden wordt"):
+         eerst NWR-zenders (roepletters/plaats/staat), anders een plaatsnaam via
+         OpenStreetMap. Zie kaartZoek() in app.js. Alleen zichtbaar met de NWR-laag. -->
+    <form class="kaart-zoek verborgen" id="kaartZoek" autocomplete="off">
+      <input type="search" id="kaartZoekVeld" placeholder="zender of plaats…" spellcheck="false">
+      <span id="kaartZoekStatus"></span>
+    </form>
     <div class="nwr-speler verborgen" id="nwrSpeler">
       <span class="nwr-speler-led" id="nwrSpelerLed"></span>
       <span id="nwrSpelerTekst"></span>

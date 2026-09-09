@@ -2239,3 +2239,12 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-plaats { color:#ffb020; text-decoration:underline dotted; text-underline-offset:2px; cursor:pointer; }
 .nwr-plaats:hover { color:#ffd27a; }
 .nwr-paneel-plaats { color:#fff1d6; font-weight:400; }
+
+/* 2026-09-09: zoekveld linksboven (rechts van de zoomknoppen), NWR-laag aan */
+.kaart-zoek { position:absolute; top:8px; left:56px; z-index:1001; display:flex; align-items:center; gap:6px; }
+.kaart-zoek.verborgen { display:none; }
+.kaart-zoek input { width:190px; font-family:'JetBrains Mono',monospace; font-size:11px; padding:5px 9px; border-radius:8px; border:1px solid rgba(255,176,32,0.45); background:rgba(5,6,10,0.85); color:#f4f6fb; outline:none; }
+.kaart-zoek input:focus { border-color:#ffb020; }
+.kaart-zoek input::placeholder { color:#8a97a8; }
+#kaartZoekStatus { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#ffb020; max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kaart-zoek + .nwr-speler { top:40px; }

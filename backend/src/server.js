@@ -22,7 +22,8 @@ import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, we
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
 import { fetchNavtexKustrapporten } from './sources/navtexKustrapporten.js'; // 2026-09-08, Niton-490 kustrapporten (zelfde laag)
 import { fetchRadioTekst, stationInfo as nwrStationInfo } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
-import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar, blokkenStatus, blokAudioPad } from './sources/radioLuister.js'; // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
+import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar, blokkenStatus, blokAudioPad } from './sources/radioLuister.js';
+import { zoekVrij as geocodeZoekVrij } from './sources/nwrGeocode.js'; // 2026-09-09, zoekveld // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
@@ -1439,6 +1440,17 @@ export function createApp(env) {
       }
       res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': grootte, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=600' });
       return createReadStream(pad).pipe(res);
+    }
+    // 2026-09-09: zoekveld — plaatsnaam via OpenStreetMap (Nominatim)
+    if (url === '/api/geocode') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const q = (params.get('q') ?? '').trim().slice(0, 120);
+      if (!q) return sendJson(res, 400, { fout: 'geen zoekterm' });
+      try {
+        return sendJson(res, 200, { treffer: await geocodeZoekVrij(q) });
+      } catch (err) {
+        return sendJson(res, 502, { fout: `zoeken mislukt: ${err.message}` });
+      }
     }
     if (url === '/api/radio-luister') {
       const params = new URL(req.url, 'http://localhost').searchParams;

@@ -7620,9 +7620,49 @@ async function laadNwrStations() {
   return nwrStations;
 }
 
+// 2026-09-09: zoekveld — eerst NWR-zenders, anders plaats via /api/geocode.
+const KAART_ZOEK_EL = document.getElementById('kaartZoek');
+const KAART_ZOEK_VELD_EL = document.getElementById('kaartZoekVeld');
+const KAART_ZOEK_STATUS_EL = document.getElementById('kaartZoekStatus');
+let kaartZoekMarker = null;
+
+function kaartZoekStatus(tekst) { if (KAART_ZOEK_STATUS_EL) KAART_ZOEK_STATUS_EL.textContent = tekst; }
+
+async function kaartZoek(q) {
+  q = q.trim();
+  if (!q || !kaart) return;
+  const norm = q.toLowerCase();
+  const stations = nwrStations ?? (await laadNwrStations().catch(() => []));
+  const zender = stations.find((s) => s.id.toLowerCase() === norm || s.roepletters?.toLowerCase() === norm)
+    ?? stations.find((s) => `${s.plaats ?? ''} ${s.staat ?? ''}`.toLowerCase().includes(norm));
+  if (zender) {
+    kaart.setView([zender.lat, zender.lon], Math.max(kaart.getZoom(), 8), { animate: true });
+    kaartZoekStatus(`${zender.roepletters} · ${zender.plaats}, ${zender.staat} — klik op de pin om te luisteren`);
+    nwrPaneelToon(zender.id);
+    return;
+  }
+  kaartZoekStatus('zoeken…');
+  try {
+    const d = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`).then((r) => r.json());
+    if (!d.treffer) { kaartZoekStatus('niets gevonden'); return; }
+    const { lat, lon, naam } = d.treffer;
+    kaart.setView([lat, lon], Math.max(kaart.getZoom(), 9), { animate: true });
+    if (kaartZoekMarker) kaart.removeLayer(kaartZoekMarker);
+    kaartZoekMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: '<div class="nwr-flits" style="color:#ffb020">📍</div>', iconSize: [10, 10], iconAnchor: [5, 5] }), interactive: false });
+    kaartZoekMarker.addTo(kaart);
+    setTimeout(() => { if (kaartZoekMarker) { kaart.removeLayer(kaartZoekMarker); kaartZoekMarker = null; } }, 60 * 1000);
+    kaartZoekStatus(naam.split(',').slice(0, 3).join(','));
+  } catch (err) {
+    kaartZoekStatus('zoeken mislukt');
+  }
+}
+
+KAART_ZOEK_EL?.addEventListener('submit', (e) => { e.preventDefault(); kaartZoek(KAART_ZOEK_VELD_EL?.value ?? ''); });
+
 function toggleNwr() {
   nwrActief = !nwrActief;
   TOGGLE_NWR_EL?.classList.toggle('actief', nwrActief);
+  KAART_ZOEK_EL?.classList.toggle('verborgen', !nwrActief);
   if (nwrActief) {
     tekenNwr();
     nwrTekstStart(); // 2026-09-09: wat de zender zegt (server-side verstaan)
