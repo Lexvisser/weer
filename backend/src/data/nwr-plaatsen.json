@@ -1,39 +1,481 @@
 {
   "_uitleg": "Plaatsen die een NOAA Weather Radio-zender noemt in zijn waarnemingen ('at Panama City it was clear...'), per zender-id uit frontend/data/nwr-stations.json. lat/lon bij benadering (stadscentrum, vliegveld of boei). aliassen = hoe Whisper de naam ook wel verstaat; onbekende namen staan in het journaal als 'plaats ... onbekend'. Boeien heten 'buoy <richting> of <plaats>' zoals uitgesproken (NDBC-boeien 42036/42039/42040 bij benadering).",
   "KIH24": [
-    { "naam": "Tallahassee", "lat": 30.40, "lon": -84.35, "aliassen": ["tallahassee airport"] },
-    { "naam": "Panama City", "lat": 30.21, "lon": -85.68, "aliassen": ["panama city airport", "panama city beach"] },
-    { "naam": "Apalachicola", "lat": 29.73, "lon": -85.03, "aliassen": ["apple and chikola", "appalachicola", "apalachicola airport"] },
-    { "naam": "Dothan", "lat": 31.32, "lon": -85.45, "aliassen": ["doton", "dothen"] },
-    { "naam": "Albany", "lat": 31.54, "lon": -84.19, "aliassen": ["albany georgia"] },
-    { "naam": "Valdosta", "lat": 30.78, "lon": -83.28, "aliassen": ["valdosta airport"] },
-    { "naam": "Marianna", "lat": 30.84, "lon": -85.18, "aliassen": ["mariana"] },
-    { "naam": "Cross City", "lat": 29.63, "lon": -83.10, "aliassen": [] },
-    { "naam": "Perry", "lat": 30.07, "lon": -83.58, "aliassen": ["perry foley"] },
-    { "naam": "Bainbridge", "lat": 30.90, "lon": -84.58, "aliassen": [] },
-    { "naam": "Pensacola", "lat": 30.47, "lon": -87.19, "aliassen": [] },
-    { "naam": "Crestview", "lat": 30.78, "lon": -86.52, "aliassen": [] },
-    { "naam": "Destin", "lat": 30.40, "lon": -86.47, "aliassen": [] },
-    { "naam": "Tyndall", "lat": 30.07, "lon": -85.58, "aliassen": ["tyndall air force base", "tindal"] },
-    { "naam": "Mexico Beach", "lat": 29.95, "lon": -85.42, "aliassen": [] },
-    { "naam": "Port St Joe", "lat": 29.81, "lon": -85.30, "aliassen": ["port saint joe"] },
-    { "naam": "Carrabelle", "lat": 29.85, "lon": -84.66, "aliassen": [] },
-    { "naam": "St George Island", "lat": 29.66, "lon": -84.86, "aliassen": ["saint george island"] },
-    { "naam": "Cedar Key", "lat": 29.14, "lon": -83.03, "aliassen": [] },
-    { "naam": "Boei zuid van Apalachicola", "lat": 28.50, "lon": -84.52, "aliassen": ["buoy south of apalachicola", "buoy south of apple and chikola", "buoy south of appalachicola"] },
-    { "naam": "Boei zuid van Panama City", "lat": 28.79, "lon": -86.01, "aliassen": ["buoy south of panama city"] },
-    { "naam": "Boei zuid van Pensacola", "lat": 29.21, "lon": -88.23, "aliassen": ["buoy south of pensacola"] }
+    {
+      "naam": "Tallahassee",
+      "lat": 30.4,
+      "lon": -84.35,
+      "aliassen": [
+        "tallahassee airport"
+      ]
+    },
+    {
+      "naam": "Panama City",
+      "lat": 30.21,
+      "lon": -85.68,
+      "aliassen": [
+        "panama city airport",
+        "panama city beach"
+      ]
+    },
+    {
+      "naam": "Apalachicola",
+      "lat": 29.73,
+      "lon": -85.03,
+      "aliassen": [
+        "apple and chikola",
+        "appalachicola",
+        "apalachicola airport"
+      ]
+    },
+    {
+      "naam": "Dothan",
+      "lat": 31.32,
+      "lon": -85.45,
+      "aliassen": [
+        "doton",
+        "dothen"
+      ]
+    },
+    {
+      "naam": "Albany",
+      "lat": 31.54,
+      "lon": -84.19,
+      "aliassen": [
+        "albany georgia"
+      ]
+    },
+    {
+      "naam": "Valdosta",
+      "lat": 30.78,
+      "lon": -83.28,
+      "aliassen": [
+        "valdosta airport"
+      ]
+    },
+    {
+      "naam": "Marianna",
+      "lat": 30.84,
+      "lon": -85.18,
+      "aliassen": [
+        "mariana"
+      ]
+    },
+    {
+      "naam": "Cross City",
+      "lat": 29.63,
+      "lon": -83.1,
+      "aliassen": []
+    },
+    {
+      "naam": "Perry",
+      "lat": 30.07,
+      "lon": -83.58,
+      "aliassen": [
+        "perry foley"
+      ]
+    },
+    {
+      "naam": "Bainbridge",
+      "lat": 30.9,
+      "lon": -84.58,
+      "aliassen": []
+    },
+    {
+      "naam": "Pensacola",
+      "lat": 30.47,
+      "lon": -87.19,
+      "aliassen": []
+    },
+    {
+      "naam": "Crestview",
+      "lat": 30.78,
+      "lon": -86.52,
+      "aliassen": []
+    },
+    {
+      "naam": "Destin",
+      "lat": 30.4,
+      "lon": -86.47,
+      "aliassen": []
+    },
+    {
+      "naam": "Tyndall",
+      "lat": 30.07,
+      "lon": -85.58,
+      "aliassen": [
+        "tyndall air force base",
+        "tindal"
+      ]
+    },
+    {
+      "naam": "Mexico Beach",
+      "lat": 29.95,
+      "lon": -85.42,
+      "aliassen": []
+    },
+    {
+      "naam": "Port St Joe",
+      "lat": 29.81,
+      "lon": -85.3,
+      "aliassen": [
+        "port saint joe"
+      ]
+    },
+    {
+      "naam": "Carrabelle",
+      "lat": 29.85,
+      "lon": -84.66,
+      "aliassen": []
+    },
+    {
+      "naam": "St George Island",
+      "lat": 29.66,
+      "lon": -84.86,
+      "aliassen": [
+        "saint george island"
+      ]
+    },
+    {
+      "naam": "Cedar Key",
+      "lat": 29.14,
+      "lon": -83.03,
+      "aliassen": []
+    },
+    {
+      "naam": "Boei zuid van Apalachicola",
+      "lat": 28.5,
+      "lon": -84.52,
+      "aliassen": [
+        "buoy south of apalachicola",
+        "buoy south of apple and chikola",
+        "buoy south of appalachicola"
+      ]
+    },
+    {
+      "naam": "Boei zuid van Panama City",
+      "lat": 28.79,
+      "lon": -86.01,
+      "aliassen": [
+        "buoy south of panama city"
+      ]
+    },
+    {
+      "naam": "Boei zuid van Pensacola",
+      "lat": 29.21,
+      "lon": -88.23,
+      "aliassen": [
+        "buoy south of pensacola"
+      ]
+    }
   ],
   "KHB36": [
-    { "naam": "Washington Reagan", "lat": 38.85, "lon": -77.04, "aliassen": ["reagan national", "washington", "national airport", "reagan national airport"] },
-    { "naam": "Dulles", "lat": 38.95, "lon": -77.45, "aliassen": ["dulles airport", "washington dulles"] },
-    { "naam": "Baltimore BWI", "lat": 39.18, "lon": -76.67, "aliassen": ["baltimore", "bwi", "bwi marshall"] },
-    { "naam": "Manassas", "lat": 38.72, "lon": -77.52, "aliassen": [] },
-    { "naam": "Annapolis", "lat": 38.98, "lon": -76.49, "aliassen": [] },
-    { "naam": "Frederick", "lat": 39.42, "lon": -77.37, "aliassen": [] },
-    { "naam": "Winchester", "lat": 39.14, "lon": -78.14, "aliassen": [] },
-    { "naam": "Fredericksburg", "lat": 38.27, "lon": -77.45, "aliassen": [] },
-    { "naam": "Leesburg", "lat": 39.08, "lon": -77.56, "aliassen": [] },
-    { "naam": "Culpeper", "lat": 38.53, "lon": -77.86, "aliassen": [] }
+    {
+      "naam": "Washington Reagan",
+      "lat": 38.85,
+      "lon": -77.04,
+      "aliassen": [
+        "reagan national",
+        "washington",
+        "national airport",
+        "reagan national airport"
+      ]
+    },
+    {
+      "naam": "Dulles",
+      "lat": 38.95,
+      "lon": -77.45,
+      "aliassen": [
+        "dulles airport",
+        "washington dulles"
+      ]
+    },
+    {
+      "naam": "Baltimore BWI",
+      "lat": 39.18,
+      "lon": -76.67,
+      "aliassen": [
+        "baltimore",
+        "bwi",
+        "bwi marshall"
+      ]
+    },
+    {
+      "naam": "Manassas",
+      "lat": 38.72,
+      "lon": -77.52,
+      "aliassen": []
+    },
+    {
+      "naam": "Annapolis",
+      "lat": 38.98,
+      "lon": -76.49,
+      "aliassen": []
+    },
+    {
+      "naam": "Frederick",
+      "lat": 39.42,
+      "lon": -77.37,
+      "aliassen": []
+    },
+    {
+      "naam": "Winchester",
+      "lat": 39.14,
+      "lon": -78.14,
+      "aliassen": []
+    },
+    {
+      "naam": "Fredericksburg",
+      "lat": 38.27,
+      "lon": -77.45,
+      "aliassen": []
+    },
+    {
+      "naam": "Leesburg",
+      "lat": 39.08,
+      "lon": -77.56,
+      "aliassen": []
+    },
+    {
+      "naam": "Culpeper",
+      "lat": 38.53,
+      "lon": -77.86,
+      "aliassen": []
+    }
+  ],
+  "KEC56": [
+    {
+      "naam": "DFW Airport",
+      "lat": 32.9,
+      "lon": -97.04,
+      "aliassen": [
+        "dfw",
+        "dfw airport",
+        "dallas fort worth airport",
+        "dallas fort worth international",
+        "dsw airport"
+      ]
+    },
+    {
+      "naam": "Dallas Love Field",
+      "lat": 32.85,
+      "lon": -96.85,
+      "aliassen": [
+        "love field",
+        "dallas love field"
+      ]
+    },
+    {
+      "naam": "Dallas Executive",
+      "lat": 32.68,
+      "lon": -96.87,
+      "aliassen": [
+        "dallas executive airport",
+        "redbird"
+      ]
+    },
+    {
+      "naam": "Fort Worth Meacham",
+      "lat": 32.82,
+      "lon": -97.36,
+      "aliassen": [
+        "fort worth",
+        "fort worth meacham",
+        "fort worth region",
+        "fort worth metrum",
+        "meacham"
+      ]
+    },
+    {
+      "naam": "Fort Worth Alliance",
+      "lat": 32.99,
+      "lon": -97.32,
+      "aliassen": [
+        "alliance",
+        "fort worth alliance"
+      ]
+    },
+    {
+      "naam": "Arlington",
+      "lat": 32.66,
+      "lon": -97.09,
+      "aliassen": []
+    },
+    {
+      "naam": "Grand Prairie",
+      "lat": 32.7,
+      "lon": -97.05,
+      "aliassen": []
+    },
+    {
+      "naam": "McKinney",
+      "lat": 33.18,
+      "lon": -96.59,
+      "aliassen": [
+        "mckinney"
+      ]
+    },
+    {
+      "naam": "Denton",
+      "lat": 33.2,
+      "lon": -97.2,
+      "aliassen": []
+    },
+    {
+      "naam": "Tyler",
+      "lat": 32.35,
+      "lon": -95.4,
+      "aliassen": []
+    },
+    {
+      "naam": "Waco",
+      "lat": 31.61,
+      "lon": -97.23,
+      "aliassen": []
+    },
+    {
+      "naam": "Mineral Wells",
+      "lat": 32.78,
+      "lon": -98.06,
+      "aliassen": []
+    },
+    {
+      "naam": "Corsicana",
+      "lat": 32.03,
+      "lon": -96.4,
+      "aliassen": []
+    },
+    {
+      "naam": "Greenville",
+      "lat": 33.07,
+      "lon": -96.07,
+      "aliassen": []
+    },
+    {
+      "naam": "Terrell",
+      "lat": 32.71,
+      "lon": -96.27,
+      "aliassen": []
+    },
+    {
+      "naam": "Sherman",
+      "lat": 33.71,
+      "lon": -96.67,
+      "aliassen": [
+        "sherman denison",
+        "denison"
+      ]
+    },
+    {
+      "naam": "Gainesville",
+      "lat": 33.65,
+      "lon": -97.2,
+      "aliassen": []
+    },
+    {
+      "naam": "Stephenville",
+      "lat": 32.22,
+      "lon": -98.18,
+      "aliassen": []
+    },
+    {
+      "naam": "Cleburne",
+      "lat": 32.35,
+      "lon": -97.43,
+      "aliassen": []
+    },
+    {
+      "naam": "Paris",
+      "lat": 33.63,
+      "lon": -95.45,
+      "aliassen": []
+    },
+    {
+      "naam": "Longview",
+      "lat": 32.38,
+      "lon": -94.71,
+      "aliassen": []
+    },
+    {
+      "naam": "Palestine",
+      "lat": 31.78,
+      "lon": -95.71,
+      "aliassen": []
+    },
+    {
+      "naam": "Temple",
+      "lat": 31.15,
+      "lon": -97.41,
+      "aliassen": []
+    },
+    {
+      "naam": "Killeen",
+      "lat": 31.07,
+      "lon": -97.68,
+      "aliassen": [
+        "fort hood",
+        "fort cavazos"
+      ]
+    },
+    {
+      "naam": "Bridgeport",
+      "lat": 33.17,
+      "lon": -97.83,
+      "aliassen": []
+    },
+    {
+      "naam": "Decatur",
+      "lat": 33.25,
+      "lon": -97.58,
+      "aliassen": []
+    },
+    {
+      "naam": "Granbury",
+      "lat": 32.44,
+      "lon": -97.82,
+      "aliassen": []
+    },
+    {
+      "naam": "Weatherford",
+      "lat": 32.76,
+      "lon": -97.8,
+      "aliassen": []
+    },
+    {
+      "naam": "Mesquite",
+      "lat": 32.75,
+      "lon": -96.53,
+      "aliassen": []
+    },
+    {
+      "naam": "Addison",
+      "lat": 32.97,
+      "lon": -96.84,
+      "aliassen": []
+    },
+    {
+      "naam": "Lancaster",
+      "lat": 32.58,
+      "lon": -96.72,
+      "aliassen": []
+    },
+    {
+      "naam": "Rockwall",
+      "lat": 32.93,
+      "lon": -96.44,
+      "aliassen": []
+    },
+    {
+      "naam": "Athens",
+      "lat": 32.16,
+      "lon": -95.83,
+      "aliassen": []
+    },
+    {
+      "naam": "Hillsboro",
+      "lat": 32.08,
+      "lon": -97.1,
+      "aliassen": []
+    }
   ]
 }

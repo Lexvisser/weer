@@ -8058,9 +8058,11 @@ function nwrFlits(r, d, index) {
   if (w) { lat = w.lat; lon = w.lon; naam = w.naam; }
   else {
     // kransje rond de zender: hoek per flits, straal ~35 px omgerekend naar graden op deze zoom
-    const hoek = (nwrFlitsTeller++ % 8) * (Math.PI / 4) - Math.PI / 2;
+    const n = nwrFlitsTeller++;
+    const hoek = (n % 12) * (Math.PI / 6) - Math.PI / 2;
+    const straal = n % 2 ? 130 : 80; // afwisselend twee ringen, zodat het niet op één hoop komt
     const px = kaart.latLngToLayerPoint([station.lat, station.lon]);
-    const p = L.point(px.x + Math.cos(hoek) * 48, px.y + Math.sin(hoek) * 34);
+    const p = L.point(px.x + Math.cos(hoek) * straal, px.y + Math.sin(hoek) * straal * 0.6);
     const ll = kaart.layerPointToLatLng(p);
     lat = ll.lat; lon = ll.lng; naam = station.roepletters ?? '';
   }

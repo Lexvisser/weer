@@ -407,6 +407,47 @@ function parseWaarnemingen(blokken, plaatsen) {
       drukHpa: druk ? Math.round(Number(druk[1]) * 33.8639) : null,
     });
   }
+  // Dallas-stijl opsomming: "dfw airport sunny 86 dew point 72 relative humidity 62% wind south at 9 pressure 30.11 ...
+  // dallas love field sunny 84 south at 7 fort worth region sunny 86 south at 8" (komma's zijn hierboven al spaties)
+  const dre = /\b((?:mostly |partly )?(?:sunny|clear|cloudy|overcast|fair|foggy|fog|hazy|haze|rain(?:ing)?|thunderstorms?|showers|smoke))\s+(\d{2,3})\b(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g;
+  const posities = [];
+  while ((m = dre.exec(t)) !== null) posities.push({ index: m.index, eind: m.index + m[0].length, lucht: m[1], f: Number(m[2]) });
+  for (let i = 0; i < posities.length; i += 1) {
+    const p = posities[i];
+    if (p.f < -30 || p.f > 125) continue;
+    // plaatsnaam: de (max 4) woorden vóór het weerwoord
+    const voor = t.slice(Math.max(0, p.index - 50), p.index).trim().split(' ').filter(Boolean).slice(-4);
+    const gevonden = zoekPlaatsInWoorden(plaatsen, voor);
+    if (!gevonden || uit.has(gevonden.plaats.naam)) continue;
+    const segment = t.slice(p.eind, i + 1 < posities.length ? posities[i + 1].index : Math.min(t.length, p.eind + 160));
+    let wind = null;
+    const w = new RegExp(`(?:winds?\\s+)?(?:(calm)|${RICHTING_RE}\\s+at\\s+(\\d{1,3}))`).exec(segment);
+    if (w) {
+      if (w[1]) wind = { richting: null, graden: null, kmh: 0, bft: 0, tekst: 'windstil' };
+      else { const r = richting(w[2]); const kmh = mphNaarKmh(Number(w[3])); wind = { richting: r.kort, graden: r.graden, kmh, bft: kmhNaarBft(kmh), tekst: `${r.kort} ${kmh} km/h (${kmhNaarBft(kmh)} Bft)` }; }
+    }
+    const dauw = /dew ?point\s+(\d{1,3})/.exec(segment);
+    const vocht = /humidity\s+(\d{1,3})/.exec(segment);
+    const druk = /pressure\s+(\d{2}\.\d{2})/.exec(segment);
+    const tijdW = tijdBij(p.index);
+    const { plaats } = gevonden;
+    uit.set(plaats.naam, {
+      naam: plaats.naam,
+      naamGehoord: gevonden.gehoord,
+      lat: plaats.lat,
+      lon: plaats.lon,
+      soort: 'plaats',
+      tijd: tijdW,
+      bron: `${gevonden.gehoord} ${p.lucht} ${p.f}${segment.slice(0, Math.min(segment.length, 80)).trimEnd()}`.trim(),
+      lucht: lucht(p.lucht, isDag(tijdW, plaats.lon)),
+      tempF: p.f,
+      tempC: fNaarC(p.f),
+      dauwC: dauw ? fNaarC(Number(dauw[1])) : null,
+      wind,
+      vochtPct: vocht ? Number(vocht[1]) : null,
+      drukHpa: druk ? Math.round(Number(druk[1]) * 33.8639) : null,
+    });
+  }
   // boeien: "at the buoy south of panama city winds were southeast at 16 knots" (+ evt. "seas were 2 feet")
   const bre = new RegExp(`\\bthe\\s+buoy\\s+([a-z' ]{3,50}?)\\s+winds?\\s+(?:were|was|are|is)?\\s*${RICHTING_RE}\\s+at\\s+(\\d{1,3})\\s*knots(.{0,80}?)(?=\\bthe buoy|\\bthe forecast|\\bthe coastal|$)`, 'g');
   while ((m = bre.exec(t)) !== null) {
