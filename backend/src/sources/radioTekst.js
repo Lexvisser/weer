@@ -375,7 +375,7 @@ function parseWaarnemingen(blokken, plaatsen) {
   let offset = 0;
   const grensTijden = [];
   for (const b of blokken) {
-    const stuk = woordenNaarCijfers(b.tekst.toLowerCase().replace(/[,.;:!?]/g, ' ').replace(/\s+/g, ' ')) + ' ';
+    const stuk = woordenNaarCijfers(b.tekst.toLowerCase().replace(/[,;:!?]|\.(?!\d)/g, ' ').replace(/\s+/g, ' ')) + ' '; // punten weg, behalve decimalen (30.11)
     grensTijden.push({ van: offset, tijd: b.tijd instanceof Date ? b.tijd.toISOString() : b.tijd });
     delen.push(stuk);
     offset += stuk.length;
@@ -756,4 +756,55 @@ export function fetchRadioTekst(stationId) {
     if (!bestaand || new Date(r.bijgewerkt ?? 0) > new Date(bestaand.bijgewerkt ?? 0)) perStation.set(r.station.id, r);
   }
   return { beschikbaar: true, stations: [...perStation.values()] };
+}
+
+// ---- luisterrapport -----------------------------------------------------
+// 2026-09-09, Lex: "kunnen we daar geen luisterrapportage voor maken zodat je
+// kan meedenken?" Platte tekst per zender: elke regel van de laatste sessie,
+// wat vertaald is (nu/vandaag/later), herkende plaatsen, en apart de zinnen
+// met getallen/eenheden waar níéts mee gebeurd is — de kandidaten voor nieuwe
+// patronen. Ophalen: curl -s "localhost:4780/api/radio-rapport?station=KEC56"
+export function radioRapport(stationId) {
+  const d = fetchRadioTekst(stationId);
+  if (!d.beschikbaar) return `Geen tekst voor ${stationId}.\n`;
+  const uit = [];
+  const st = d.station;
+  uit.push(`LUISTERRAPPORT ${st?.roepletters ?? stationId} — ${st?.plaats ?? ''}${st?.staat ? `, ${st.staat}` : ''}`);
+  uit.push(`bijgewerkt ${d.bijgewerkt ?? '?'} · ${d.regels.length} regels · ${d.waarnemingen.length} waarnemingen met plaats · ${d.vertalingen.length} omrekeningen`);
+  uit.push('');
+  uit.push('== TEKST (per blok; [fragment → omrekening | soort], {plaats}) ==');
+  const verdacht = [];
+  for (const r of d.regels) {
+    const t = new Date(r.tijd).toLocaleTimeString('nl-NL', { hour12: false });
+    const delen = (r.delen ?? [{ tekst: r.tekst }]).map((x) => {
+      if (x.plaats) return `{${x.tekst} → ${x.plaats}}`;
+      if (x.vertaling) return `[${x.tekst} → ${x.vertaling} | ${x.soort}${x.woord ? ', woord' : ''}]`;
+      return x.tekst;
+    }).join('');
+    uit.push(`${t}  ${delen}`);
+    // verdacht: zinnen met een getal of eenheid waar geen vertaling in zit
+    const zinnen = r.tekst.split(/(?<=[.!?;])\s+/);
+    const vertaald = (r.delen ?? []).filter((x) => x.vertaling).map((x) => x.tekst.toLowerCase());
+    for (const zin of zinnen) {
+      const l = zin.toLowerCase();
+      const zonderTijd = l.replace(/\b\d{1,4}\s*(?:a\.?m\.?|p\.?m\.?)\b/g, ' ').replace(/\b\d{1,2}:\d{2}\b/g, ' ').replace(/\b(?:september|october|november|december|january|february|march|april|may|june|july|august)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?/g, ' ');
+      const heeftGetal = /\b\d{1,3}\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/.test(zonderTijd);
+      const heeftEenheid = /\b(?:degrees?|mph|miles?|knots?|inches?|feet|foot|percent|hpa|millibars?|fahrenheit)\b/.test(l);
+      const heeftWeer = /\b(?:temperature|wind|winds|gust|humidity|pressure|dew|visibility|seas?|waves?|rain|snow|highs?|lows?|heat index|chance)\b/.test(l);
+      if ((heeftGetal && (heeftEenheid || heeftWeer)) && !vertaald.some((v) => l.includes(v))) verdacht.push(`${t}  ${zin.trim()}`);
+    }
+  }
+  uit.push('');
+  uit.push('== WAARNEMINGEN MET PLAATS ==');
+  for (const w of d.waarnemingen) uit.push(`${w.naam.padEnd(24)} ${w.lucht?.icoon ?? '  '} ${w.tempC != null ? `${w.tempC} °C` : '     '}  ${w.wind?.tekst ?? ''}${w.dauwC != null ? ` · dauw ${w.dauwC} °C` : ''}${w.drukHpa ? ` · ${w.drukHpa} hPa` : ''}${w.golfM != null ? ` · golf ${w.golfM} m` : ''}   ("${w.naamGehoord}")`);
+  if (!d.waarnemingen.length) uit.push('(geen)');
+  uit.push('');
+  uit.push('== ONBEKENDE PLAATSNAMEN (deze app-run) ==');
+  const onbekend = [...gemeldOnbekend].sort();
+  uit.push(onbekend.length ? onbekend.join(', ') : '(geen)');
+  uit.push('');
+  uit.push('== VERDACHT: getal/eenheid zonder omrekening ==');
+  uit.push(verdacht.length ? verdacht.join('\n') : '(niets)');
+  uit.push('');
+  return uit.join('\n') + '\n';
 }

@@ -21,7 +21,7 @@ import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
 import { fetchNavtexKustrapporten } from './sources/navtexKustrapporten.js'; // 2026-09-08, Niton-490 kustrapporten (zelfde laag)
-import { fetchRadioTekst, stationInfo as nwrStationInfo } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
+import { fetchRadioTekst, stationInfo as nwrStationInfo, radioRapport } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
 import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar, blokkenStatus, blokAudioPad } from './sources/radioLuister.js';
 import { zoekVrij as geocodeZoekVrij } from './sources/nwrGeocode.js'; // 2026-09-09, zoekveld // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
@@ -1442,6 +1442,18 @@ export function createApp(env) {
       return createReadStream(pad).pipe(res);
     }
     // 2026-09-09: zoekveld — plaatsnaam via OpenStreetMap (Nominatim)
+    // 2026-09-09: luisterrapport als platte tekst (Lex: "zodat je kan meedenken")
+    if (url === '/api/radio-rapport') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const id = params.get('station');
+      if (!id) { res.writeHead(400); return res.end('station ontbreekt'); }
+      try {
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end(radioRapport(id));
+      } catch (err) {
+        res.writeHead(500); return res.end(`rapport mislukt: ${err.message}`);
+      }
+    }
     if (url === '/api/geocode') {
       const params = new URL(req.url, 'http://localhost').searchParams;
       const q = (params.get('q') ?? '').trim().slice(0, 120);
