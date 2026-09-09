@@ -8110,6 +8110,8 @@ function nwrSamenvattingBij(d) {
   if (!nwrHuidig || !d?.vertaling) return;
   const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling);
   if (!mm) return;
+  const oud = nwrSamenvatting.get(mm[1]);
+  if (oud && oud.tekst === mm[2]) return; // zelfde waarde (de regel wordt elke 150 ms opnieuw opgebouwd): niets doen, anders knippert het blokje
   nwrSamenvatting.delete(mm[1]); // opnieuw achteraan: nieuwste rechts
   nwrSamenvatting.set(mm[1], { tekst: mm[2], tijd: Date.now(), soort: d.nu ? 'nu' : 'vandaag' });
   while (nwrSamenvatting.size > NWR_SAMENVATTING_MAX) nwrSamenvatting.delete(nwrSamenvatting.keys().next().value);
@@ -8121,44 +8123,30 @@ function nwrSamenvattingWis() {
   nwrSamenvattingTeken();
 }
 
+let nwrSamenvattingHtml = '';
 function nwrSamenvattingTeken() {
   if (!kaart) return;
-  if (nwrSamenvattingMarker) { kaart.removeLayer(nwrSamenvattingMarker); nwrSamenvattingMarker = null; }
   const st = nwrHuidig;
-  if (!st || !nwrSamenvatting.size) return;
+  if (!st || !nwrSamenvatting.size) {
+    if (nwrSamenvattingMarker) { kaart.removeLayer(nwrSamenvattingMarker); nwrSamenvattingMarker = null; }
+    nwrSamenvattingHtml = '';
+    return;
+  }
   const delen = [...nwrSamenvatting].map(([icoon, v]) => `<span class="nwr-sv-item${v.soort === 'vandaag' ? ' is-vandaag' : ''}" title="${v.soort === 'vandaag' ? 'verwachting vandaag' : 'actueel'}">${escapeHtml(icoon)} ${escapeHtml(v.tekst)}</span>`);
   const html = `<div class="nwr-sv">${delen.join('<span class="nwr-sv-sep">·</span>')}</div>`;
+  const sleutel = `${st.id}|${html}`;
+  if (nwrSamenvattingMarker && sleutel === nwrSamenvattingHtml) return; // ongewijzigd: niet hertekenen
+  nwrSamenvattingHtml = sleutel;
   // rechts van de pin (die is ~84 px breed vanaf anker 11): negatief anker = naar rechts
-  nwrSamenvattingMarker = L.marker([st.lat, st.lon], { icon: L.divIcon({ className: 'nwr-sv-marker', html, iconSize: [10, 22], iconAnchor: [-78, 11] }), interactive: false, zIndexOffset: 950 });
+  const icon = L.divIcon({ className: 'nwr-sv-marker', html, iconSize: [10, 22], iconAnchor: [-78, 11] });
+  if (nwrSamenvattingMarker) { nwrSamenvattingMarker.setLatLng([st.lat, st.lon]); nwrSamenvattingMarker.setIcon(icon); return; }
+  nwrSamenvattingMarker = L.marker([st.lat, st.lon], { icon, interactive: false, zIndexOffset: 950 });
   nwrSamenvattingMarker.addTo(kaart);
 }
 
 // Eén tekstregel (blok) als HTML; `zichtbaar` (0..1) = hoeveel van de tekst al
 // getoond wordt — het spelende blok groeit woord voor woord mee met de audio
 // (Lex 09/09: "lastig te volgen omdat er een hele alinea tegelijk bijkomt").
-// 2026-09-09 (avond): NWR praat per dagdeel ("Tonight", "Thursday night",
-// "Friday"...). Zo'n kop wordt in de lopende tekst een eigen amber regel, in
-// het Nederlands — de plek voor de verwachting is het paneel, niet de kaart.
-const NWR_DAGDEEL_RE = /\b(Tonight|Overnight|Today|This afternoon|This evening|This morning|Rest of (?:today|tonight|the afternoon)|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?: night| afternoon| evening| morning)?)\b(?=\s*[,:.]?\s)/g;
-const NWR_DAGEN = { monday: 'maandag', tuesday: 'dinsdag', wednesday: 'woensdag', thursday: 'donderdag', friday: 'vrijdag', saturday: 'zaterdag', sunday: 'zondag' };
-function nwrDagdeelNl(en) {
-  const t = en.toLowerCase();
-  if (t === 'tonight') return 'vannacht';
-  if (t === 'overnight') return 'komende nacht';
-  if (t === 'today') return 'vandaag';
-  if (t === 'this afternoon') return 'vanmiddag';
-  if (t === 'this evening') return 'vanavond';
-  if (t === 'this morning') return 'vanochtend';
-  if (t.startsWith('rest of')) return 'rest van ' + (t.includes('tonight') ? 'de nacht' : t.includes('afternoon') ? 'de middag' : 'vandaag');
-  const m = /^(\w+)(?: (night|afternoon|evening|morning))?$/.exec(t);
-  if (!m) return en;
-  const dag = NWR_DAGEN[m[1]] ?? m[1];
-  return m[2] ? `${dag}${{ night: 'nacht', afternoon: 'middag', evening: 'avond', morning: 'ochtend' }[m[2]]}` : dag;
-}
-function nwrMetDagdelen(tekstHtml) {
-  return tekstHtml.replace(NWR_DAGDEEL_RE, (en) => `<span class="nwr-dagdeel"><span class="nwr-dagdeel-nl">${escapeHtml(nwrDagdeelNl(en))}</span> ${escapeHtml(en)}</span>`);
-}
-
 function nwrRegelHtml(r, zichtbaar = 1) {
   const spelend = zichtbaar < 1;
   const delen = Array.isArray(r.delen) && r.delen.length ? r.delen : [{ tekst: r.tekst }];
@@ -8174,7 +8162,7 @@ function nwrRegelHtml(r, zichtbaar = 1) {
     // Lex 09/09: in de tekst alleen omrekeningen (°C, km/h, Bft, hPa…); woorden
     // als "zonnig"/"buien" niet als label — die zijn alleen voor het icoon op de kaart.
     if (d.plaats && heel) { stukken.push(`<span class="nwr-plaats" data-lat="${d.lat}" data-lon="${d.lon}" title="${escapeHtml(d.plaats)} — klik om ernaartoe te gaan">${escapeHtml(tekst)}</span>`); return; } // 2026-09-09: herkende plaats, aanklikbaar
-    if (!d.vertaling || !heel || d.woord) { stukken.push(nwrMetDagdelen(escapeHtml(tekst))); return; }
+    if (!d.vertaling || !heel || d.woord) { stukken.push(escapeHtml(tekst)); return; }
     const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
     const uitKlasse = d.nu ? '' : (d.soort === 'vandaag' ? ' is-vandaag' : ' is-later');
     stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit${uitKlasse}">${escapeHtml(d.vertaling)}</span></span></span></span>`);
