@@ -2239,6 +2239,8 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-plaats { color:#ffb020; text-decoration:underline dotted; text-underline-offset:2px; cursor:pointer; }
 .nwr-plaats:hover { color:#ffd27a; }
 .nwr-paneel-plaats { color:#fff1d6; font-weight:400; }
+.nwr-paneel .nwr-tekst { -webkit-user-select:text; user-select:text; cursor:text; }
+.nwr-paneel .nwr-tekst ::selection { background:rgba(255,176,32,0.45); color:#fff; }
 
 /* 2026-09-09: zoekveld linksboven (rechts van de zoomknoppen), NWR-laag aan */
 .kaart-zoek { position:absolute; top:8px; left:56px; z-index:1001; display:flex; align-items:center; gap:6px; }

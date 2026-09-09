@@ -7731,6 +7731,27 @@ let nwrTekstTimer = null;
 let nwrTekstLaag = null; // waarnemingspins
 let nwrPaneelOpen = false;
 let nwrPaneelStation = null; // welke zender het paneel toont
+// 2026-09-09, Lex: "gewoon doorschrijven, maar wel de tekst kunnen selecteren".
+// Zolang er in het paneel een selectie staat (of de muis erin ingedrukt is),
+// wordt de DOM niet herbouwd — dat zou de selectie wissen. Wat er in die tijd
+// bijkomt, wordt daarna in één keer getoond.
+let nwrPaneelMuisVast = false;
+let nwrPaneelUitgesteld = false;
+function nwrPaneelSelectieBezig() {
+  if (!NWR_PANEEL_EL || !nwrPaneelOpen) return false;
+  if (nwrPaneelMuisVast) return true;
+  const sel = window.getSelection?.();
+  if (!sel || sel.isCollapsed || !sel.anchorNode) return false;
+  return NWR_PANEEL_EL.contains(sel.anchorNode);
+}
+document.addEventListener('selectionchange', () => {
+  if (nwrPaneelUitgesteld && !nwrPaneelSelectieBezig()) { nwrPaneelUitgesteld = false; nwrPaneelVul(); }
+});
+document.addEventListener('mouseup', () => {
+  if (!nwrPaneelMuisVast) return;
+  nwrPaneelMuisVast = false;
+  setTimeout(() => { if (nwrPaneelUitgesteld && !nwrPaneelSelectieBezig()) { nwrPaneelUitgesteld = false; nwrPaneelVul(); } }, 50);
+});
 let nwrKanLuisteren = null; // server heeft whisper.cpp?
 
 function nwrTekstStart() {
@@ -8182,6 +8203,7 @@ function nwrWoordTimerStart(b, startCtxTijd) {
     const el = NWR_PANEEL_EL?.querySelector(`.nwr-regel[data-tijd="${CSS.escape(b.tijd)}"]`);
     const blok = nwrTeksten.get(nwrSync.id);
     const r = blok?.regels?.find((x) => x.tijd === b.tijd);
+    if (nwrPaneelSelectieBezig()) { nwrPaneelUitgesteld = true; if (nwrSync.zichtbaar >= 1) clearInterval(nwrSync.woordTimer); return; }
     if (el && r) {
       el.outerHTML = nwrRegelHtml(r, nwrSync.zichtbaar);
       const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
@@ -8205,6 +8227,7 @@ function nwrPaneelKopStatus() {
 
 function nwrPaneelVul() {
   if (!NWR_PANEEL_EL) return;
+  if (nwrPaneelSelectieBezig()) { nwrPaneelUitgesteld = true; return; }
   const d = nwrPaneelStation ? nwrTeksten.get(nwrPaneelStation) : null;
   const st = d?.station ?? nwrStations?.find((x) => x.id === nwrPaneelStation);
   const luister = d?.luister?.actief ? ` · luistert tot ${new Date(d.luister.tot).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}` : (d?.live ? ' · live' : '');
@@ -8238,6 +8261,7 @@ function nwrPaneelVul() {
   NWR_PANEEL_EL.querySelector('#nwrPaneelMute')?.addEventListener('click', nwrMuteToggle);
   if (!NWR_PANEEL_EL.dataset.plaatsKlik) {
     NWR_PANEEL_EL.dataset.plaatsKlik = '1';
+    NWR_PANEEL_EL.addEventListener('mousedown', (e) => { if (e.target.closest?.('.nwr-tekst')) nwrPaneelMuisVast = true; });
     NWR_PANEEL_EL.addEventListener('click', (e) => {
       const el = e.target.closest?.('.nwr-plaats');
       if (!el || !kaart) return;
