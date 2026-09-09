@@ -27,6 +27,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { opzoeken as geocodeOpzoeken } from './nwrGeocode.js';
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const PLAATSEN_BESTAND = path.join(HIER, '..', 'data', 'nwr-plaatsen.json');
@@ -39,6 +40,7 @@ const caches = new Map(); // pad -> { sleutel, resultaat }
 let plaatsenCache = null;
 let stationsCache = null;
 const gemeldOnbekend = new Set();
+let geoStation = null; // zender waarvoor nu geparsed wordt (voor de geocoder)
 
 // Map met de tekstbestanden: zelfde map als het NAVTEX-bestand (de app draait
 // als root, de radio-dienst als lex). Per zender één bestand:
@@ -122,6 +124,12 @@ function zoekPlaats(plaatsen, naamRuw, stil = false) {
   }
   const grens = naam.length < 5 ? 0 : Math.max(2, Math.floor(naam.length * 0.3));
   if (beste && besteAfstand <= grens) return beste;
+  // 2026-09-09: niet in de tabel → OpenStreetMap (Nominatim) via de cache;
+  // bij een misser gaat de naam in de wachtrij en is hij er de volgende parse.
+  if (geoStation) {
+    const g = geocodeOpzoeken(radioMap(), geoStation, naam);
+    if (g) return { naam: g.naam, lat: g.lat, lon: g.lon, aliassen: [], namen: [naam], bron: 'osm' };
+  }
   if (!stil && !gemeldOnbekend.has(naam)) {
     gemeldOnbekend.add(naam);
     console.log(`[weer] radioTekst: plaats "${naamRuw}" onbekend — overgeslagen (aanvullen in data/nwr-plaatsen.json)`);
@@ -661,7 +669,9 @@ function leesBestand(pad, stationIdHint) {
   const laatsteTijd = recent.length ? recent[recent.length - 1].tijd : (regels.length ? regels[regels.length - 1].tijd : null);
   const oud = laatsteTijd ? nu - laatsteTijd.getTime() > MAX_LEEFTIJD_MS : true;
 
+  geoStation = station;
   const waarnemingen = oud ? [] : parseWaarnemingen(recent, plaatsen);
+  geoStation = null;
   const vertaalStaat = { tijdvak: null };
   const vertalingen = oud ? [] : recent
     .filter((r) => nu - r.tijd.getTime() <= 10 * 60 * 1000)
