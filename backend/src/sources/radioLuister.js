@@ -77,14 +77,37 @@ export function alleLuisterStatus() {
 // VORIGE + huidige blok (30 s) en nemen we alleen de tekst over die volgens
 // Whisper's eigen tijdstempels in de tweede helft begint. Elk woord wordt zo
 // één keer heel gehoord; de vertraging blijft één blok.
+// PCM-data uit een WAV halen door de RIFF-blokken te lopen (ffmpeg zet een
+// LIST/INFO-blok vóór 'data', dus de kop is NIET altijd 44 bytes — dat was op
+// 2026-09-09 de reden dat Whisper op het geplakte venster niets teruggaf).
+function wavData(buf) {
+  if (buf.length < 12 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return null;
+  let p = 12;
+  let fmt = null;
+  while (p + 8 <= buf.length) {
+    const id = buf.toString('ascii', p, p + 4);
+    const len = buf.readUInt32LE(p + 4);
+    const begin = p + 8;
+    if (id === 'fmt ') fmt = { kanalen: buf.readUInt16LE(begin + 2), rate: buf.readUInt32LE(begin + 4), bits: buf.readUInt16LE(begin + 14) };
+    if (id === 'data') return { fmt, data: buf.subarray(begin, Math.min(buf.length, begin + len)) };
+    p = begin + len + (len % 2);
+  }
+  return null;
+}
+
 function plakWavs(padA, padB, uit) {
-  const a = readFileSync(padA); const b = readFileSync(padB);
-  const dataA = a.subarray(44); const dataB = b.subarray(44);
-  const kop = Buffer.from(a.subarray(0, 44));
-  kop.writeUInt32LE(36 + dataA.length + dataB.length, 4);
-  kop.writeUInt32LE(dataA.length + dataB.length, 40);
-  writeFileSync(uit, Buffer.concat([kop, dataA, dataB]));
-  return dataA.length / (16000 * 2); // duur van A in seconden
+  const a = wavData(readFileSync(padA));
+  const b = wavData(readFileSync(padB));
+  if (!a || !b) throw new Error('geen geldige wav');
+  const fmt = a.fmt ?? { kanalen: 1, rate: 16000, bits: 16 };
+  const data = Buffer.concat([a.data, b.data]);
+  const kop = Buffer.alloc(44);
+  kop.write('RIFF', 0); kop.writeUInt32LE(36 + data.length, 4); kop.write('WAVE', 8);
+  kop.write('fmt ', 12); kop.writeUInt32LE(16, 16); kop.writeUInt16LE(1, 20); kop.writeUInt16LE(fmt.kanalen, 22);
+  kop.writeUInt32LE(fmt.rate, 24); kop.writeUInt32LE((fmt.rate * fmt.kanalen * fmt.bits) / 8, 28); kop.writeUInt16LE((fmt.kanalen * fmt.bits) / 8, 32); kop.writeUInt16LE(fmt.bits, 34);
+  kop.write('data', 36); kop.writeUInt32LE(data.length, 40);
+  writeFileSync(uit, Buffer.concat([kop, data]));
+  return a.data.length / ((fmt.rate * fmt.kanalen * fmt.bits) / 8); // duur van A in seconden
 }
 
 // "[00:00:12.340 --> 00:00:15.900]   tekst" → { van, tot, tekst }
