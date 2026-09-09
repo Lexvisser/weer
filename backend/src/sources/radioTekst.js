@@ -308,7 +308,7 @@ function parseVerwachting(tekst) {
       const highs = /highs?\b([^.]{0,40})/.exec(inhoud);
       const lows = /lows?\b([^.]{0,40})/.exec(inhoud);
       const kans = /chance of (?:rain|precipitation)\s+(?:is\s+)?(\d{1,3})\s*(?:%|percent)/.exec(inhoud);
-      const heat = /heat index (?:values?\s+|readings?\s+)?(?:up to|around|near|of|to)\s+(\d{2,3})/.exec(inhoud);
+      const heat = /\b\w+ index (?:values?\s+|readings?\s+)?(?:up to|around|near|of|to)\s+(\d{2,3})/.exec(inhoud);
       const vak = {
         label: k.label,
         labelNl: tijdvakNl(k.label),
@@ -444,7 +444,8 @@ const VERTAAL_RE = [
     const b = tempBereik(m[0]); return b ? `🌡️ ${tempTekstC(b)}` : null; }],
   [/\b(?:highs?|lows?|temperatures?|temps?)\s+(?:will be\s+)?(?:around|near|about|of)\s+(\d{1,3})\b/g, (m) => `🌡️ ${fNaarC(Number(m[1]))} °C`],
   [/\b(?:in the\s+)(?:(upper|mid|middle|lower|low)[\s-]*)?(\d)0s\b/g, (m) => { const b = tempBereik(m[0]); return b ? `🌡️ ${tempTekstC(b)}` : null; }],
-  [/\bheat index(?: values?| readings?)?\s+(?:up to|around|near|of|to|will be)\s+(?:around |near )?(\d{2,3})\b/g, (m) => `🥵 gevoel ${fNaarC(Number(m[1]))} °C`],
+  // Whisper hoort "heat index" ook als "Pete index" e.d.: elk woord vóór "index values/readings up to N" telt, mits N ≥ 80 (UV-index is nooit zo hoog)
+  [/\b\w+ index(?: values?| readings?)?\s+(?:up to|around|near|of|to|will be)\s+(?:around |near )?(\d{2,3})\b/g, (m) => { const f = Number(m[1]); return f >= 80 ? `🥵 gevoel ${fNaarC(f)} °C` : null; }],
   [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
   [/\b(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // wind

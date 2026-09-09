@@ -2211,5 +2211,10 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-regel { padding:2px 0; }
 .nwr-regel.is-spelend { color:#f4f6fb; }
 .nwr-vert-bron { color:#ffd27a; }
-.nwr-vert-uit { background:#f1c40f; color:#111; font-weight:700; padding:0 5px; border-radius:5px; white-space:nowrap; }
+.nwr-vert-uit { background:#f1c40f; color:#111; font-weight:700; padding:0 5px; border-radius:5px; white-space:nowrap; margin-left:2px; }
+.nwr-vert { display:inline; } .nwr-vert-bron { white-space:normal; }
+/* de omrekening blijft aan het laatste woord van het fragment plakken (geen losse gele blokjes aan het begin van een regel) */
+.nwr-vert-bron::after { content:''; }
+.nwr-vert > .nwr-vert-uit { display:inline-block; }
 .nwr-tekst { max-height:260px; font-size:11.5px; }
+.nwr-vert-vast { white-space:nowrap; }

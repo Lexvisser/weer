@@ -7775,9 +7775,13 @@ async function nwrSyncPoll(id) {
   // niet eindeloos achterlopen: meer dan 4 blokken (1 min) wachtrij → de oudste laten vallen
   while (nwrSync.wachtrij.length > 4) nwrSync.gespeeld.add(nwrSync.wachtrij.shift().stamp);
   if (!nwrSync.bezig) nwrSyncVolgende();
-  if (!d.actief && !nwrSync.wachtrij.length && !nwrSync.bezig && nwrSync.gespeeld.size) {
-    nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} luistersessie klaar (12 min)`, 'fout');
+  // 2026-09-09: sessie op de server is 12 min; zolang je nog luistert gewoon
+  // opnieuw starten (Lex: "hierna niets meer" — de sessie was afgelopen).
+  if (!d.actief && nwrHuidig?.id === id && !nwrSync.verlengd) {
+    nwrSync.verlengd = true;
+    nwrLuisterStart(id).then((ok) => { if (nwrSync?.id === id) nwrSync.verlengd = !ok; });
   }
+  if (d.actief && nwrSync.verlengd) nwrSync.verlengd = false;
 }
 
 function nwrSyncVolgende() {
@@ -7996,7 +8000,11 @@ function nwrPaneelVul() {
       const t = new Date(r.tijd);
       const spelend = nwrSync?.huidig?.tijd === r.tijd;
       const inhoud = Array.isArray(r.delen) && r.delen.length
-        ? r.delen.map((d) => (d.vertaling ? `<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(d.tekst)}</span> <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span>` : escapeHtml(d.tekst))).join('')
+        ? r.delen.map((d) => {
+          if (!d.vertaling) return escapeHtml(d.tekst);
+          const m = /^(.*?)(\S+)$/s.exec(d.tekst) ?? [null, '', d.tekst];
+          return `<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span></span></span>`;
+        }).join('')
         : escapeHtml(r.tekst);
       return `<div class="nwr-regel${spelend ? ' is-spelend' : ''}"><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span> ${inhoud}</div>`;
     });
