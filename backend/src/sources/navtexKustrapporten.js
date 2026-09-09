@@ -62,6 +62,29 @@ const STATION_POSITIES = {
   'ROSSLARE': { lat: 52.25, lon: -6.34, omschrijving: 'Rosslare' },
   'DUBLIN': { lat: 53.43, lon: -6.25, omschrijving: 'Dublin Airport' },
   'MALIN HEAD': { lat: 55.37, lon: -7.34, omschrijving: 'Malin Head' },
+  // Schotland / Oost-Engeland — Cullercoats-tabel op 490 kHz (2026-09-09)
+  'SULE SKERRY': { lat: 59.08, lon: -4.41, omschrijving: 'Sule Skerry' },
+  'LERWICK': { lat: 60.14, lon: -1.18, omschrijving: 'Lerwick (Shetland)' },
+  'KIRKWALL': { lat: 58.95, lon: -2.90, omschrijving: 'Kirkwall (Orkney)' },
+  'FOULA': { lat: 60.13, lon: -2.07, omschrijving: 'Foula' },
+  'WICK': { lat: 58.45, lon: -3.09, omschrijving: 'Wick Airport' },
+  'WICK A/P': { lat: 58.45, lon: -3.09, omschrijving: 'Wick Airport' },
+  'WICK AIRPORT': { lat: 58.45, lon: -3.09, omschrijving: 'Wick Airport' },
+  'LOSSIEMOUTH': { lat: 57.71, lon: -3.32, omschrijving: 'RAF Lossiemouth' },
+  'DYCE': { lat: 57.20, lon: -2.20, omschrijving: 'Aberdeen Airport (Dyce)' },
+  'ABERDEEN': { lat: 57.20, lon: -2.20, omschrijving: 'Aberdeen Airport (Dyce)' },
+  'LEUCHARS': { lat: 56.38, lon: -2.86, omschrijving: 'Leuchars' },
+  'BOULMER': { lat: 55.42, lon: -1.60, omschrijving: 'Boulmer' },
+  'DONNA NOOK': { lat: 53.47, lon: 0.15, omschrijving: 'Donna Nook' },
+  'WEYBOURNE': { lat: 52.95, lon: 1.12, omschrijving: 'Weybourne' },
+  'SHOEBURYNESS': { lat: 51.55, lon: 0.83, omschrijving: 'Shoeburyness' },
+  'MANSTON': { lat: 51.34, lon: 1.35, omschrijving: 'Manston' },
+  'TIREE': { lat: 56.50, lon: -6.88, omschrijving: 'Tiree' },
+  'STORNOWAY': { lat: 58.21, lon: -6.32, omschrijving: 'Stornoway' },
+  'MACHRIHANISH': { lat: 55.44, lon: -5.70, omschrijving: 'Machrihanish' },
+  'BRIDLINGTON': { lat: 54.09, lon: -0.17, omschrijving: 'Bridlington' },
+  'SPURN': { lat: 53.58, lon: 0.11, omschrijving: 'Spurn Head' },
+  'SPURN HEAD': { lat: 53.58, lon: 0.11, omschrijving: 'Spurn Head' },
   // Belgisch/Nederlands (voor als Oostende-490 in hetzelfde formaat rapporteert)
   'WANDELAAR': { lat: 51.39, lon: 3.05, omschrijving: 'Wandelaar meetpaal' },
   'WESTHINDER': { lat: 51.38, lon: 2.44, omschrijving: 'Westhinder meetpaal' },
@@ -71,7 +94,8 @@ const STATION_POSITIES = {
   'VLISSINGEN': { lat: 51.44, lon: 3.60, omschrijving: 'Vlissingen' },
 };
 
-const KOP_RE = /STATION\s+PRES\s+DIR\s+WSP\s+VS\s+TEMP/;
+// Tolerant: Cullercoats komt door als "STATION PRES DIRWSP VS TEMP" (bitfouten/spaties weg)
+const KOP_RE = /STATION\s*PRES\s*DIR\s*WSP\s*VS\s*TEMP/;
 // naam (letters, spaties, : / ' -), dan 5 velden: druk, richting, wind, zicht, temp — '-' = geen
 const RIJ_RE = /^\s*([A-Z][A-Z0-9 .:\/'\-]*?)\s{2,}(\d{3,4}|-)\s+(\d{3}|-)\s+(\d{1,3}|-)\s+(\d{1,3}|-)\s+(-?\d{1,2}|-)\s*$/;
 const TIJD_RE = /(?:AT\s+)?(\d{2})(\d{2})\s*UTC/g;
@@ -94,70 +118,87 @@ function getal(v) {
   return v === '-' ? null : Number(v);
 }
 
-// Zoekt de laatste tabel in `tekst`; geeft { rapporten, tijd, khz } of null.
-function parseLaatsteTabel(tekst, khz, mtime) {
-  let kopIndex = -1;
+// Zoekt ALLE tabellen in `tekst` (de staart van het bestand) en geeft ze in
+// bestandsvolgorde terug, elk als { rapporten, tijd, khz }. Sinds 2026-09-09:
+// Niton en Cullercoats zenden op 490 elk hun eigen tabel (Kanaal resp.
+// Schotland/Oost-Engeland); alleen de laatste tonen liet de andere helft van
+// de kaart leeg. De waarnemingstijd per tabel komt uit de bulletinkop
+// ("... AT 1200 UTC"); de datum wordt van achteren naar voren afgeleid: de
+// laatste tabel t.o.v. de bestands-mtime, elke eerdere t.o.v. de volgende.
+function parseTabellen(tekst, khz, mtime) {
+  const koppen = [];
   let m;
   const re = new RegExp(KOP_RE.source, 'g');
-  while ((m = re.exec(tekst)) !== null) kopIndex = m.index;
-  if (kopIndex < 0) return null;
-  const regels = tekst.slice(kopIndex).split('\n');
-  const rapporten = [];
-  let begonnen = false;
-  for (const regel of regels.slice(1)) {
-    if (/^\s*(MB|MB\s+DEG)/.test(regel)) continue; // eenheden-regel
-    const r = RIJ_RE.exec(regel);
-    if (!r) {
-      if (begonnen) break; // tabel is voorbij
-      if (/NNNN|ZCZC/.test(regel)) break;
-      continue;
-    }
-    begonnen = true;
-    const naam = normaliseerNaam(r[1]);
-    const pos = STATION_POSITIES[naam] ?? STATION_POSITIES[naam.replace(/:/g, '')];
-    if (!pos) {
-      if (!gemeldOnbekend.has(naam)) {
-        gemeldOnbekend.add(naam);
-        console.log(`[weer] navtexKustrapporten: station "${naam}" zonder bekende positie — overgeslagen (aanvullen in STATION_POSITIES)`);
+  while ((m = re.exec(tekst)) !== null) koppen.push(m.index);
+  if (!koppen.length) return [];
+  const tabellen = [];
+  for (const kopIndex of koppen) {
+    const regels = tekst.slice(kopIndex).split('\n');
+    const rapporten = [];
+    let begonnen = false;
+    let lege = 0;
+    for (const regel of regels.slice(1)) {
+      if (/NNNN|ZCZC/.test(regel)) break; // einde bericht
+      if (/^\s*(MB|MB\s+DEG)/.test(regel)) continue; // eenheden-regel
+      const r = RIJ_RE.exec(regel);
+      if (!r) {
+        // verminkte rij ("36:", ";13") overslaan i.p.v. de tabel afkeuren;
+        // na een paar regels zonder rij is de tabel voorbij
+        if (begonnen && ++lege > 3) break;
+        continue;
       }
+      begonnen = true;
+      lege = 0;
+      const naam = normaliseerNaam(r[1]);
+      const pos = STATION_POSITIES[naam] ?? STATION_POSITIES[naam.replace(/:/g, '')];
+      if (!pos) {
+        if (!gemeldOnbekend.has(naam)) {
+          gemeldOnbekend.add(naam);
+          console.log(`[weer] navtexKustrapporten: station "${naam}" zonder bekende positie — overgeslagen (aanvullen in STATION_POSITIES)`);
+        }
+        continue;
+      }
+      const windKn = getal(r[4]);
+      const windMs = windKn != null ? windKn * 0.514444 : null;
+      rapporten.push({
+        naam: pos.omschrijving ?? naam,
+        naamUitgezonden: naam,
+        lat: pos.lat,
+        lon: pos.lon,
+        meting: {
+          luchtdrukHpa: getal(r[2]),
+          windRichtingGraden: getal(r[3]),
+          windKn,
+          windMs: windMs != null ? Math.round(windMs * 10) / 10 : null,
+          windBft: windMs != null ? msNaarBft(windMs) : null,
+          zichtNm: getal(r[5]),
+          temperatuurC: getal(r[6]),
+        },
+      });
+    }
+    // Waarnemingstijd: laatste "HHMM UTC" in de 600 tekens vóór de kop
+    let laatste = null;
+    let t;
+    const voor = tekst.slice(Math.max(0, kopIndex - 600), kopIndex);
+    while ((t = TIJD_RE.exec(voor)) !== null) laatste = t;
+    TIJD_RE.lastIndex = 0;
+    tabellen.push({ rapporten, khz, uur: laatste ? Number(laatste[1]) : null, minuut: laatste ? Number(laatste[2]) : null, tijd: null });
+  }
+  // Datums van achteren naar voren
+  let anker = new Date(mtime);
+  for (let i = tabellen.length - 1; i >= 0; i -= 1) {
+    const tab = tabellen[i];
+    if (tab.uur == null) {
+      tab.tijd = anker.toISOString();
       continue;
     }
-    const windKn = getal(r[4]);
-    const windMs = windKn != null ? windKn * 0.514444 : null;
-    rapporten.push({
-      naam: pos.omschrijving ?? naam,
-      naamUitgezonden: naam,
-      lat: pos.lat,
-      lon: pos.lon,
-      meting: {
-        luchtdrukHpa: getal(r[2]),
-        windRichtingGraden: getal(r[3]),
-        windKn,
-        windMs: windMs != null ? Math.round(windMs * 10) / 10 : null,
-        windBft: windMs != null ? msNaarBft(windMs) : null,
-        zichtNm: getal(r[5]),
-        temperatuurC: getal(r[6]),
-      },
-    });
+    const d = new Date(anker);
+    d.setUTCHours(tab.uur, tab.minuut, 0, 0);
+    if (d.getTime() > anker.getTime() + 60 * 60 * 1000) d.setUTCDate(d.getUTCDate() - 1); // gisteren
+    tab.tijd = d.toISOString();
+    anker = d;
   }
-  if (!rapporten.length) return null;
-  // Waarnemingstijd: laatste "HHMM UTC" in de 600 tekens vóór de kop (de
-  // bulletin-kop "... REPORTS AT 1200 UTC"); anders het schrijfmoment.
-  let tijd = null;
-  const voor = tekst.slice(Math.max(0, kopIndex - 600), kopIndex);
-  let t;
-  let laatste = null;
-  while ((t = TIJD_RE.exec(voor)) !== null) laatste = t;
-  TIJD_RE.lastIndex = 0;
-  if (laatste) {
-    const d = new Date(mtime);
-    d.setUTCHours(Number(laatste[1]), Number(laatste[2]), 0, 0);
-    if (d.getTime() > mtime.getTime() + 60 * 60 * 1000) d.setUTCDate(d.getUTCDate() - 1); // gisteren
-    tijd = d.toISOString();
-  } else {
-    tijd = mtime.toISOString();
-  }
-  return { rapporten, tijd, khz };
+  return tabellen.filter((tab) => tab.rapporten.length);
 }
 
 function bestanden() {
@@ -166,31 +207,51 @@ function bestanden() {
   return [{ khz: 490, pad: b490 }, { khz: 518, pad: b518 }];
 }
 
+const MAX_LEEFTIJD_MS = 12 * 60 * 60 * 1000;
+
 export function fetchNavtexKustrapporten({ homeLat, homeLon } = {}) {
   const lijst = bestanden().filter((b) => existsSync(b.pad));
   const sleutel = lijst.map((b) => `${b.pad}:${statSync(b.pad).mtimeMs}`).join('|');
   if (cache && cache.sleutel === sleutel) return cache.resultaat;
-  let beste = null;
+  // Per station de nieuwste waarneming, uit alle tabellen van beide banden
+  const perStation = new Map(); // naam → { ...rapport, tijd, khz }
+  let nieuwste = null;
+  const banden = new Set();
   for (const b of lijst) {
     const st = statSync(b.pad);
-    // alleen de staart lezen: een tabel is < 2 kB, de laatste zit binnen 200 kB
+    // alleen de staart lezen: een tabel is < 2 kB, een halve dag zit ruim binnen 200 kB
     const tekst = readFileSync(b.pad, 'utf-8').slice(-200 * 1024).replace(/\r\n/g, '\n');
-    const p = parseLaatsteTabel(tekst, b.khz, st.mtime);
-    if (p && (!beste || new Date(p.tijd) > new Date(beste.tijd))) beste = p;
+    for (const tab of parseTabellen(tekst, b.khz, st.mtime)) {
+      const tijdMs = new Date(tab.tijd).getTime();
+      if (Date.now() - tijdMs > MAX_LEEFTIJD_MS) continue;
+      for (const r of tab.rapporten) {
+        const bestaand = perStation.get(r.naam);
+        if (bestaand && new Date(bestaand.tijd).getTime() >= tijdMs) continue;
+        perStation.set(r.naam, { ...r, tijd: tab.tijd, khz: tab.khz });
+      }
+      if (!nieuwste || tijdMs > new Date(nieuwste.tijd).getTime()) nieuwste = tab;
+      banden.add(tab.khz);
+    }
   }
-  const resultaat = beste
+  const rapporten = [...perStation.values()].map((r) => ({
+    naam: r.naam,
+    naamUitgezonden: r.naamUitgezonden,
+    lat: r.lat,
+    lon: r.lon,
+    frequentieKhz: r.khz,
+    afstandKm: Number.isFinite(homeLat) && Number.isFinite(homeLon) ? Math.round(afstandKm(homeLat, homeLon, r.lat, r.lon)) : null,
+    meting: { ...r.meting, tijd: r.tijd },
+  }));
+  const bandTekst = [...banden].sort().join('+');
+  const resultaat = nieuwste
     ? {
-        bijgewerkt: beste.tijd,
-        frequentieKhz: beste.khz,
-        bron: `NAVTEX ${beste.khz} kHz (eigen ontvangst)`,
-        rapporten: beste.rapporten.map((r) => ({
-          ...r,
-          afstandKm: Number.isFinite(homeLat) && Number.isFinite(homeLon) ? Math.round(afstandKm(homeLat, homeLon, r.lat, r.lon)) : null,
-          meting: { ...r.meting, tijd: beste.tijd },
-        })),
+        bijgewerkt: nieuwste.tijd,
+        frequentieKhz: nieuwste.khz,
+        bron: `NAVTEX ${bandTekst} kHz (eigen ontvangst)`,
+        rapporten,
       }
     : { bijgewerkt: null, frequentieKhz: null, bron: null, rapporten: [] };
-  if (beste) console.log(`[weer] navtexKustrapporten: ${resultaat.rapporten.length} stations uit de ${beste.khz} kHz-tabel van ${beste.tijd}`);
+  if (nieuwste) console.log(`[weer] navtexKustrapporten: ${rapporten.length} stations (nieuwste tabel ${nieuwste.khz} kHz van ${nieuwste.tijd})`);
   cache = { sleutel, resultaat };
   return resultaat;
 }
