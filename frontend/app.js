@@ -7717,9 +7717,7 @@ async function nwrTekstVervers() {
   }
   if (!nwrActief) return;
   const had = [...nwrTeksten.keys()].sort().join(',');
-  const vorige = nwrTeksten;
   nwrTeksten = new Map((data?.stations ?? []).filter((s) => s.station?.id).map((s) => [s.station.id, s]));
-  nwrBallonNieuw(vorige);
   nwrKanLuisteren = data?.kanLuisteren ?? null;
   if ([...nwrTeksten.keys()].sort().join(',') !== had) tekenNwr(); // 📝 op de juiste pins
   nwrTekenWaarnemingen();
@@ -7816,20 +7814,6 @@ async function nwrBlokGestart(id, b) {
     nwrTekenWaarnemingen();
   }
   if (nwrPaneelOpen) nwrPaneelVul();
-  const blok = nwrTeksten.get(id);
-  const nieuw = [];
-  for (const w of blok?.waarnemingen ?? []) if (w.tijd === b.tijd) nieuw.push({ w, station: blok.station, tijd: w.tijd });
-  for (const v of blok?.vertalingen ?? []) {
-    if (v.tijd !== b.tijd) continue;
-    if ((blok.waarnemingen ?? []).some((w) => w.tijd === v.tijd && (w.bron ?? '').includes(v.fragment))) continue;
-    nieuw.push({ v, station: blok.station, tijd: v.tijd });
-  }
-  if (nieuw.length) {
-    nwrBallonWachtrij.length = 0; // vorige blok is voorbij
-    nwrBallonWachtrij.push(...nieuw);
-    if (nwrBallonTimer) { clearTimeout(nwrBallonTimer); nwrBallonTimer = null; }
-    nwrBallonVolgende();
-  }
 }
 
 function nwrWaarnemingVakHtml(w) {
@@ -7869,73 +7853,10 @@ function nwrWaarnemingPopupHtml(w) {
 const NWR_ZOOM_UITWAAIER = 6;
 let nwrWaarnemingMarkers = new Map(); // sleutel -> { marker, w }
 let nwrUitgewaaierd = false;
-const NWR_BALLON_EL = document.getElementById('nwrBallon');
-let nwrBallonGezien = new Set(); // "station|naam|tijd" — al getoond
-let nwrBallonWachtrij = [];
-let nwrBallonTimer = null;
-let nwrBallonEerste = true;
-
-// De "vertaalslag" (Lex, 09/09): elke nieuw verstane waarneming even in een
-// gele ballon onderin — links wat de omroeper zei, rechts wat wij ervan
-// maken — en tegelijk verschijnt het icoon op de kaart. Bij de eerste
-// vulling (app net open) niets tonen, alleen registreren.
-function nwrBallonNieuw() {
-  if (nwrSync) return; // synchroon: de ballon volgt het spelende blok (nwrBlokGestart)
-  const nieuw = [];
-  const vers = (tijd) => !nwrBallonEerste && tijd && Date.now() - new Date(tijd).getTime() < 3 * 60 * 1000; // alleen vers verstaan
-  const actieveZender = nwrHuidig?.id ?? nwrPaneelStation; // Lex 09/09: "ik zie zaken door elkaar" — alleen de zender waar je naar luistert
-  for (const blok of nwrTeksten.values()) {
-    if (actieveZender && blok.station.id !== actieveZender) continue;
-    const waarnemingen = blok.waarnemingen ?? [];
-    for (const w of waarnemingen) {
-      const sleutel = `${blok.station.id}|${w.naam}|${w.tijd}`;
-      if (nwrBallonGezien.has(sleutel)) continue;
-      nwrBallonGezien.add(sleutel);
-      if (vers(w.tijd)) nieuw.push({ w, station: blok.station, tijd: w.tijd });
-    }
-    // 2026-09-09 (avond): losse zinnen met een getal-met-eenheid ("highs in the
-    // lower 90s", "seas 2 feet") — Lex: "anders is het live luisteren zinloos".
-    // Overgeslagen als het fragment al in een waarneming zit (dubbel).
-    for (const v of blok.vertalingen ?? []) {
-      const sleutel = `${blok.station.id}|${v.tijd}|${v.bron}`;
-      if (nwrBallonGezien.has(sleutel)) continue;
-      nwrBallonGezien.add(sleutel);
-      if (!vers(v.tijd)) continue;
-      if (waarnemingen.some((w) => w.tijd === v.tijd && (w.bron ?? '').includes(v.fragment))) continue;
-      nieuw.push({ v, station: blok.station, tijd: v.tijd });
-    }
-  }
-  nwrBallonEerste = false;
-  if (nieuw.length) {
-    nieuw.sort((a, b) => new Date(a.tijd) - new Date(b.tijd));
-    nwrBallonWachtrij.push(...nieuw);
-    if (nwrBallonWachtrij.length > 12) nwrBallonWachtrij.splice(0, nwrBallonWachtrij.length - 12); // niet eindeloos achterlopen
-    nwrBallonVolgende();
-  }
-}
-
-function nwrVertaling(w) {
-  const delen = [];
-  if (w.lucht) delen.push(`${w.lucht.icoon} ${w.lucht.nl}`);
-  if (w.tempC != null) delen.push(`🌡️ ${w.tempC} °C`);
-  if (w.wind?.tekst) delen.push(`💨 ${w.wind.tekst}`);
-  if (w.golfM != null) delen.push(`🌊 ${w.golfM} m`);
-  return delen.join(' · ');
-}
-
-function nwrBallonVolgende() {
-  if (nwrBallonTimer || !NWR_BALLON_EL) return;
-  const item = nwrBallonWachtrij.shift();
-  if (!item) { NWR_BALLON_EL.classList.remove('aan'); return; }
-  const { w, v, station } = item;
-  const kop = w ? `📻 ${escapeHtml(station.roepletters)} · ${escapeHtml(w.naam)}` : `📻 ${escapeHtml(station.roepletters)}`;
-  const bron = w ? (w.bron ?? w.naamGehoord ?? '') : (v.bron ?? '');
-  const vertaling = w ? nwrVertaling(w) : escapeHtml(v.vertaling ?? '');
-  NWR_BALLON_EL.innerHTML = `<div class="nwr-ballon-kop">${kop}</div><div class="nwr-ballon-bron">"${escapeHtml(bron)}"</div><div class="nwr-ballon-pijl">↓</div><div class="nwr-ballon-vertaling">${vertaling}</div>`;
-  NWR_BALLON_EL.classList.add('aan');
-  const duur = nwrSync ? Math.max(2500, Math.min(6000, (nwrSync.blokS * 1000) / (nwrBallonWachtrij.length + 1))) : (nwrBallonWachtrij.length > 4 ? 2800 : (nwrBallonWachtrij.length ? 4000 : 6500));
-  nwrBallonTimer = setTimeout(() => { nwrBallonTimer = null; nwrBallonVolgende(); }, duur);
-}
+// (2026-09-09, later op de avond: de gele "vertaalslag"-ballon is weer
+// vervallen — Lex: "hebben we wel dubbelop nodig? gewoon in de tekst in een
+// felle kleur de omrekening erachter". De omrekening staat nu inline in het
+// paneel, zie nwrPaneelVul; de backend levert per regel `delen`.)
 
 // Waarneming vrijwel op de zender zelf (< 8 km) niet los tekenen: die zit al
 // in de pin (zie tekenNwr) — anders valt 'ie over de pin heen (Tallahassee).
@@ -8040,7 +7961,6 @@ function nwrPaneelToon(stationId) {
 function nwrPaneelSluit() {
   nwrPaneelOpen = false;
   NWR_PANEEL_EL?.classList.add('verborgen');
-  if (NWR_BALLON_EL && NWR_BALLON_EL.parentElement !== document.body) { document.body.appendChild(NWR_BALLON_EL); NWR_BALLON_EL.classList.remove('in-paneel'); }
 }
 
 function nwrVakHtml(v) {
@@ -8069,22 +7989,21 @@ function nwrPaneelVul() {
     body = `<div class="nwr-leeg">${nwrKanLuisteren === false ? 'De server heeft whisper.cpp niet — verstaan kan niet.' : (luistert ? '🎧 De server luistert mee — eerste blok over ~20 s, daarna elke 15 s. Geluid, tekst en ballon lopen gelijk.' : 'Nog geen tekst van deze zender. Klik op de pin om te luisteren; de server luistert dan mee.')}</div>`;
   } else {
     // 2026-09-09 (avond): verwachting-kaartjes eruit (Lex: "meerdaagse skippen"),
-    // alleen nog de tekst; de vertaalslag zit in de gele ballon (nwrBallon).
+    // alleen nog de tekst, met de omrekeningen fel inline (backend: delen per regel).
     const totTijd = nwrSync?.id === d.station?.id && nwrSync.huidig ? new Date(nwrSync.huidig.tijd).getTime() : null;
     const vanaf = nwrHuidig?.id === d.station?.id ? nwrSessieStart - 20 * 1000 : 0;
     const regels = (d.regels ?? []).filter((r) => { const t = new Date(r.tijd).getTime(); return t >= vanaf && (totTijd == null || t <= totTijd); }).slice(-12).map((r) => {
       const t = new Date(r.tijd);
-      return `<div><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}</span> ${escapeHtml(r.tekst)}</div>`;
+      const spelend = nwrSync?.huidig?.tijd === r.tijd;
+      const inhoud = Array.isArray(r.delen) && r.delen.length
+        ? r.delen.map((d) => (d.vertaling ? `<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(d.tekst)}</span> <span class="nwr-vert-uit">${escapeHtml(d.vertaling)}</span></span>` : escapeHtml(d.tekst))).join('')
+        : escapeHtml(r.tekst);
+      return `<div class="nwr-regel${spelend ? ' is-spelend' : ''}"><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span> ${inhoud}</div>`;
     });
     if (regels.length) body += `<div class="nwr-tekst">${regels.join('')}</div>`;
     else body += `<div class="nwr-leeg">${d.luister?.actief ? '🎧 De server luistert mee — eerste blok over ~20 s.' : 'Nog geen tekst van deze zender.'}</div>`;
   }
-  // 2026-09-09: de gele ballon hoort "pats na de tekst" (Lex) — vaste plek
-  // onder aan het paneel (sticky), niet los op de kaart.
-  body += '<div class="nwr-ballon-slot" id="nwrBallonSlot"></div>';
   NWR_PANEEL_EL.innerHTML = kop + body;
-  const slot = NWR_PANEEL_EL.querySelector('#nwrBallonSlot');
-  if (slot && NWR_BALLON_EL) { slot.appendChild(NWR_BALLON_EL); NWR_BALLON_EL.classList.add('in-paneel'); }
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
   const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
   if (tekst) tekst.scrollTop = tekst.scrollHeight;

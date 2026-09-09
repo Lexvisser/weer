@@ -134,8 +134,8 @@ function zoekPlaats(plaatsen, naamRuw, stil = false) {
 const WOORDGETAL = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100 };
 function woordenNaarCijfers(t) {
   return t
-    .replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](one|two|three|four|five|six|seven|eight|nine)\b/g, (m, a, b) => String(WOORDGETAL[a] + WOORDGETAL[b]))
-    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?=\s+(?:to\s+\w+\s+)?(?:miles|mph|knots|feet|foot|degrees|percent|seconds))/g, (m) => String(WOORDGETAL[m]));
+    .replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](one|two|three|four|five|six|seven|eight|nine)\b/gi, (m, a, b) => String(WOORDGETAL[a.toLowerCase()] + WOORDGETAL[b.toLowerCase()]))
+    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?=\s+(?:to\s+\w+\s+)?(?:miles|mph|knots|feet|foot|degrees|percent|seconds))/gi, (m) => String(WOORDGETAL[m.toLowerCase()]));
 }
 
 // ---- eenheden -----------------------------------------------------------
@@ -472,6 +472,32 @@ const VERTAAL_RE = [
   [/\b(\d{1,2}(?:\.\d{1,2})?)\s+inch(?:es)?\b/g, (m) => `📐 ${Math.round(Number(m[1]) * 25.4)} mm`],
 ];
 
+// Zelfde tekst, maar met hoofdletters behouden en getalwoorden → cijfers, zodat
+// een fragment uit vertalingenUitBlok() er positioneel in terug te vinden is.
+function normaliseerMetHoofdletters(tekstRuw) {
+  return woordenNaarCijfers(tekstRuw.replace(/[;:!?]/g, ' ').replace(/\s+/g, ' '));
+}
+
+// Regel opknippen in stukken tekst en stukken met een vertaling erachter.
+export function regelMetVertalingen(tekstRuw, tijd) {
+  const items = vertalingenUitBlok(tekstRuw, tijd);
+  const t = normaliseerMetHoofdletters(tekstRuw);
+  const lower = t.toLowerCase();
+  const delen = [];
+  let pos = 0;
+  let zoekVanaf = 0;
+  for (const it of items) {
+    const i = lower.indexOf(it.fragment, zoekVanaf);
+    if (i < 0) continue;
+    if (i > pos) delen.push({ tekst: t.slice(pos, i) });
+    delen.push({ tekst: t.slice(i, i + it.fragment.length), vertaling: it.vertaling });
+    pos = i + it.fragment.length;
+    zoekVanaf = pos;
+  }
+  if (pos < t.length) delen.push({ tekst: t.slice(pos) });
+  return delen;
+}
+
 function vertalingenUitBlok(tekstRuw, tijd) {
   const t = woordenNaarCijfers(tekstRuw.toLowerCase().replace(/[;:!?]/g, ' ').replace(/\s+/g, ' '));
   const uit = [];
@@ -543,7 +569,7 @@ function leesBestand(pad, stationIdHint) {
     station: station ? { id: station.id, roepletters: station.roepletters, plaats: station.plaats, staat: station.staat, lat: station.lat, lon: station.lon, mhz: station.mhz } : (stationId ? { id: stationId } : null),
     bijgewerkt: laatsteTijd ? laatsteTijd.toISOString() : null,
     live: laatsteTijd ? nu - laatsteTijd.getTime() < 3 * 60 * 1000 : false,
-    regels: regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst })),
+    regels: regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst, delen: regelMetVertalingen(r.tekst, r.tijd.toISOString()) })),
     waarnemingen,
     verwachting,
     vertalingen,
