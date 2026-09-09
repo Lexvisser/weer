@@ -560,6 +560,8 @@ const VERTAAL_RE = [
   // Whisper hoort "heat index" ook als "Pete index" e.d.: elk woord vóór "index values/readings up to N" telt, mits N ≥ 80 (UV-index is nooit zo hoog)
   [/\b\w+ index(?: values?| readings?)?\s+(?:up to|around|near|of|to|will be)\s+(?:around |near )?(\d{2,3})\b/g, (m) => { const f = Number(m[1]); return f >= 80 ? `🥵 gevoel ${fNaarC(f)} °C` : null; }],
   [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
+  // luchtvochtigheid is al een percentage — Whisper zegt soms "humidity 57 degrees": niets omrekenen, wel het stuk bezet houden
+  [/\b(?:relative\s+)?humidity\s+(?:was|is|of|at|around|near)?\s*(\d{1,3})\s*(?:degrees?|percent|%)?/g, () => ({ negeer: true })],
   // verschil, geen absolute waarde: "4 degrees below normal", "10 degrees above average" → Δ°C
   [/\b(\d{1,2})\s*degrees?\s+(above|below)\s+(?:normal|average|the normal|the average)\b/g, (m) => `🌡️ ${Math.round((Number(m[1]) * 5) / 9 * 10) / 10} °C ${m[2] === 'above' ? 'boven' : 'onder'} normaal`],
   // "between 86 and 88 degrees", "86 to 88 degrees"
@@ -681,6 +683,12 @@ function markeerPlaatsen(delen, plaatsen) {
   return uit;
 }
 
+// treffer in `tekst` die tot in de laatste `fragmentLengte` tekens reikt (dus het fragment zelf raakt)
+function raaktFragment(re, tekst, fragmentLengte) {
+  const m = re.exec(tekst);
+  return !!m && m.index + m[0].length > tekst.length - fragmentLengte;
+}
+
 function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
   vertaalDag = isDag(tijd, lon);
   const t = woordenNaarCijfers(tekstRuw.toLowerCase().replace(/[;:!?]/g, ' ').replace(/\s+/g, ' '));
@@ -698,6 +706,7 @@ function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
       let vertaling = null;
       let woord = false;
       try { vertaling = maak(m); } catch (_) { vertaling = null; }
+      if (vertaling && typeof vertaling === 'object' && vertaling.negeer) { bezet.push([van, tot]); continue; }
       if (vertaling && typeof vertaling === 'object') { woord = !!vertaling.woord; vertaling = vertaling.tekst; }
       if (!vertaling) continue;
       bezet.push([van, tot]);
@@ -723,7 +732,7 @@ function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
       // vlakVoor = de paar woorden direct vóór het fragment: "the heat index was 98", "the wind was southeast at 5", "light rain was falling"
       const vlakVoor = `${t.slice(Math.max(0, van - 28), van)} ${m[0]}`;
       const waarnemingsvorm = /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|raining|rainy|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:temperature|dew ?point|pressure|humidity)\s+(?:was|is)?\s*\d/.test(m[0])
-        || /\b(?:heat index|wind ?chill|temperature|winds?|gusts?|visibility|pressure|humidity|dew ?point|seas?|waves?)\s+(?:was|were|is|are)\s+(?:around\s+|near\s+|about\s+|the\s+)?(?:\w+\s+at\s+)?\d/.test(vlakVoor)
+        || raaktFragment(/\b(?:heat index|wind ?chill|temperature|winds?|gusts?|visibility|pressure|humidity|dew ?point|seas?|waves?)\s+(?:was|were|is|are)\s+(?:around\s+|near\s+|about\s+|the\s+)?(?:\w+\s+at\s+)?\d/, vlakVoor, m[0].length)
         || /\b(?:light |heavy |moderate )?(?:rain|drizzle|snow|fog|showers|thunderstorms?)\s+(?:was|were|is|are)\s+(?:falling|reported|occurring|in progress)\b/.test(`${m[0]}${t.slice(tot, tot + 24)}`);
       const nu = waarnemingsvorm || (actueel && !verwachting);
       const soort = nu ? 'nu' : (record ? 'overig' : (verwachting || tijdvak ? tijdvakSoort(tijdvak) : 'overig'));

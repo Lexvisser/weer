@@ -7845,7 +7845,8 @@ async function nwrSyncPoll(id) {
   // sessie op de server is 12 min; zolang je nog luistert gewoon opnieuw starten
   if (!d.actief && nwrHuidig?.id === id && !nwrSync.verlengd) {
     nwrSync.verlengd = true;
-    nwrLuisterStart(id).then((ok) => { if (nwrSync?.id === id) nwrSync.verlengd = !ok; });
+    // mislukt (server herstart, sessie nog aan het afronden)? dan over 8 s nog eens — anders 'hangt' het venster
+    nwrLuisterStart(id).then((ok) => { if (nwrSync?.id !== id) return; if (ok) nwrSync.verlengd = false; else setTimeout(() => { if (nwrSync?.id === id) nwrSync.verlengd = false; }, 8000); });
   }
   if (d.actief && nwrSync.verlengd) nwrSync.verlengd = false;
 }

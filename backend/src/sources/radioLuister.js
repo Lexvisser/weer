@@ -172,13 +172,15 @@ function verwerkBlokken(id) {
         .map((sg) => ({ t: Math.max(0, Math.round((sg.van - offset) * 10) / 10), w: sg.tekst }));
       let tekst = woorden.map((x) => x.w).join(' ').replace(/\s+/g, ' ').trim();
       // dubbel met het vorige blok (zelfde zin twee keer gehoord) wegpoetsen
-      if (vorig?.tekst && tekst) {
-        const staart = vorig.tekst.slice(-80).toLowerCase();
-        for (let n = Math.min(60, tekst.length); n >= 12; n -= 1) {
-          if (staart.endsWith(tekst.slice(0, n).toLowerCase())) {
-            tekst = tekst.slice(n).trim();
-            let weg = n; // evenveel woorden vooraan laten vallen
-            while (woorden.length && weg > 0) { weg -= woorden[0].w.length + 1; woorden.shift(); }
+      // (woordgewijs, zonder leestekens: "temperature was 88." | "was 88 degrees" → "degrees")
+      if (vorig?.woorden?.length && woorden.length) {
+        const kaal = (w) => w.toLowerCase().replace(/[^a-z0-9%]/g, '');
+        const staart = vorig.woorden.slice(-10).map((x) => kaal(x.w));
+        const kop = woorden.slice(0, 10).map((x) => kaal(x.w));
+        for (let n = Math.min(staart.length, kop.length); n >= 2; n -= 1) {
+          if (staart.slice(-n).join(' ') === kop.slice(0, n).join(' ') && kop.slice(0, n).some((w) => w.length > 2)) {
+            woorden = woorden.slice(n);
+            tekst = woorden.map((x) => x.w).join(' ').replace(/\s+/g, ' ').trim();
             break;
           }
         }
