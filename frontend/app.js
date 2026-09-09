@@ -1896,7 +1896,7 @@ function sdrMaakPaneel(canvasId, opties) {
 }
 const sdrPanelen = [
   sdrMaakPaneel('sdrBreed', { sleutel: 'b', midden: 'midden', span: 'breed', stapHz: 4000, decimalen: 0, bereikDb: SDR_BEREIK_BREED_DB }),
-  sdrMaakPaneel('sdrZoom', { sleutel: 'z', midden: 'zender', span: 'zoom', stapHz: 500, decimalen: 1, bereikDb: SDR_BEREIK_DB }),
+  sdrMaakPaneel('sdrZoom', { sleutel: 'z', midden: 'zender', span: 'zoom', stapHz: 250, decimalen: 2, bereikDb: SDR_BEREIK_DB }), // 2026-09-09: zoom is nu ±500 Hz (demodulator), as per 250 Hz
 ].filter(Boolean);
 
 function sdrVloer(p, rij) {

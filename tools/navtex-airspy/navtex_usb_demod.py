@@ -57,9 +57,9 @@ AUDIO_RATE = 12000
 SPEC_BINS = 256
 SPEC_BREED_HZ = 12000.0
 SPEC_BREED_MARGE_HZ = 6000.0  # marge buiten de buitenste zender bij meerdere zenders (490+518 -> 484-524)
-SPEC_ZOOM_HZ = 1500.0
+SPEC_ZOOM_HZ = 500.0  # 2026-09-09: was 1500 — de FSK-tonen (±85 Hz) vullen nu ~een kwart van het venster
 SPEC_FFT_BREED = 16384  # 47 Hz per FFT-bin, 4 per schermbin
-SPEC_FFT_ZOOM = 2048  # kwart seconde op 12 kHz = 3000 samples
+SPEC_FFT_ZOOM = 4096  # 2,9 Hz per bin; een kwartseconde-blok (3000 samples) wordt met nullen aangevuld
 SPEC_MAX_BYTES = 1024 * 1024
 AUDIO_MAX_BYTES = 4 * 1024 * 1024  # ~3 minuten op 12 kHz/16 bit
 
