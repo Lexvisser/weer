@@ -8042,6 +8042,7 @@ const NWR_FLITS_MS = 20 * 1000;
 let nwrFlitsLaag = null;
 let nwrFlitsGedaan = new Set(); // "tijd|index"
 let nwrFlitsTeller = 0;
+let nwrFlitsPerPlaats = new Map(); // plaatsnaam -> { marker, t } (één label per plaats, groeit aan)
 
 function nwrFlits(r, d, index) {
   if (!kaart || !nwrSync) return;
@@ -8068,13 +8069,23 @@ function nwrFlits(r, d, index) {
   }
   if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
   const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling ?? '');
-  const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}` : escapeHtml(d.vertaling ?? '');
+  const regel = mm ? `<div class="nwr-flits-regel"><span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}</div>` : `<div class="nwr-flits-regel">${escapeHtml(d.vertaling ?? '')}</div>`;
   const soortKlasse = d.nu ? '' : ' is-vandaag';
-  const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${inhoud}${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : (d.nu ? '' : '<span class="nwr-flits-plaats">vandaag</span>')}</div>`;
+  // Per bekende plaats één label dat aangroeit (Lex 09/09: "op Louisville
+  // gooide hij alles op elkaar"): lucht, temperatuur, wind, druk onder elkaar.
+  if (w) {
+    const bestaand = nwrFlitsPerPlaats.get(naam);
+    if (bestaand && Date.now() - bestaand.t < NWR_FLITS_MS - 3000) {
+      const el = bestaand.marker.getElement()?.querySelector('.nwr-flits');
+      if (el) { el.insertAdjacentHTML('beforeend', regel); el.classList.remove('is-weg'); return; }
+    }
+  }
+  const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${w ? `<span class="nwr-flits-plaats">${escapeHtml(naam)}</span>` : (d.nu ? '' : '<span class="nwr-flits-plaats">vandaag</span>')}${regel}</div>`;
   const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5, 5] }), interactive: false, zIndexOffset: 900 });
   nwrFlitsLaag.addLayer(marker);
+  if (w) nwrFlitsPerPlaats.set(naam, { marker, t: Date.now() });
   setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), NWR_FLITS_MS - 1200);
-  setTimeout(() => { try { nwrFlitsLaag.removeLayer(marker); } catch (_) { /* weg */ } }, NWR_FLITS_MS);
+  setTimeout(() => { try { nwrFlitsLaag.removeLayer(marker); } catch (_) { /* weg */ } if (nwrFlitsPerPlaats.get(naam)?.marker === marker) nwrFlitsPerPlaats.delete(naam); }, NWR_FLITS_MS);
 }
 
 // Eén tekstregel (blok) als HTML; `zichtbaar` (0..1) = hoeveel van de tekst al

@@ -2226,6 +2226,9 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-flits { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(1); color:#ffe27a; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; white-space:nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.8); animation: nwr-flits-in 0.35s ease-out; transition: opacity 1.2s, transform 1.2s; pointer-events:none; }
 .nwr-flits.is-weg { opacity:0; transform:translate(-50%,-50%) scale(0.7); }
 .nwr-flits-plaats { display:block; font-size:9.5px; font-weight:400; color:#ffd27a; }
+.nwr-flits-regel { line-height:1.25; }
+.nwr-flits { transform:translate(-50%,-20%) scale(1); } /* label onder het punt, zodat de plaatsnaam bovenaan staat */
+.nwr-flits.is-weg { transform:translate(-50%,-20%) scale(0.7); }
 @keyframes nwr-flits-in { from { opacity:0; transform:translate(-50%,-50%) scale(0.4); } to { opacity:1; transform:translate(-50%,-50%) scale(1); } }
 .nwr-flits-icoon { font-size:20px; vertical-align:middle; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
 /* verwachting: vandaag blauw, later grijsblauw (actueel blijft geel) */
