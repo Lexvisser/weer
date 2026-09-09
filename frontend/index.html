@@ -90,6 +90,14 @@
          zelfde fosforgroen. Gevuld/ververst in ververNavtexVolgende();
          tonen/verbergen via de DX-knop hierboven (per toestel bewaard). -->
     <div class="navtex-dx verborgen" id="navtexDxPaneel"></div>
+    <!-- 2026-09-09: NWR-speler (zie toggleNwr()/nwrSpeel() in app.js) —
+         linksboven naast de zoomknoppen, alleen zichtbaar zolang er een
+         stream loopt of laadt. -->
+    <div class="nwr-speler verborgen" id="nwrSpeler">
+      <span class="nwr-speler-led" id="nwrSpelerLed"></span>
+      <span id="nwrSpelerTekst"></span>
+      <button type="button" id="nwrStopKnop" title="Stoppen">⏹</button>
+    </div>
     <!-- Gevaren/Weer-schakelaar is op 2026-08-18 weggehaald: die deed toch
          alleen de radar-controls-balk hieronder tonen/verbergen, niet welke
          gevaren-iconen je zag — dus pure overhead. Radar en Satelliet staan
@@ -262,6 +270,14 @@
            ("TBD" volgens Lex) — kan later vervangen worden door een eigen
            SVG zoals bij Lifeliner, zonder dat de rest van de logica
            verandert. Zie toggleVliegradar()/toggleVaarradar() in app.js. -->
+      <!-- 2026-09-09, op verzoek van Lex (na God's Eye View / Radio Browser:
+           "het gaat me met name om zaken als NOAA radio"): NOAA Weather
+           Radio-zenders (VS, 162 MHz) als kaartlaag — pin per zender, popup
+           met ▶, één <audio>-speler tegelijk. Stationslijst in
+           frontend/data/nwr-stations.json (statisch, zelf uit te breiden);
+           streams komen rechtstreeks van hobby-relays (wxradio.org e.a.),
+           bewust zonder backend-proxy. Zie toggleNwr() in app.js. -->
+      <button id="toggleNwr" class="satelliet-toggle" title="NOAA Weather Radio-zenders (VS) — klik op een pin om te luisteren">📻<span class="knop-tekst"> NWR</span></button>
       <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
       <!-- 2026-09-02, op verzoek van Lex ("een verticaal menu voor AIS aan de
            rechterkant. Uitklappen = aan en daaronder alle opties") --

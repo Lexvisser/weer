@@ -836,6 +836,7 @@ function initMap() {
   kaart.on('click', (e) => { if (gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(STATIONS_KEY) === 'aan') toggleStations(); } catch (_) { /* privé-modus */ }
+  try { if (localStorage.getItem(NWR_KEY) === 'aan') toggleNwr(); } catch (_) { /* privé-modus */ }
 
   // 2026-08-19: basiskaart-geschiedenis (kort) — CARTO's gratis dark_all gaf
   // in Europa een ingebakken "Zoom Level Not Supported"-plaatje (HTTP 200,
@@ -933,6 +934,8 @@ function initMap() {
   if (TOGGLE_FRONTEN_EL) TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
   if (TOGGLE_GRADEN_EL) TOGGLE_GRADEN_EL.addEventListener('click', toggleGradenGrid);
   if (TOGGLE_STATIONS_EL) TOGGLE_STATIONS_EL.addEventListener('click', toggleStations); // 2026-09-07, weerstations-laag
+  if (TOGGLE_NWR_EL) TOGGLE_NWR_EL.addEventListener('click', toggleNwr); // 2026-09-09, NOAA Weather Radio-laag
+  document.getElementById('nwrStopKnop')?.addEventListener('click', nwrStop);
   STATIONS_SUB_EL?.querySelectorAll('.stations-subknop').forEach((k) => k.addEventListener('click', () => stationsSubToggle(k.dataset.deel)));
   stationsSubKnoppenBijwerken();
   if (TOGGLE_DWD_KAART_EL) TOGGLE_DWD_KAART_EL.addEventListener('click', openDwdKaart);
@@ -7557,6 +7560,153 @@ const VLIEGRADAR_ZOOM = 8;
 // te zien"-zoom bij het aanzetten van de modus zelf), specifiek voor het
 // aantikken van één toestel.
 const VLIEGRADAR_KLIK_ZOOM = 12;
+
+// 2026-09-09, op verzoek van Lex — aanleiding was de "God's Eye View"-repo
+// (bilawalsidhu/gods-eye-view) met een Radio Browser-laag; Lex: "het gaat me
+// met name om zaken als NOAA radio". NOAA Weather Radio (NWR, VS, 162 MHz)
+// als losse kaartlaag (📻 NWR-knop, rechts naast Zee). Per zender een pin met
+// roepletters; klik = popup met frequentie/plaats/bron en een ▶-knop.
+//
+// Bronkeuze (onderzocht 2026-09-09): Radio Browser heeft maar ~17 NWR-
+// streams en de tag "weather" is rommel; vrijwel alle NWR-streams komen van
+// hobby-relays (wxradio.org/noaaweatherradio.org, bobc.io, rollernet...).
+// De NWS zelf streamt niets. Daarom géén live API, maar een eigen statische
+// lijst in frontend/data/nwr-stations.json (Radio Browser alleen gebruikt als
+// vindplaats; lat/lon = stadscentrum bij benadering).
+//
+// Afspelen rechtstreeks in de browser met één <audio>-element, bewust ZONDER
+// backend-proxy: de voorwaarden van wxradio.org staan alleen persoonlijk
+// luisteren toe, geen relaying. Consequentie: http://-streams (KHB36, WNG589)
+// werken alleen als de app zelf over http draait (mixed content) — de popup
+// waarschuwt daarvoor. Eén stream tegelijk; een andere pin = wisselen.
+// Voorkeur (laag aan/uit) per toestel bewaard, zelfde patroon als Stations.
+const TOGGLE_NWR_EL = document.getElementById('toggleNwr');
+const NWR_KEY = 'weerNwrLaag';
+const NWR_SPELER_EL = document.getElementById('nwrSpeler');
+const NWR_SPELER_TEKST_EL = document.getElementById('nwrSpelerTekst');
+const NWR_SPELER_LED_EL = document.getElementById('nwrSpelerLed');
+let nwrActief = false;
+let nwrLaag = null;
+let nwrStations = null; // uit nwr-stations.json, eenmalig geladen
+let nwrAudio = null; // het ene <audio>-element
+let nwrHuidig = null; // station dat nu speelt/laadt
+let nwrMarkers = new Map(); // id -> marker, om de spelende pin te markeren
+
+async function laadNwrStations() {
+  if (nwrStations) return nwrStations;
+  const res = await fetch('/data/nwr-stations.json', { cache: 'no-cache' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  nwrStations = Array.isArray(data.stations) ? data.stations : [];
+  return nwrStations;
+}
+
+function toggleNwr() {
+  nwrActief = !nwrActief;
+  TOGGLE_NWR_EL?.classList.toggle('actief', nwrActief);
+  if (nwrActief) {
+    tekenNwr();
+  } else {
+    nwrStop();
+    if (nwrLaag) { kaart.removeLayer(nwrLaag); nwrLaag = null; }
+    nwrMarkers = new Map();
+  }
+  try { localStorage.setItem(NWR_KEY, nwrActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
+}
+
+function nwrPopupHtml(s) {
+  const speelt = nwrHuidig?.id === s.id;
+  const mixed = location.protocol === 'https:' && /^http:/i.test(s.url);
+  const regels = [
+    `<div class="station-stat"><span class="station-stat-label">Frequentie:</span> <span class="station-stat-waarde">${s.mhz.toFixed(3)} MHz</span></div>`,
+    `<div class="station-stat"><span class="station-stat-label">Stream:</span> <span class="station-stat-waarde">${escapeHtml(s.bron ?? '')}</span></div>`,
+  ];
+  if (s.marine) regels.push('<div class="popup-sub">Marine-zender (kustwateren)</div>');
+  if (!s.getest) regels.push('<div class="popup-sub">Stream nog niet bevestigd — probeer maar</div>');
+  if (mixed) regels.push('<div class="popup-sub nwr-waarschuwing">http-stream: werkt alleen als de app zelf over http draait</div>');
+  const knop = speelt
+    ? `<button type="button" class="nwr-popup-knop is-actief" onclick="nwrStop()">⏹ Stop</button>`
+    : `<button type="button" class="nwr-popup-knop" onclick="nwrSpeel('${escapeHtml(s.id)}')">▶ Luister</button>`;
+  return `<div class="popup-titel">📻 ${escapeHtml(s.roepletters)} · ${escapeHtml(s.plaats)}, ${escapeHtml(s.staat)}</div><div class="popup-sub">NOAA Weather Radio</div><div class="popup-stats">${regels.join('')}</div><div class="nwr-popup-acties">${knop}</div>`;
+}
+
+async function tekenNwr() {
+  if (!nwrActief || !kaart) return;
+  let stations;
+  try {
+    stations = await laadNwrStations();
+  } catch (err) {
+    console.warn('[weer] NWR-stationslijst laden mislukt:', err);
+    return;
+  }
+  if (!nwrActief || !kaart) return; // ondertussen uitgezet
+  if (!nwrLaag) nwrLaag = L.layerGroup().addTo(kaart);
+  nwrLaag.clearLayers();
+  nwrMarkers = new Map();
+  for (const s of stations) {
+    if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue;
+    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(s.roepletters)} ${s.mhz.toFixed(3)} MHz — ${escapeHtml(s.plaats)}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span></div>`;
+    const marker = L.marker([s.lat, s.lon], {
+      icon: L.divIcon({ className: '', html, iconSize: [64, 22], iconAnchor: [11, 11] }),
+    }).bindPopup(() => nwrPopupHtml(s), { maxWidth: 280 });
+    nwrLaag.addLayer(marker);
+    nwrMarkers.set(s.id, marker);
+  }
+}
+
+function nwrSpelerToon(tekst, staat) {
+  if (!NWR_SPELER_EL) return;
+  NWR_SPELER_EL.classList.remove('verborgen');
+  if (NWR_SPELER_TEKST_EL) NWR_SPELER_TEKST_EL.textContent = tekst;
+  if (NWR_SPELER_LED_EL) NWR_SPELER_LED_EL.className = `nwr-speler-led is-${staat}`;
+}
+
+function nwrMarkeerSpelend() {
+  // spelende pin oplichten; popup (indien open) verversen zodat de knop klopt
+  for (const [id, m] of nwrMarkers) {
+    const el = m.getElement()?.querySelector('.nwr-pin');
+    el?.classList.toggle('is-spelend', nwrHuidig?.id === id);
+    if (m.isPopupOpen()) m.getPopup().setContent(nwrPopupHtml(nwrStations.find((s) => s.id === id)));
+  }
+}
+
+function nwrSpeel(id) {
+  const s = nwrStations?.find((x) => x.id === id);
+  if (!s) return;
+  if (!nwrAudio) {
+    nwrAudio = new Audio();
+    nwrAudio.preload = 'none';
+    nwrAudio.addEventListener('playing', () => nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} ${nwrHuidig?.plaats ?? ''} · ${nwrHuidig?.mhz?.toFixed(3) ?? ''} MHz`, 'live'));
+    nwrAudio.addEventListener('waiting', () => nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} laden…`, 'laden'));
+    nwrAudio.addEventListener('error', () => {
+      console.warn('[weer] NWR-stream fout:', nwrHuidig?.url, nwrAudio.error?.code);
+      nwrSpelerToon(`${nwrHuidig?.roepletters ?? ''} stream offline of geblokkeerd`, 'fout');
+    });
+  }
+  nwrHuidig = s;
+  nwrSpelerToon(`${s.roepletters} laden…`, 'laden');
+  nwrAudio.src = s.url;
+  nwrAudio.play().catch((err) => {
+    console.warn('[weer] NWR afspelen mislukt:', err);
+    nwrSpelerToon(`${s.roepletters} kan niet afspelen (${err.name})`, 'fout');
+  });
+  nwrMarkeerSpelend();
+}
+
+function nwrStop() {
+  if (nwrAudio) {
+    nwrAudio.pause();
+    nwrAudio.removeAttribute('src');
+    nwrAudio.load(); // verbinding echt loslaten
+  }
+  nwrHuidig = null;
+  NWR_SPELER_EL?.classList.add('verborgen');
+  nwrMarkeerSpelend();
+}
+// De ▶/⏹-knoppen in de popup-HTML roepen deze functies via onclick aan en
+// hebben dus globale namen nodig — expliciet aan window gehangen.
+window.nwrSpeel = nwrSpeel;
+window.nwrStop = nwrStop;
 
 // 2026-09-07, op verzoek van Lex ("kan ik de app nog verder optuigen? Ik
 // denk aan weerstations in de buurt"): KNMI-weerstations als losse kaartlaag
