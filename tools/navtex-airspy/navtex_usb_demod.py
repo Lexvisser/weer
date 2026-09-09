@@ -74,14 +74,18 @@ def snr_db(zoom, span_hz, venster_hz=150.0):
     return float(a[lo:hi].max() - np.median(a))
 
 
-def spectrum_db(x, nfft, rate, f_mid, span_hz, bins):
+def spectrum_db(x, nfft, rate, f_mid, span_hz, bins, piek=False):
     """Gemiddeld vermogensspectrum (dB) van complex signaal x, over
     [f_mid-span, f_mid+span] Hz (basisband-frequenties), herbemonsterd naar
     `bins` waarden. Meerdere FFT-vensters over het blok gemiddeld = rustiger
     beeld. Per schermbin het gemiddelde van de FFT-bins in een SYMMETRISCH
     venster rond de doelfrequentie (2026-09-08: de eerdere searchsorted-
     variant pakte steeds de bin erboven, waardoor het hele beeld tot één
-    FFT-bin naar links verschoof — Lex zag het blok naast de 518-streep)."""
+    FFT-bin naar links verschoof — Lex zag het blok naast de 518-streep).
+    piek=True: per schermbin het MAXIMUM i.p.v. het gemiddelde van de
+    FFT-bins (zoals SDR++ bij uitzoomen) — 2026-09-09, voor het brede
+    venster: een NAVTEX-signaal van ~250 Hz raakt daar maar één bin van 156 Hz
+    en werd door het middelen "verdund" tot een iele streep."""
     if len(x) < nfft:
         x = np.concatenate([x, np.zeros(nfft - len(x), dtype=x.dtype)])
     nvens = len(x) // nfft
@@ -101,7 +105,7 @@ def spectrum_db(x, nfft, rate, f_mid, span_hz, bins):
     for k, m in enumerate(midden):
         lo = max(0, m - half)
         hi = min(nfft, m + half + 1)
-        uit[k] = acc[lo:hi].mean() if hi > lo else acc[min(max(m, 0), nfft - 1)]
+        uit[k] = (acc[lo:hi].max() if piek else acc[lo:hi].mean()) if hi > lo else acc[min(max(m, 0), nfft - 1)]
     return (10.0 * np.log10(uit + 1e-20)).round().astype(int).tolist()
 
 
@@ -246,7 +250,7 @@ def main():
         iq = np.frombuffer(raw[: n * 8], dtype=np.complex64).astype(np.complex128)
 
         # breed spectrum uit de ruwe IQ (vóór het mengen; 0 Hz in de IQ = --center)
-        b_spec = spectrum_db(iq, SPEC_FFT_BREED, rate, spec_midden - args.center, spec_breed, SPEC_BINS) if spec_f else None
+        b_spec = spectrum_db(iq, SPEC_FFT_BREED, rate, spec_midden - args.center, spec_breed, SPEC_BINS, piek=True) if spec_f else None
 
         x, pcm = hoofd.verwerk(iq)
         stdout.write(pcm)

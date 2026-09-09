@@ -1899,7 +1899,7 @@ function sdrMaakPaneel(canvasId, opties) {
   return { canvas, ctx: canvas.getContext('2d'), wv: null, wvCtx: null, bins: 0, vloer: null, laatste: null, ...opties };
 }
 const sdrPanelen = [
-  sdrMaakPaneel('sdrBreed', { sleutel: 'b', midden: 'midden', span: 'breed', stapHz: 4000, decimalen: 0, bereikDb: SDR_BEREIK_BREED_DB }),
+  sdrMaakPaneel('sdrBreed', { sleutel: 'b', midden: 'midden', span: 'breed', stapHz: 4000, decimalen: 0, bereikDb: SDR_BEREIK_BREED_DB, verbreed: true }),
   sdrMaakPaneel('sdrZoom', { sleutel: 'z', midden: 'zender', span: 'zoom', stapHz: 250, decimalen: 2, bereikDb: SDR_BEREIK_DB }), // 2026-09-09: zoom is nu ±500 Hz (demodulator), as per 250 Hz
 ].filter(Boolean);
 
@@ -1910,9 +1910,20 @@ function sdrVloer(p, rij) {
   return p.vloer;
 }
 
+// 2026-09-09: in het brede venster (40 kHz over 256 bins) raakt een
+// NAVTEX-signaal maar één bin; elke bin neemt het maximum van zichzelf en
+// zijn buren, zodat een zender een streep van drie bins geeft. Alleen beeld —
+// de S/N-meting gebruikt de zoom en blijft ongewijzigd.
+function sdrVerbreed(rij) {
+  const uit = new Array(rij.length);
+  for (let i = 0; i < rij.length; i++) uit[i] = Math.max(rij[i - 1] ?? -Infinity, rij[i], rij[i + 1] ?? -Infinity);
+  return uit;
+}
+
 function sdrVoegRijToe(p, regel, meteenTekenen) {
-  const rij = regel[p.sleutel];
+  let rij = regel[p.sleutel];
   if (!Array.isArray(rij) || !rij.length) return;
+  if (p.verbreed) rij = sdrVerbreed(rij);
   if (!p.wv || p.bins !== rij.length) {
     p.bins = rij.length;
     p.wv = document.createElement('canvas');
