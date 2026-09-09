@@ -122,7 +122,7 @@ function zoekPlaats(plaatsen, naamRuw, stil = false) {
       if (d < besteAfstand) { besteAfstand = d; beste = p; }
     }
   }
-  const grens = naam.length < 5 ? 0 : Math.max(2, Math.floor(naam.length * 0.3));
+  const grens = naam.length < 5 ? 0 : 2; // was 30% van de lengte: "a m dfw airport" werd dan DFW Airport
   if (beste && besteAfstand <= grens) return beste;
   // 2026-09-09: niet in de tabel → OpenStreetMap (Nominatim) via de cache;
   // bij een misser gaat de naam in de wachtrij en is hij er de volgende parse.
@@ -346,13 +346,24 @@ function parseVerwachting(tekst) {
 // aaneengesloten woordgroepen, langste eerst, tegen de plaatsenlijst), en
 // temperatuur/wind staan in het stuk tót de volgende "it was".
 function zoekPlaatsInWoorden(plaatsen, woorden) {
+  // eerst exact (langste woordgroep wint), dan pas fuzzy/geocoder — anders
+  // plakt er rommel aan de naam ("a m dfw airport", "rising dallas love field")
+  const kandidaten = [];
   for (let len = Math.min(4, woorden.length); len >= 1; len -= 1) {
     for (let start = woorden.length - len; start >= 0; start -= 1) {
       const kandidaat = woorden.slice(start, start + len).join(' ');
       if (/^(at|in|if|and|the|it|was|hour|degrees)$/.test(kandidaat)) continue;
-      const p = zoekPlaats(plaatsen, kandidaat, true);
-      if (p) return { plaats: p, gehoord: kandidaat };
+      kandidaten.push(kandidaat);
     }
+  }
+  for (const kandidaat of kandidaten) {
+    const n = normaliseer(kandidaat);
+    const p = plaatsen.find((x) => x.namen.includes(n));
+    if (p) return { plaats: p, gehoord: kandidaat };
+  }
+  for (const kandidaat of kandidaten) {
+    const p = zoekPlaats(plaatsen, kandidaat, true);
+    if (p) return { plaats: p, gehoord: kandidaat };
   }
   return null;
 }
@@ -588,6 +599,30 @@ function tijdvakSoort(w) {
   return /^(today|this afternoon|this evening|tonight|overnight|rest of today)$/.test(w) ? 'vandaag' : 'later';
 }
 
+// Delen zonder vertaling opknippen rond de gehoorde plaatsnamen → { tekst, plaats, lat, lon }
+function markeerPlaatsen(delen, plaatsen) {
+  const uit = [];
+  for (const d of delen) {
+    if (d.vertaling) { uit.push(d); continue; }
+    let rest = d.tekst;
+    let bewaker = 0;
+    while (rest && bewaker++ < 20) {
+      let beste = null;
+      for (const w of plaatsen) {
+        const i = rest.toLowerCase().indexOf(w.naamGehoord.toLowerCase());
+        if (i >= 0 && (!beste || i < beste.i)) beste = { i, w };
+      }
+      if (!beste) break;
+      const { i, w } = beste;
+      if (i > 0) uit.push({ tekst: rest.slice(0, i) });
+      uit.push({ tekst: rest.slice(i, i + w.naamGehoord.length), plaats: w.naam, lat: w.lat, lon: w.lon });
+      rest = rest.slice(i + w.naamGehoord.length);
+    }
+    if (rest) uit.push({ tekst: rest });
+  }
+  return uit;
+}
+
 function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
   vertaalDag = isDag(tijd, lon);
   const t = woordenNaarCijfers(tekstRuw.toLowerCase().replace(/[;:!?]/g, ' ').replace(/\s+/g, ' '));
@@ -690,7 +725,17 @@ function leesBestand(pad, stationIdHint) {
     station: station ? { id: station.id, roepletters: station.roepletters, plaats: station.plaats, staat: station.staat, lat: station.lat, lon: station.lon, mhz: station.mhz } : (stationId ? { id: stationId } : null),
     bijgewerkt: laatsteTijd ? laatsteTijd.toISOString() : null,
     live: laatsteTijd ? nu - laatsteTijd.getTime() < 3 * 60 * 1000 : false,
-    regels: (() => { const st = { tijdvak: null }; return regels.slice(-40).map((r) => ({ tijd: r.tijd.toISOString(), tekst: r.tekst, delen: regelMetVertalingen(r.tekst, r.tijd.toISOString(), station?.lon ?? null, st) })); })(),
+    regels: (() => {
+      const st = { tijdvak: null };
+      return regels.slice(-40).map((r) => {
+        const tijdIso = r.tijd.toISOString();
+        const delen = regelMetVertalingen(r.tekst, tijdIso, station?.lon ?? null, st);
+        // herkende plaatsen in deze regel markeren (Lex 09/09: "kunnen die in het
+        // tekstvenster erbij?") — de app maakt er aanklikbare namen van
+        const plaatsen = waarnemingen.filter((w) => w.tijd === tijdIso && w.naamGehoord);
+        return { tijd: tijdIso, tekst: r.tekst, delen: plaatsen.length ? markeerPlaatsen(delen, plaatsen) : delen };
+      });
+    })(),
     waarnemingen,
     verwachting,
     vertalingen,

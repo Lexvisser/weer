@@ -8112,6 +8112,7 @@ function nwrRegelHtml(r, zichtbaar = 1) {
     if (d.vertaling && heel && spelend && (d.nu || d.soort === 'vandaag')) nwrFlits(r, d, i); // 2026-09-09: actueel (geel) en de verwachting voor vandaag (blauw); later niet
     // Lex 09/09: in de tekst alleen omrekeningen (°C, km/h, Bft, hPa…); woorden
     // als "zonnig"/"buien" niet als label — die zijn alleen voor het icoon op de kaart.
+    if (d.plaats && heel) { stukken.push(`<span class="nwr-plaats" data-lat="${d.lat}" data-lon="${d.lon}" title="${escapeHtml(d.plaats)} — klik om ernaartoe te gaan">${escapeHtml(tekst)}</span>`); return; } // 2026-09-09: herkende plaats, aanklikbaar
     if (!d.vertaling || !heel || d.woord) { stukken.push(escapeHtml(tekst)); return; }
     const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
     const uitKlasse = d.nu ? '' : (d.soort === 'vandaag' ? ' is-vandaag' : ' is-later');
@@ -8192,6 +8193,15 @@ function nwrPaneelVul() {
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
   NWR_PANEEL_EL.querySelector('#nwrPaneelStop')?.addEventListener('click', () => { nwrStop(); nwrPaneelSluit(); });
   NWR_PANEEL_EL.querySelector('#nwrPaneelMute')?.addEventListener('click', nwrMuteToggle);
+  if (!NWR_PANEEL_EL.dataset.plaatsKlik) {
+    NWR_PANEEL_EL.dataset.plaatsKlik = '1';
+    NWR_PANEEL_EL.addEventListener('click', (e) => {
+      const el = e.target.closest?.('.nwr-plaats');
+      if (!el || !kaart) return;
+      const lat = Number(el.dataset.lat); const lon = Number(el.dataset.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) kaart.panTo([lat, lon], { animate: true });
+    });
+  }
   if (speelt) nwrPaneelKopStatus();
   const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
   if (tekst) tekst.scrollTop = tekst.scrollHeight;

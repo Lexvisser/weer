@@ -2236,3 +2236,5 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-vert-uit.is-later { background:#4b6a86; color:#e6f0f8; }
 .nwr-flits.is-vandaag { color:#9fe0ff; }
 .nwr-flits.is-vandaag .nwr-flits-plaats { color:#7fd0ff; }
+.nwr-plaats { color:#ffb020; text-decoration:underline dotted; text-underline-offset:2px; cursor:pointer; }
+.nwr-plaats:hover { color:#ffd27a; }
