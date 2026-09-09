@@ -2199,3 +2199,10 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-ballon-pijl { text-align:center; font-size:13px; line-height:1.1; color:#5a4300; }
 .nwr-ballon-vertaling { font-size:17px; font-weight:700; }
 @media (max-width: 640px) { .nwr-ballon { bottom:120px; } }
+
+/* 2026-09-09: ballon in het paneel, onder de tekst (sticky onderin het
+   scrollende paneel). Ingeklapt als er niets te tonen is. */
+.nwr-ballon-slot { position:sticky; bottom:0; padding:0 8px 8px; background:linear-gradient(to bottom, rgba(5,6,10,0), rgba(5,6,10,0.96) 40%); }
+.nwr-ballon.in-paneel { position:static; transform:none; max-width:none; margin:0; padding:8px 12px; display:none; }
+.nwr-ballon.in-paneel.aan { display:block; opacity:1; transform:none; }
+.nwr-ballon.in-paneel .nwr-ballon-vertaling { font-size:16px; }

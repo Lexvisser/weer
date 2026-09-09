@@ -7792,7 +7792,9 @@ let nwrBallonEerste = true;
 function nwrBallonNieuw() {
   const nieuw = [];
   const vers = (tijd) => !nwrBallonEerste && tijd && Date.now() - new Date(tijd).getTime() < 3 * 60 * 1000; // alleen vers verstaan
+  const actieveZender = nwrHuidig?.id ?? nwrPaneelStation; // Lex 09/09: "ik zie zaken door elkaar" — alleen de zender waar je naar luistert
   for (const blok of nwrTeksten.values()) {
+    if (actieveZender && blok.station.id !== actieveZender) continue;
     const waarnemingen = blok.waarnemingen ?? [];
     for (const w of waarnemingen) {
       const sleutel = `${blok.station.id}|${w.naam}|${w.tijd}`;
@@ -7947,6 +7949,7 @@ function nwrPaneelToon(stationId) {
 function nwrPaneelSluit() {
   nwrPaneelOpen = false;
   NWR_PANEEL_EL?.classList.add('verborgen');
+  if (NWR_BALLON_EL && NWR_BALLON_EL.parentElement !== document.body) { document.body.appendChild(NWR_BALLON_EL); NWR_BALLON_EL.classList.remove('in-paneel'); }
 }
 
 function nwrVakHtml(v) {
@@ -7983,7 +7986,12 @@ function nwrPaneelVul() {
     if (regels.length) body += `<div class="nwr-tekst">${regels.join('')}</div>`;
     else body += `<div class="nwr-leeg">${d.luister?.actief ? '🎧 De server luistert mee — eerste tekst over ~35 s.' : 'Nog geen tekst van deze zender.'}</div>`;
   }
+  // 2026-09-09: de gele ballon hoort "pats na de tekst" (Lex) — vaste plek
+  // onder aan het paneel (sticky), niet los op de kaart.
+  body += '<div class="nwr-ballon-slot" id="nwrBallonSlot"></div>';
   NWR_PANEEL_EL.innerHTML = kop + body;
+  const slot = NWR_PANEEL_EL.querySelector('#nwrBallonSlot');
+  if (slot && NWR_BALLON_EL) { slot.appendChild(NWR_BALLON_EL); NWR_BALLON_EL.classList.add('in-paneel'); }
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
   const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
   if (tekst) tekst.scrollTop = tekst.scrollHeight;
