@@ -94,11 +94,13 @@ const STATION_POSITIES = {
   'VLISSINGEN': { lat: 51.44, lon: 3.60, omschrijving: 'Vlissingen' },
 };
 
-// Tolerant: Cullercoats komt door als "STATION PRES DIRWSP VS TEMP" (bitfouten/spaties weg)
-const KOP_RE = /STATION\s*PRES\s*DIR\s*WSP\s*VS\s*TEMP/;
 // naam (letters, spaties, : / ' -), dan 5 velden: druk, richting, wind, zicht, temp — '-' = geen
 const RIJ_RE = /^\s*([A-Z][A-Z0-9 .:\/'\-]*?)\s{2,}(\d{3,4}|-)\s+(\d{3}|-)\s+(\d{1,3}|-)\s+(\d{1,3}|-)\s+(-?\d{1,2}|-)\s*$/;
 const TIJD_RE = /(?:AT\s+)?(\d{2})(\d{2})\s*UTC/g;
+// Niton en Cullercoats zetten boven de tabel "DATE/TIME: 08/09/2026 1600" —
+// exacte datum én tijd, dus die gaat voor op het HHMM-UTC-gegok (2026-09-09).
+// De kop zelf komt soms verminkt door ("BATE/TIME"), dus alleen het datumpatroon telt.
+const DATUM_RE = /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2})(\d{2})\b/g;
 
 const gemeldOnbekend = new Set();
 let cache = null; // { sleutel, resultaat }
@@ -151,40 +153,43 @@ function msNaarBft(ms) {
   return bft;
 }
 
-function getal(v) {
-  return v === '-' ? null : Number(v);
+function getal(v, min, max) {
+  if (v === '-') return null;
+  const n = Number(v);
+  // bitfouten maken van "15" soms "154": onwaarschijnlijke waarden leegmaken
+  if (!Number.isFinite(n) || (min != null && n < min) || (max != null && n > max)) return null;
+  return n;
 }
 
 // Zoekt ALLE tabellen in `tekst` (de staart van het bestand) en geeft ze in
 // bestandsvolgorde terug, elk als { rapporten, tijd, khz }. Sinds 2026-09-09:
 // Niton en Cullercoats zenden op 490 elk hun eigen tabel (Kanaal resp.
 // Schotland/Oost-Engeland); alleen de laatste tonen liet de andere helft van
-// de kaart leeg. De waarnemingstijd per tabel komt uit de bulletinkop
-// ("... AT 1200 UTC"); de datum wordt van achteren naar voren afgeleid: de
-// laatste tabel t.o.v. de bestands-mtime, elke eerdere t.o.v. de volgende.
+// de kaart leeg. Een tabel wordt herkend aan de RIJEN, niet aan de kopregel:
+// bij Cullercoats (600 km) komt de kop geregeld volledig verminkt door
+// terwijl de helft van de rijen prima leesbaar is. Een tabel begint bij de
+// eerste rij die op het patroon past en eindigt bij NNNN/ZCZC of na vier
+// regels zonder rij. De waarnemingstijd komt bij voorkeur uit de
+// "DATE/TIME dd/mm/yyyy HHMM"-regel vlak boven de tabel, anders uit
+// "HHMM UTC" (datum van achteren naar voren afgeleid), anders de mtime.
 function parseTabellen(tekst, khz, mtime) {
-  const koppen = [];
-  let m;
-  const re = new RegExp(KOP_RE.source, 'g');
-  while ((m = re.exec(tekst)) !== null) koppen.push(m.index);
-  if (!koppen.length) return [];
+  const regels = tekst.split('\n');
   const tabellen = [];
-  for (const kopIndex of koppen) {
-    const regels = tekst.slice(kopIndex).split('\n');
+  let i = 0;
+  while (i < regels.length) {
+    if (!RIJ_RE.test(regels[i])) { i += 1; continue; }
+    const startRegel = i;
     const rapporten = [];
-    let begonnen = false;
     let lege = 0;
-    for (const regel of regels.slice(1)) {
+    for (; i < regels.length; i += 1) {
+      const regel = regels[i];
       if (/NNNN|ZCZC/.test(regel)) break; // einde bericht
-      if (/^\s*(MB|MB\s+DEG)/.test(regel)) continue; // eenheden-regel
       const r = RIJ_RE.exec(regel);
       if (!r) {
-        // verminkte rij ("36:", ";13") overslaan i.p.v. de tabel afkeuren;
-        // na een paar regels zonder rij is de tabel voorbij
-        if (begonnen && ++lege > 3) break;
+        // verminkte rij ("36:", "( 6") overslaan; na een paar regels zonder rij is de tabel voorbij
+        if (++lege > 4) break;
         continue;
       }
-      begonnen = true;
       lege = 0;
       const naam = normaliseerNaam(r[1]);
       const pos = zoekPositie(naam);
@@ -195,47 +200,59 @@ function parseTabellen(tekst, khz, mtime) {
         }
         continue;
       }
-      const windKn = getal(r[4]);
+      if (rapporten.some((x) => x.naam === (pos.omschrijving ?? naam))) continue; // dubbel in dezelfde tabel
+      const windKn = getal(r[4], 0, 120);
       const windMs = windKn != null ? windKn * 0.514444 : null;
+      if ([r[2], r[3], r[4], r[5], r[6]].every((v) => v === '-')) continue; // station zonder waarneming ("- - - - -")
       rapporten.push({
         naam: pos.omschrijving ?? naam,
         naamUitgezonden: naam,
         lat: pos.lat,
         lon: pos.lon,
         meting: {
-          luchtdrukHpa: getal(r[2]),
-          windRichtingGraden: getal(r[3]),
+          luchtdrukHpa: getal(r[2], 940, 1060),
+          windRichtingGraden: getal(r[3], 0, 360),
           windKn,
           windMs: windMs != null ? Math.round(windMs * 10) / 10 : null,
           windBft: windMs != null ? msNaarBft(windMs) : null,
-          zichtNm: getal(r[5]),
-          temperatuurC: getal(r[6]),
+          zichtNm: getal(r[5], 0, 60),
+          temperatuurC: getal(r[6], -30, 45),
         },
       });
     }
-    // Waarnemingstijd: laatste "HHMM UTC" in de 600 tekens vóór de kop
+    if (rapporten.length < 2) continue; // één losse "rij" is eerder ruis dan een tabel
+    // Waarnemingstijd: in de ~10 regels vóór de eerste rij
+    const voor = regels.slice(Math.max(0, startRegel - 10), startRegel).join('\n');
+    let tijd = null;
+    let uur = null;
+    let minuut = null;
+    let d;
     let laatste = null;
-    let t;
-    const voor = tekst.slice(Math.max(0, kopIndex - 600), kopIndex);
-    while ((t = TIJD_RE.exec(voor)) !== null) laatste = t;
-    TIJD_RE.lastIndex = 0;
-    tabellen.push({ rapporten, khz, uur: laatste ? Number(laatste[1]) : null, minuut: laatste ? Number(laatste[2]) : null, tijd: null });
-  }
-  // Datums van achteren naar voren
-  let anker = new Date(mtime);
-  for (let i = tabellen.length - 1; i >= 0; i -= 1) {
-    const tab = tabellen[i];
-    if (tab.uur == null) {
-      tab.tijd = anker.toISOString();
-      continue;
+    while ((d = DATUM_RE.exec(voor)) !== null) laatste = d;
+    DATUM_RE.lastIndex = 0;
+    if (laatste) {
+      tijd = new Date(Date.UTC(Number(laatste[3]), Number(laatste[2]) - 1, Number(laatste[1]), Number(laatste[4]), Number(laatste[5]))).toISOString();
+    } else {
+      let t;
+      while ((t = TIJD_RE.exec(voor)) !== null) laatste = t;
+      TIJD_RE.lastIndex = 0;
+      if (laatste) { uur = Number(laatste[1]); minuut = Number(laatste[2]); }
     }
-    const d = new Date(anker);
-    d.setUTCHours(tab.uur, tab.minuut, 0, 0);
-    if (d.getTime() > anker.getTime() + 60 * 60 * 1000) d.setUTCDate(d.getUTCDate() - 1); // gisteren
-    tab.tijd = d.toISOString();
-    anker = d;
+    tabellen.push({ rapporten, khz, tijd, uur, minuut });
   }
-  return tabellen.filter((tab) => tab.rapporten.length);
+  // Datums van achteren naar voren voor tabellen zonder volledige datum
+  let anker = new Date(mtime);
+  for (let k = tabellen.length - 1; k >= 0; k -= 1) {
+    const tab = tabellen[k];
+    if (tab.tijd) { anker = new Date(tab.tijd); continue; }
+    if (tab.uur == null) { anker = new Date(anker.getTime() - 60 * 1000); tab.tijd = anker.toISOString(); continue; } // onbekend: net vóór de volgende tabel
+    const dd = new Date(anker);
+    dd.setUTCHours(tab.uur, tab.minuut, 0, 0);
+    if (dd.getTime() > anker.getTime() + 60 * 60 * 1000) dd.setUTCDate(dd.getUTCDate() - 1); // gisteren
+    tab.tijd = dd.toISOString();
+    anker = dd;
+  }
+  return tabellen;
 }
 
 function bestanden() {
@@ -263,7 +280,7 @@ export function fetchNavtexKustrapporten({ homeLat, homeLon } = {}) {
       if (Date.now() - tijdMs > MAX_LEEFTIJD_MS) continue;
       for (const r of tab.rapporten) {
         const bestaand = perStation.get(r.naam);
-        if (bestaand && new Date(bestaand.tijd).getTime() >= tijdMs) continue;
+        if (bestaand && new Date(bestaand.tijd).getTime() > tijdMs) continue; // gelijk: latere tabel wint
         perStation.set(r.naam, { ...r, tijd: tab.tijd, khz: tab.khz });
       }
       if (!nieuwste || tijdMs > new Date(nieuwste.tijd).getTime()) nieuwste = tab;
