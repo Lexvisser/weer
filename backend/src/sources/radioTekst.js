@@ -448,6 +448,9 @@ const VERTAAL_RE = [
   [/\b\w+ index(?: values?| readings?)?\s+(?:up to|around|near|of|to|will be)\s+(?:around |near )?(\d{2,3})\b/g, (m) => { const f = Number(m[1]); return f >= 80 ? `🥵 gevoel ${fNaarC(f)} °C` : null; }],
   [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
   [/\b(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
+  // "mostly sunny and 79", "cloudy and 68", "77 with sunny skies"
+  [/\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke)\s+(?:and|at)\s+(-?\d{1,3})\b(?!\s*(?:percent|%|miles|mph|knots|inches|feet))/g, (m) => { const f = Number(m[1]); return f > -30 && f < 125 ? `🌡️ ${fNaarC(f)} °C` : null; }],
+  [/\b(-?\d{1,3})\s+with\s+(?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rainy)\s+skies\b/g, (m) => { const f = Number(m[1]); return f > -30 && f < 125 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // "the temperature was 70" (zonder "degrees"), "dew point 65"
   [/\b(?:temperature|temp|dew ?point)\s+(?:was|is|of|around|near|at)?\s*(-?\d{1,3})\b(?!\s*(?:percent|%|degrees|miles|mph|knots))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // wind
