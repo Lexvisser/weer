@@ -8070,8 +8070,10 @@ function nwrFlits(r, d, index) {
   const trede = stapel.n;
   stapel.n += 1;
   nwrFlitsStapel.set(plek, stapel);
-  const dx = 12 * trede + (w ? 0 : 20);
-  const dy = 16 * trede + (w ? 0 : 14);
+  // bij een bekende plaats staat daar al het vaste icoon: de trap begint een
+  // trede hoger en rechts ervan, zodat het icoon niet onder het label verdwijnt
+  const dx = 12 * trede + (w ? 22 : 20);
+  const dy = 16 * trede + (w ? 16 : 14);
   if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
   const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling ?? '');
   const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}` : escapeHtml(d.vertaling ?? '');
