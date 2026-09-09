@@ -107,6 +107,43 @@ function normaliseerNaam(naam) {
   return naam.toUpperCase().replace(/\s+/g, ' ').replace(/\s*:\s*/g, ': ').trim();
 }
 
+// Bitfout-tolerant opzoeken (2026-09-09, "MANSVON" = MANSTON): eerst exact,
+// anders de bekende naam met de kleinste bewerkingsafstand, mits die ≤ 2 is
+// en de naam lang genoeg is om niet per ongeluk te matchen.
+function levenshtein(a, b) {
+  const rij = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    let vorige = rij[0];
+    rij[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const tmp = rij[j];
+      rij[j] = Math.min(rij[j] + 1, rij[j - 1] + 1, vorige + (a[i - 1] === b[j - 1] ? 0 : 1));
+      vorige = tmp;
+    }
+  }
+  return rij[b.length];
+}
+
+const gemeldGecorrigeerd = new Set();
+
+function zoekPositie(naam) {
+  const exact = STATION_POSITIES[naam] ?? STATION_POSITIES[naam.replace(/:/g, '')];
+  if (exact) return exact;
+  if (naam.length < 5) return null;
+  let beste = null;
+  let besteAfstand = Infinity;
+  for (const sleutel of Object.keys(STATION_POSITIES)) {
+    const d = levenshtein(naam, sleutel);
+    if (d < besteAfstand) { besteAfstand = d; beste = sleutel; }
+  }
+  if (besteAfstand > 2) return null;
+  if (!gemeldGecorrigeerd.has(naam)) {
+    gemeldGecorrigeerd.add(naam);
+    console.log(`[weer] navtexKustrapporten: "${naam}" gelezen als "${beste}" (${besteAfstand} teken(s) verschil)`);
+  }
+  return STATION_POSITIES[beste];
+}
+
 function msNaarBft(ms) {
   const grenzen = [0.3, 1.6, 3.4, 5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7];
   let bft = 0;
@@ -150,7 +187,7 @@ function parseTabellen(tekst, khz, mtime) {
       begonnen = true;
       lege = 0;
       const naam = normaliseerNaam(r[1]);
-      const pos = STATION_POSITIES[naam] ?? STATION_POSITIES[naam.replace(/:/g, '')];
+      const pos = zoekPositie(naam);
       if (!pos) {
         if (!gemeldOnbekend.has(naam)) {
           gemeldOnbekend.add(naam);
