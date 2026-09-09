@@ -8080,7 +8080,7 @@ function nwrFlits(r, d, index) {
   const dy = 16 * trede + (w ? 16 : 14);
   if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
   const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling ?? '');
-  const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span> ${escapeHtml(mm[2])}` : escapeHtml(d.vertaling ?? '');
+  const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span>${d.woord ? '' : ` ${escapeHtml(mm[2])}`}` : escapeHtml(d.vertaling ?? '');
   const soortKlasse = d.nu ? '' : ' is-vandaag';
   const onderschrift = w ? (trede === 0 ? `<span class="nwr-flits-plaats">${escapeHtml(w.naam)}</span>` : '') : (d.nu ? '' : (trede === 0 ? '<span class="nwr-flits-plaats">vandaag</span>' : ''));
   const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${inhoud}${onderschrift}</div>`;
@@ -8109,7 +8109,9 @@ function nwrRegelHtml(r, zichtbaar = 1) {
     const tekst = heel ? d.tekst : d.tekst.slice(0, budget);
     budget -= d.tekst.length;
     if (d.vertaling && heel && spelend && (d.nu || d.soort === 'vandaag')) nwrFlits(r, d, i); // 2026-09-09: actueel (geel) en de verwachting voor vandaag (blauw); later niet
-    if (!d.vertaling || !heel) { stukken.push(escapeHtml(tekst)); return; }
+    // Lex 09/09: in de tekst alleen omrekeningen (°C, km/h, Bft, hPa…); woorden
+    // als "zonnig"/"buien" niet als label — die zijn alleen voor het icoon op de kaart.
+    if (!d.vertaling || !heel || d.woord) { stukken.push(escapeHtml(tekst)); return; }
     const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
     const uitKlasse = d.nu ? '' : (d.soort === 'vandaag' ? ' is-vandaag' : ' is-later');
     stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit${uitKlasse}">${escapeHtml(d.vertaling)}</span></span></span></span>`);
