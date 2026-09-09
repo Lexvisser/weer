@@ -106,7 +106,7 @@ function verwerkBlokken(id) {
   if (!a || a.bezig) return;
   let bestanden;
   try {
-    bestanden = readdirSync(a.werk).filter((f) => f.endsWith('.wav') && !f.startsWith('klaar-')).sort();
+    bestanden = readdirSync(a.werk).filter((f) => /^\d{8}-\d{6}\.wav$/.test(f)).sort(); // alleen echte opnameblokken (niet klaar-*, niet het venster)
   } catch (_) {
     return;
   }
@@ -121,7 +121,7 @@ function verwerkBlokken(id) {
   let invoer = pad;
   let offset = 0;
   if (vorig && existsSync(vorig.pad)) {
-    try { invoer = path.join(a.werk, 'venster.wav'); offset = plakWavs(vorig.pad, pad, invoer); } catch (_) { invoer = pad; offset = 0; }
+    try { invoer = path.join(a.werk, 'venster-werk.wav'); offset = plakWavs(vorig.pad, pad, invoer); } catch (_) { invoer = pad; offset = 0; }
   }
   whisperRun(['-m', MODEL, '-f', invoer, '-t', String(THREADS)], (err, stdout) => {
     a.bezig = false;
@@ -193,7 +193,7 @@ export function startLuisteren(station) {
     // laatste blokken nog verwerken, dan de map weg
     const rest = () => {
       if (a.bezig) { setTimeout(rest, 1000); return; }
-      const over = (() => { try { return readdirSync(werk).some((f) => f.endsWith('.wav') && !f.startsWith('klaar-') && statSync(path.join(werk, f)).size > 32000); } catch (_) { return false; } })();
+      const over = (() => { try { return readdirSync(werk).some((f) => /^\d{8}-\d{6}\.wav$/.test(f) && statSync(path.join(werk, f)).size > 32000); } catch (_) { return false; } })();
       if (over) { verwerkBlokken(id); setTimeout(rest, 1000); return; }
       actief.delete(id);
       const oudAfgerond = afgerond.get(id);

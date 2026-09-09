@@ -448,6 +448,8 @@ const VERTAAL_RE = [
   [/\b\w+ index(?: values?| readings?)?\s+(?:up to|around|near|of|to|will be)\s+(?:around |near )?(\d{2,3})\b/g, (m) => { const f = Number(m[1]); return f >= 80 ? `🥵 gevoel ${fNaarC(f)} °C` : null; }],
   [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
   [/\b(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
+  // "the temperature was 70" (zonder "degrees"), "dew point 65"
+  [/\b(?:temperature|temp|dew ?point)\s+(?:was|is|of|around|near|at)?\s*(-?\d{1,3})\b(?!\s*(?:percent|%|degrees|miles|mph|knots))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // wind
   [new RegExp(`\\b${RICHTING_RE}\\s+winds?\\s+(?:(\\d{1,3})\\s+to\\s+(\\d{1,3})|(?:around|near|about|at)\\s+(\\d{1,3}))\\s*(miles per hour|miles an hour|mph|knots)`, 'g'), (m) => {
     const w = windUitVerwachting(m[0]); return w ? `💨 ${w.tekst}` : null; }],
