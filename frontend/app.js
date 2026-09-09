@@ -8135,7 +8135,8 @@ function nwrPaneelKopStatus() {
   if (!el || !nwrSpelerStatus) return;
   const s = nwrSpelerStatus;
   const led = `<span class="nwr-speler-led is-${s.staat}" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>`;
-  el.innerHTML = led + escapeHtml(s.tekst);
+  const tekst = s.tekst.replace(new RegExp(`^${(nwrHuidig?.roepletters ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*·?\\s*`), ''); // roepletters staan al in de kop
+  el.innerHTML = led + escapeHtml(tekst);
 }
 
 function nwrPaneelVul() {
