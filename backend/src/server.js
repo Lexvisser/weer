@@ -21,7 +21,8 @@ import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
 import { fetchNavtexKustrapporten } from './sources/navtexKustrapporten.js'; // 2026-09-08, Niton-490 kustrapporten (zelfde laag)
-import { fetchRadioTekst } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
+import { fetchRadioTekst, stationInfo as nwrStationInfo } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
+import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar } from './sources/radioLuister.js'; // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
@@ -1398,12 +1399,29 @@ export function createApp(env) {
     // (tools/radio-whisper) — waarnemingen per plaats, verwachting per
     // tijdvak en de laatste tekstregels. Zie sources/radioTekst.js.
     if (url === '/api/radio-tekst') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
       try {
-        return sendJson(res, 200, fetchRadioTekst());
+        const id = params.get('station');
+        const data = fetchRadioTekst(id || undefined);
+        if (id) data.luister = luisterStatus(id);
+        else { const st = alleLuisterStatus(); for (const s of data.stations) s.luister = st[s.station.id] ?? { actief: false, tot: null }; data.luisterend = Object.keys(st); }
+        data.kanLuisteren = luisterBeschikbaar();
+        return sendJson(res, 200, data);
       } catch (err) {
         console.error('[weer] radio-tekst mislukt:', err.message ?? err);
         return sendJson(res, 502, { fout: 'Radiotekst niet leesbaar', beschikbaar: false, regels: [], waarnemingen: [], verwachting: [] });
       }
+    }
+    // 2026-09-09: op verzoek luisteren naar een NWR-zender (één cyclus, ~12
+    // min), gestart vanuit de app bij het aanklikken van een pin. Zie
+    // sources/radioLuister.js.
+    if (url === '/api/radio-luister') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const id = params.get('station');
+      const station = id ? nwrStationInfo(id) : null;
+      if (!station) return sendJson(res, 400, { ok: false, fout: 'onbekende zender' });
+      if (params.get('stop')) return sendJson(res, 200, stopLuisteren(id));
+      return sendJson(res, 200, startLuisteren(station));
     }
     if (url === '/api/navtex-kustrapporten') {
       try {

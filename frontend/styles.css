@@ -2155,7 +2155,7 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .station-vak.is-nwr .station-lucht { font-size:12px; }
 .nwr-pin-tekst { margin-left:2px; padding:0 3px; border-left:1px solid rgba(255,176,32,0.4); font-size:11px; }
 .nwr-pin-tekst:hover { color:#fff; }
-.nwr-paneel { position:absolute; right:10px; bottom:10px; z-index:1100; width:min(420px, calc(100vw - 20px)); max-height:min(70vh, 640px); overflow-y:auto; background:rgba(5,6,10,0.92); border:1px solid rgba(255,176,32,0.45); border-radius:12px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:12px; box-shadow:0 8px 30px rgba(0,0,0,0.6); }
+.nwr-paneel { position:absolute; left:10px; bottom:64px; z-index:1100; width:min(420px, calc(100vw - 20px)); max-height:min(70vh, 640px); overflow-y:auto; background:rgba(5,6,10,0.92); border:1px solid rgba(255,176,32,0.45); border-radius:12px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:12px; box-shadow:0 8px 30px rgba(0,0,0,0.6); }
 .nwr-paneel.verborgen { display:none; }
 .nwr-paneel-kop { position:sticky; top:0; display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(5,6,10,0.96); border-bottom:1px solid rgba(255,176,32,0.3); color:#ffb020; font-weight:700; }
 .nwr-paneel-kop .nwr-paneel-sub { color:#9fb2c8; font-weight:400; font-size:10.5px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -2172,4 +2172,5 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-tekst { padding:6px 10px 10px; color:#9fb2c8; font-size:10.5px; line-height:1.45; border-top:1px solid rgba(255,255,255,0.08); max-height:180px; overflow-y:auto; }
 .nwr-tekst .nwr-tekst-tijd { color:#ffb020; }
 .nwr-leeg { padding:14px 10px; color:#9fb2c8; }
-@media (max-width: 640px) { .nwr-paneel { right:6px; left:6px; bottom:6px; width:auto; } }
+.nwr-pin-tekst.is-luisterend { color:#3bff7c; animation: nwr-knipper 1.2s steps(2) infinite; }
+@media (max-width: 640px) { .nwr-paneel { right:6px; left:6px; bottom:64px; width:auto; max-height:55vh; } }
