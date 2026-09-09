@@ -1,0 +1,15 @@
+[Unit]
+Description=Radiostream naar tekst (ffmpeg + whisper.cpp)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lex
+ExecStart=/usr/local/bin/radio_whisper.sh /home/lex/radio-whisper.conf
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
