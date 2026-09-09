@@ -14,7 +14,9 @@ WERK=/dev/shm/radio-whisper
 mkdir -p "$WERK"
 rm -f "$WERK"/*.wav
 
-echo "[radio-whisper] start: $URL, blok ${BLOK}s, model $(basename "$MODEL") -> $UIT" >&2
+echo "[radio-whisper] start: ${STATION:-?} $URL, blok ${BLOK}s, model $(basename "$MODEL") -> $UIT" >&2
+# kopregel zodat de app weet welke zender dit is (id uit frontend/data/nwr-stations.json)
+[ -n "${STATION:-}" ] && printf '[%s] #station %s\n' "$(date +%Y%m%d-%H%M%S)" "$STATION" >> "$UIT"
 ffmpeg -loglevel error -nostdin \
   -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 10 \
   -i "$URL" -ac 1 -ar 16000 \

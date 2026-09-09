@@ -98,6 +98,10 @@
       <span id="nwrSpelerTekst"></span>
       <button type="button" id="nwrStopKnop" title="Stoppen">⏹</button>
     </div>
+    <!-- 2026-09-09: wat de NOAA-zender zégt, verstaan op de server (radio-whisper
+         + whisper.cpp): verwachting per tijdvak in °C/km/h en de laatste
+         tekst. Open via 📝 op de zenderpin; zie nwrPaneelToon() in app.js. -->
+    <div class="nwr-paneel verborgen" id="nwrPaneel"></div>
     <!-- Gevaren/Weer-schakelaar is op 2026-08-18 weggehaald: die deed toch
          alleen de radar-controls-balk hieronder tonen/verbergen, niet welke
          gevaren-iconen je zag — dus pure overhead. Radar en Satelliet staan

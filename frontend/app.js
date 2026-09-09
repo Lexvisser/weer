@@ -7623,8 +7623,10 @@ function toggleNwr() {
   TOGGLE_NWR_EL?.classList.toggle('actief', nwrActief);
   if (nwrActief) {
     tekenNwr();
+    nwrTekstStart(); // 2026-09-09: wat de zender zegt (server-side verstaan)
   } else {
     nwrStop();
+    nwrTekstStop();
     if (nwrLaag) { kaart.removeLayer(nwrLaag); nwrLaag = null; }
     nwrMarkers = new Map();
   }
@@ -7651,14 +7653,153 @@ async function tekenNwr() {
   nwrMarkers = new Map();
   for (const s of stations) {
     if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue;
-    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(nwrOmschrijving(s))}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span></div>`;
+    const verstaan = nwrTekst?.station?.id === s.id;
+    const tekstKnop = verstaan ? `<span class="nwr-pin-tekst" title="Wat de zender zegt (verstaan op de server)">📝</span>` : '';
+    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(nwrOmschrijving(s))}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span>${tekstKnop}</div>`;
     const marker = L.marker([s.lat, s.lon], {
-      icon: L.divIcon({ className: '', html, iconSize: [64, 22], iconAnchor: [11, 11] }),
+      icon: L.divIcon({ className: '', html, iconSize: [verstaan ? 84 : 64, 22], iconAnchor: [11, 11] }),
     });
-    marker.on('click', () => (nwrHuidig?.id === s.id ? nwrStop() : nwrSpeel(s.id)));
+    marker.on('click', (e) => {
+      // 2026-09-09: klik op 📝 opent het tekst-paneel i.p.v. te gaan spelen
+      if (e.originalEvent?.target?.closest?.('.nwr-pin-tekst')) { nwrPaneelToon(); return; }
+      if (nwrHuidig?.id === s.id) nwrStop(); else nwrSpeel(s.id);
+    });
     nwrLaag.addLayer(marker);
     nwrMarkers.set(s.id, marker);
   }
+}
+
+// 2026-09-09: NOAA Weather Radio VERSTAAN. Op lexdev-nw draait radio-whisper
+// (tools/radio-whisper: ffmpeg + whisper.cpp) die één zender doorlopend in
+// tekst omzet; de backend (sources/radioTekst.js) haalt daar waarnemingen
+// per plaats en de verwachting per tijdvak uit, omgerekend naar °C/km/h/Bft.
+// Hier: amber waarnemingspins rond de zender (zelfde pil-opmaak als de
+// NAVTEX-kustrapporten), 📝 op de zenderpin, en een paneel rechtsonder met
+// de tijdvak-kaartjes en de laatste tekst. Ververst elke 30 s zolang de
+// NWR-laag aanstaat. Ontwerpkeuze van Lex (09/09): eerst kijken HOE we het
+// tonen, dus bewust klein gehouden — schaven doen we onderweg.
+const NWR_PANEEL_EL = document.getElementById('nwrPaneel');
+let nwrTekst = null; // laatste /api/radio-tekst
+let nwrTekstTimer = null;
+let nwrTekstLaag = null; // waarnemingspins
+let nwrPaneelOpen = false;
+
+function nwrTekstStart() {
+  nwrTekstVervers();
+  if (!nwrTekstTimer) nwrTekstTimer = setInterval(nwrTekstVervers, 30 * 1000);
+}
+
+function nwrTekstStop() {
+  if (nwrTekstTimer) { clearInterval(nwrTekstTimer); nwrTekstTimer = null; }
+  if (nwrTekstLaag && kaart) { kaart.removeLayer(nwrTekstLaag); nwrTekstLaag = null; }
+  nwrTekst = null;
+  nwrPaneelOpen = false;
+  NWR_PANEEL_EL?.classList.add('verborgen');
+}
+
+async function nwrTekstVervers() {
+  if (!nwrActief || !kaart) return;
+  let data;
+  try {
+    data = await fetch('/api/radio-tekst', { cache: 'no-store' }).then((r) => r.json());
+  } catch (err) {
+    console.warn('[weer] radio-tekst ophalen mislukt:', err);
+    return;
+  }
+  if (!nwrActief) return;
+  const hadStation = nwrTekst?.station?.id;
+  nwrTekst = data?.beschikbaar ? data : null;
+  if ((nwrTekst?.station?.id ?? null) !== (hadStation ?? null)) tekenNwr(); // 📝 op de juiste pin
+  nwrTekenWaarnemingen();
+  if (nwrPaneelOpen) nwrPaneelVul();
+}
+
+function nwrWaarnemingVakHtml(w) {
+  const temp = w.tempC != null ? `${w.tempC}°` : '';
+  const lucht = w.lucht?.icoon ? `<span class="station-lucht" title="${escapeHtml(w.lucht.nl)}">${w.lucht.icoon}</span>` : '';
+  const golf = w.golfM != null ? `<span class="station-bft is-water">${w.golfM} m</span>` : '';
+  const bft = w.wind?.bft != null ? `<span class="station-bft">${w.wind.bft}</span>` : '';
+  return `<span class="station-vak is-nwr">${lucht}${temp}${bft}${golf}</span>`;
+}
+
+function nwrWaarnemingPopupHtml(w) {
+  const regels = [];
+  const rr = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}:</span> <span class="station-stat-waarde">${waarde}</span></div>`); };
+  rr('Lucht', w.lucht ? `${w.lucht.icoon} ${w.lucht.nl}` : null);
+  rr('Temperatuur', w.tempC != null ? `${w.tempC} °C (${w.tempF} °F)` : null);
+  rr('Wind', w.wind?.tekst ?? null);
+  rr('Golven', w.golfM != null ? `${w.golfM} m` : null);
+  rr('Vochtigheid', w.vochtPct != null ? `${w.vochtPct} %` : null);
+  rr('Luchtdruk', w.drukHpa != null ? `${w.drukHpa} hPa` : null);
+  const t = w.tijd ? new Date(w.tijd) : null;
+  const tijd = t ? `gehoord ${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })} · ` : '';
+  const st = nwrTekst?.station;
+  return `<div class="popup-titel">📻 ${escapeHtml(w.naam)}</div><div class="popup-sub">${tijd}${escapeHtml(st?.roepletters ?? '')} ${escapeHtml(st?.plaats ?? '')} · verstaan als "${escapeHtml(w.naamGehoord ?? '')}"</div><div class="popup-stats">${regels.join('')}</div>`;
+}
+
+function nwrTekenWaarnemingen() {
+  if (!kaart) return;
+  if (!nwrTekstLaag) nwrTekstLaag = L.layerGroup().addTo(kaart);
+  nwrTekstLaag.clearLayers();
+  for (const w of nwrTekst?.waarnemingen ?? []) {
+    if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) continue;
+    const pijl = w.wind?.graden != null && w.wind.kmh >= 2
+      ? windVaanPijlSvg(w.wind.graden, '#ffb020', '#7a5200')
+      : '<span class="station-stil">○</span>';
+    const html = `<div class="station-pin" title="${escapeHtml(w.naam)}">${pijl}<span class="station-label">${nwrWaarnemingVakHtml(w)}</span></div>`;
+    const marker = L.marker([w.lat, w.lon], {
+      icon: L.divIcon({ className: '', html, iconSize: [70, 30], iconAnchor: [15, 15] }),
+    }).bindPopup(() => nwrWaarnemingPopupHtml(w), { maxWidth: 280 });
+    nwrTekstLaag.addLayer(marker);
+  }
+}
+
+function nwrPaneelToon() {
+  nwrPaneelOpen = true;
+  NWR_PANEEL_EL?.classList.remove('verborgen');
+  nwrPaneelVul();
+}
+
+function nwrPaneelSluit() {
+  nwrPaneelOpen = false;
+  NWR_PANEEL_EL?.classList.add('verborgen');
+}
+
+function nwrVakHtml(v) {
+  const iconen = [v.lucht?.icoon, ...(v.neerslag ?? []).map((n) => n.icoon)].filter(Boolean);
+  const uniek = [...new Set(iconen)].slice(0, 3).join('');
+  const temp = v.nacht ? (v.laagTekst ? `min ${v.laagTekst}` : (v.hoogTekst ? `max ${v.hoogTekst}` : '')) : (v.hoogTekst ? `max ${v.hoogTekst}` : (v.laagTekst ? `min ${v.laagTekst}` : ''));
+  const regels = [];
+  if (v.lucht) regels.push(`<div class="nwr-vak-regel">${escapeHtml(v.lucht.nl)}</div>`);
+  for (const n of v.neerslag ?? []) regels.push(`<div class="nwr-vak-regel">${escapeHtml(n.tekst)}</div>`);
+  if (v.wind?.tekst) regels.push(`<div class="nwr-vak-regel">💨 ${escapeHtml(v.wind.tekst)}</div>`);
+  if (v.kansRegen != null) regels.push(`<div class="nwr-vak-regel is-kans">☔ ${v.kansRegen} % kans op regen</div>`);
+  if (v.heatIndexC != null) regels.push(`<div class="nwr-vak-regel is-heat">🥵 gevoel tot ${v.heatIndexC} °C</div>`);
+  if (v.vochtig) regels.push(`<div class="nwr-vak-regel">💧 vochtig</div>`);
+  return `<div class="nwr-vak${v.nacht ? ' is-nacht' : ''}"><div class="nwr-vak-label">${escapeHtml(v.labelNl)}</div><div class="nwr-vak-icoon">${uniek || '·'}</div><div class="nwr-vak-temp">${temp}</div>${regels.join('')}</div>`;
+}
+
+function nwrPaneelVul() {
+  if (!NWR_PANEEL_EL) return;
+  const d = nwrTekst;
+  const st = d?.station;
+  const kop = `<div class="nwr-paneel-kop"><span>📝 ${escapeHtml(st?.roepletters ?? 'NWR')}</span><span class="nwr-paneel-sub">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''} · verstaan op lexdev-nw${d?.live ? ' · live' : ''}</span><button type="button" id="nwrPaneelSluit">✕</button></div>`;
+  let body = '';
+  if (!d) {
+    body = '<div class="nwr-leeg">Nog geen tekst — draait radio-whisper op de server?</div>';
+  } else {
+    if (d.verwachting?.length) body += `<div class="nwr-vakken">${d.verwachting.map(nwrVakHtml).join('')}</div>`;
+    else body += '<div class="nwr-leeg">Nog geen verwachting gehoord (komt elke ~10 min voorbij).</div>';
+    const regels = (d.regels ?? []).slice(-8).map((r) => {
+      const t = new Date(r.tijd);
+      return `<div><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}</span> ${escapeHtml(r.tekst)}</div>`;
+    });
+    if (regels.length) body += `<div class="nwr-tekst">${regels.join('')}</div>`;
+  }
+  NWR_PANEEL_EL.innerHTML = kop + body;
+  NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
+  const tekst = NWR_PANEEL_EL.querySelector('.nwr-tekst');
+  if (tekst) tekst.scrollTop = tekst.scrollHeight;
 }
 
 function nwrSpelerToon(tekst, staat) {

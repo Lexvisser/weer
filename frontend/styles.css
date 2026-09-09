@@ -2147,3 +2147,29 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .nwr-speler-led.is-live { background:#3bff7c; box-shadow:0 0 6px rgba(59,255,124,0.8); }
 .nwr-speler-led.is-fout { background:#ff4d4d; }
 @keyframes nwr-knipper { to { opacity:0.2; } }
+
+/* 2026-09-09: NWR verstaan — waarnemingspins (amber vak, zoals de NWR-pin) en
+   het paneel met de verwachting per tijdvak + laatste tekst. */
+.station-vak.is-nwr { border-color:rgba(255,176,32,0.7); color:#fff1d6; }
+.station-vak.is-nwr .station-bft { color:#ffb020; }
+.station-vak.is-nwr .station-lucht { font-size:12px; }
+.nwr-pin-tekst { margin-left:2px; padding:0 3px; border-left:1px solid rgba(255,176,32,0.4); font-size:11px; }
+.nwr-pin-tekst:hover { color:#fff; }
+.nwr-paneel { position:absolute; right:10px; bottom:10px; z-index:1100; width:min(420px, calc(100vw - 20px)); max-height:min(70vh, 640px); overflow-y:auto; background:rgba(5,6,10,0.92); border:1px solid rgba(255,176,32,0.45); border-radius:12px; color:#f4f6fb; font-family:'JetBrains Mono',monospace; font-size:12px; box-shadow:0 8px 30px rgba(0,0,0,0.6); }
+.nwr-paneel.verborgen { display:none; }
+.nwr-paneel-kop { position:sticky; top:0; display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(5,6,10,0.96); border-bottom:1px solid rgba(255,176,32,0.3); color:#ffb020; font-weight:700; }
+.nwr-paneel-kop .nwr-paneel-sub { color:#9fb2c8; font-weight:400; font-size:10.5px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nwr-paneel-kop button { font:inherit; font-size:12px; padding:2px 7px; border-radius:6px; border:1px solid rgba(255,176,32,0.5); background:transparent; color:#ffb020; cursor:pointer; }
+.nwr-vakken { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:6px; padding:8px 10px; }
+.nwr-vak { border:1px solid rgba(255,255,255,0.14); border-radius:9px; padding:6px 8px; background:rgba(255,255,255,0.04); }
+.nwr-vak.is-nacht { background:rgba(60,80,140,0.18); }
+.nwr-vak-label { color:#ffb020; font-weight:700; font-size:11px; margin-bottom:3px; text-transform:capitalize; }
+.nwr-vak-icoon { font-size:20px; line-height:1.1; }
+.nwr-vak-temp { font-size:15px; font-weight:700; margin:2px 0; }
+.nwr-vak-regel { color:#cfd8e3; font-size:10.5px; line-height:1.35; }
+.nwr-vak-regel.is-kans { color:#7fd0ff; }
+.nwr-vak-regel.is-heat { color:#ff7a5c; }
+.nwr-tekst { padding:6px 10px 10px; color:#9fb2c8; font-size:10.5px; line-height:1.45; border-top:1px solid rgba(255,255,255,0.08); max-height:180px; overflow-y:auto; }
+.nwr-tekst .nwr-tekst-tijd { color:#ffb020; }
+.nwr-leeg { padding:14px 10px; color:#9fb2c8; }
+@media (max-width: 640px) { .nwr-paneel { right:6px; left:6px; bottom:6px; width:auto; } }

@@ -21,6 +21,7 @@ import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
 import { fetchNavtexKustrapporten } from './sources/navtexKustrapporten.js'; // 2026-09-08, Niton-490 kustrapporten (zelfde laag)
+import { fetchRadioTekst } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
@@ -1393,6 +1394,17 @@ export function createApp(env) {
     // 2026-09-08: NAVTEX-kustrapporten (Niton 490: Sandettie, Greenwich L/V,
     // Portland...) uit de eigen ontvangst — zie sources/navtexKustrapporten.js.
     // Zelfde kaartlaag als KNMI/RWS, eigen route.
+    // 2026-09-09: NOAA Weather Radio, verstaan door de dienst radio-whisper
+    // (tools/radio-whisper) — waarnemingen per plaats, verwachting per
+    // tijdvak en de laatste tekstregels. Zie sources/radioTekst.js.
+    if (url === '/api/radio-tekst') {
+      try {
+        return sendJson(res, 200, fetchRadioTekst());
+      } catch (err) {
+        console.error('[weer] radio-tekst mislukt:', err.message ?? err);
+        return sendJson(res, 502, { fout: 'Radiotekst niet leesbaar', beschikbaar: false, regels: [], waarnemingen: [], verwachting: [] });
+      }
+    }
     if (url === '/api/navtex-kustrapporten') {
       try {
         return sendJson(res, 200, fetchNavtexKustrapporten({ homeLat: env.homeLat, homeLon: env.homeLon }));
