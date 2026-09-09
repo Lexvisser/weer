@@ -455,6 +455,18 @@ const VERTAAL_RE = [
   // actuele lucht/neerslag zonder getal: "it was mostly cloudy", "skies were clear", "currently raining"
   [/\b(?:it was|it is|it's|skies? (?:were|are|is)|currently|sky condition(?:s)? (?:were|are|is)?)\s+((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke|light rain|heavy rain))\b/g, (m) => { const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return l ? `${l.icoon} ${l.nl ?? l.tekst}` : null; }],
   [/\b(-?\d{1,3})\s+with\s+(?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rainy)\s+skies\b/g, (m) => { const f = Number(m[1]); return f > -30 && f < 125 ? `🌡️ ${fNaarC(f)} °C` : null; }],
+  // verwachting: neerslag ("a chance of showers and thunderstorms", "isolated storms", "showers likely")
+  [/\b(slight chance of|chance of|scattered|isolated|numerous|widespread|periods of|occasional)?\s*((?:showers and thunderstorms|thunderstorms and showers|thunderstorms|t-storms|storms|showers|rain showers|rain|light rain|heavy rain|drizzle|snow|sleet|freezing rain|fog|patchy fog|dense fog))(\s+(?:likely|possible))?\b/g, (m) => {
+    const soort = m[2].replace(/^storms$/, 'thunderstorms').replace(/^rain showers$/, 'showers');
+    const l = neerslag(soort)[0] ?? lucht(soort);
+    if (!l) return null;
+    const kans = { 'slight chance of': 'kleine kans op', 'chance of': 'kans op', scattered: 'verspreid', isolated: 'plaatselijk', numerous: 'veel', widespread: 'wijdverbreid', 'periods of': 'perioden met', occasional: 'af en toe' }[(m[1] ?? '').trim()] ?? '';
+    const na = /likely/.test(m[3] ?? '') ? ' (waarschijnlijk)' : (/possible/.test(m[3] ?? '') ? ' (mogelijk)' : '');
+    return `${l.icoon} ${kans ? kans + ' ' : ''}${l.nl ?? l.tekst}${na}`; }],
+  // verwachting: lucht direct na een tijdvak of "then/becoming" ("Tonight, clear", "then becoming partly cloudy")
+  [/\b(today|tonight|overnight|this afternoon|this evening|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|then|becoming|night)[,.]?\s+(?:becoming\s+)?((?:mostly |partly )?(?:sunny|clear|cloudy|overcast|fair)|(?:mostly |partly )?(?:sunny|cloudy) (?:in the (?:morning|afternoon|evening)))\b/g, (m) => {
+    const nacht = /^(tonight|overnight|night|this evening)$/.test(m[1]);
+    const l = lucht(m[2], nacht ? false : (/^(today|this afternoon|tomorrow)$/.test(m[1]) ? true : vertaalDag)); return l ? `${l.icoon} ${l.nl}` : null; }],
   // "the temperature was 70" (zonder "degrees"), "dew point 65"
   [/\b(?:temperature|temp|dew ?point)\s+(?:was|is|of|around|near|at)?\s*(-?\d{1,3})\b(?!\s*(?:percent|%|degrees|miles|mph|knots))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // wind
@@ -552,7 +564,7 @@ function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
       let tijdvak = staat?.tijdvak ?? null;
       TIJDVAK_WOORD_RE.lastIndex = 0;
       let tv;
-      while ((tv = TIJDVAK_WOORD_RE.exec(t)) !== null) { if (tv.index < van) tijdvak = tv[1]; else break; }
+      while ((tv = TIJDVAK_WOORD_RE.exec(t)) !== null) { if (tv.index <= van) tijdvak = tv[1]; else break; } // een tijdvak-woord aan het begin van het fragment telt mee
       const record = /\b(record|normal|yesterday|climate summary)\b/.test(context);
       const actueel = /\b(was|were|currently|right now|now|at this (?:hour|time)|at \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)|observed|reported|reporting)\b/.test(context) || /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|raining|rainy|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:dew ?point|humidity|pressure)\b/.test(context);
       const nu = actueel && !verwachting;
