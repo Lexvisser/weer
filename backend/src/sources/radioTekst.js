@@ -488,7 +488,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const voor = t.slice(Math.max(0, p.index - 50), p.index).trim().split(' ').filter(Boolean).slice(-4);
     const gevonden = zoekPlaatsInWoorden(plaatsen, voor);
     if (!gevonden || uit.has(gevonden.plaats.naam)) continue;
-    const segment = t.slice(p.eind, i + 1 < posities.length ? posities[i + 1].index : Math.min(t.length, p.eind + 160));
+    const segment = t.slice(p.eind, Math.min(i + 1 < posities.length ? posities[i + 1].index : t.length, p.eind + 70));
     let wind = null;
     const w = new RegExp(`(?:winds?\\s+)?(?:(calm)|(?:variable\\s+at\\s+(\\d{1,3}))|${RICHTING_RE}\\s+at\\s+(\\d{1,3}))`).exec(segment);
     if (w && w[2]) { const kmh = mphNaarKmh(Number(w[2])); wind = { richting: null, graden: null, kmh, bft: kmhNaarBft(kmh), tekst: `variabel ${kmh} km/h (${kmhNaarBft(kmh)} Bft)` }; }
@@ -542,7 +542,14 @@ function parseWaarnemingen(blokken, plaatsen) {
       golfM: zee ? ftNaarM(Number(zee[1])) : null,
     });
   }
-  return [...uit.values()];
+  const lijst = [...uit.values()];
+  const uniek = [];
+  for (const w of lijst) {
+    const km = (a, b) => 111 * Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos((a.lat * Math.PI) / 180));
+    const i = uniek.findIndex((u) => km(u, w) < 5);
+    if (i >= 0) { if ((w.tijd ?? '') >= (uniek[i].tijd ?? '')) uniek[i] = w; } else uniek.push(w);
+  }
+  return uniek;
 }
 
 
@@ -736,6 +743,7 @@ function vertalingenUitBlok(tekstRuw, tijd, lon = null, staat = null) {
       const vlakVoor = `${t.slice(Math.max(0, van - 28), van)} ${m[0]}`;
       const waarnemingsvorm = /\b(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain|raining|rainy|drizzle|snow|snowing|thunderstorms?|showers)\s*,?\s+(?:(?:and|at)\s+)?\d/.test(m[0]) || /\b(?:north|south|east|west|northeast|northwest|southeast|southwest)\s+at\s+\d/.test(m[0]) || /\b(?:temperature|dew ?point|pressure|humidity)\s+(?:was|is)?\s*\d/.test(m[0])
         || raaktFragment(/\b(?:winds?\s+)?(?:variable|calm|light and variable)\s+at\s+\d/, vlakVoor, m[0].length)
+        || raaktFragment(/\bwinds?\s+(?:is|was|were|are)\s+(?:at\s+)?\d/, vlakVoor, m[0].length)
         || raaktFragment(/\b(?:heat index|wind ?chill|temperature|winds?|gusts?|visibility|pressure|humidity|dew ?point|seas?|waves?)\s+(?:was|were|is|are)\s+(?:around\s+|near\s+|about\s+|the\s+)?(?:\w+\s+at\s+)?\d/, vlakVoor, m[0].length)
         || /\b(?:light |heavy |moderate )?(?:rain|drizzle|snow|fog|showers|thunderstorms?)\s+(?:was|were|is|are)\s+(?:falling|reported|occurring|in progress)\b/.test(`${m[0]}${t.slice(tot, tot + 24)}`);
       const nu = !record && (waarnemingsvorm || (actueel && !verwachting));
@@ -867,7 +875,7 @@ export function radioRapport(stationId) {
     const zinnen = r.tekst.split(/(?<=[.!?;])\s+/);
     const vertaald = (r.delen ?? []).filter((x) => x.vertaling).map((x) => x.tekst.toLowerCase());
     for (const zin of zinnen) {
-      const l = zin.toLowerCase();
+      const l = woordenNaarCijfers(zin.toLowerCase()).replace(/\b(?:relative\s+)?humidity\s+(?:was|is)?\s*\d{1,3}\s*(?:%|percent|degrees)?/g, ' ');
       const zonderTijd = l.replace(/\b\d{1,4}\s*(?:a\.?m\.?|p\.?m\.?)\b/g, ' ').replace(/\b\d{1,2}:\d{2}\b/g, ' ').replace(/\b(?:september|october|november|december|january|february|march|april|may|june|july|august)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?/g, ' ');
       const heeftGetal = /\b\d{1,3}\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/.test(zonderTijd);
       const heeftEenheid = /\b(?:degrees?|mph|miles?|knots?|inches?|feet|foot|percent|hpa|millibars?|fahrenheit)\b/.test(l);

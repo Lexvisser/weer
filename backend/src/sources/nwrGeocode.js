@@ -96,7 +96,9 @@ async function volgende() {
     {
       const lijst = await res.json();
       const ok = (Array.isArray(lijst) ? lijst : [])
-        .map((x) => ({ lat: Number(x.lat), lon: Number(x.lon), naam: (x.name || x.display_name || taak.naam).split(',')[0], soort: `${x.category ?? x.class}/${x.type}`, belang: Number(x.importance ?? 0) }))
+        .map((x) => ({ lat: Number(x.lat), lon: Number(x.lon), naam: (x.name || x.display_name || taak.naam).split(',')[0], soort: `${x.category ?? x.class}/${x.type}`, adres: x.addresstype ?? '', belang: Number(x.importance ?? 0) }))
+        // geen staten/county's/landen: "oklahoma" (uit "oklahoma city", te ver) landde anders op de staat Oklahoma
+        .filter((x) => !/^(state|county|country|region|province)$/.test(x.adres) && !/^(state|county|country|region|province)$/.test(x.soort.split('/')[1]))
         .filter((x) => Number.isFinite(x.lat) && afstandKm(station.lat, station.lon, x.lat, x.lon) <= MAX_KM)
         // plaatsen, vliegvelden, waterlichamen; geen straten/winkels
         .filter((x) => /^(place|aeroway|boundary\/administrative|natural\/(bay|cape|beach|water)|landuse\/military)/.test(x.soort))
@@ -113,21 +115,4 @@ async function volgende() {
   inWachtrij.delete(taak.sleutel);
   bezig = false;
   if (wachtrij.length) setImmediate(volgende);
-}
-
-// Vrij zoeken (zoekveld in de app, 2026-09-09): geen zender-begrenzing, één
-// verzoek per aanroep, zelfde nettigheid (1/s, User-Agent). Geeft de beste
-// treffer terug of null.
-let laatsteVrij = 0;
-export async function zoekVrij(q) {
-  const wacht = Math.max(0, 1100 - (Date.now() - laatsteVrij));
-  await new Promise((r) => setTimeout(r, wacht));
-  laatsteVrij = Date.now();
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`;
-  const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'nl,en' }, signal: AbortSignal.timeout(8000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const lijst = await res.json();
-  const x = Array.isArray(lijst) ? lijst[0] : null;
-  if (!x) return null;
-  return { naam: x.display_name, lat: Number(x.lat), lon: Number(x.lon), soort: `${x.category ?? x.class}/${x.type}` };
 }
