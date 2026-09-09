@@ -7736,7 +7736,7 @@ async function nwrLuisterStart(id) {
   try {
     const r = await fetch(`/api/radio-luister?station=${encodeURIComponent(id)}`).then((x) => x.json());
     if (!r.ok) console.warn('[weer] radio-luister:', r.fout);
-    else setTimeout(nwrTekstVervers, 40 * 1000); // eerste blok is er na ~35 s
+    else { setTimeout(nwrTekstVervers, 12 * 1000); setTimeout(nwrTekstVervers, 40 * 1000); } // #station-kopregel na ~10 s, eerste blok na ~35 s
   } catch (err) {
     console.warn('[weer] radio-luister mislukt:', err);
   }
@@ -7971,7 +7971,8 @@ function nwrPaneelVul() {
   const kop = `<div class="nwr-paneel-kop"><span>📝 ${escapeHtml(st?.roepletters ?? 'NWR')}</span><span class="nwr-paneel-sub">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''} · verstaan op lexdev-nw${luister}</span><button type="button" id="nwrPaneelSluit">✕</button></div>`;
   let body = '';
   if (!d) {
-    body = `<div class="nwr-leeg">${nwrKanLuisteren === false ? 'De server heeft whisper.cpp niet — verstaan kan niet.' : 'Nog geen tekst van deze zender. Klik op de pin om te luisteren; de server luistert dan mee.'}</div>`;
+    const luistert = nwrHuidig?.id === nwrPaneelStation;
+    body = `<div class="nwr-leeg">${nwrKanLuisteren === false ? 'De server heeft whisper.cpp niet — verstaan kan niet.' : (luistert ? '🎧 De server luistert mee — eerste tekst over ~35 s, daarna elke 30 s een blok. Omrekeningen komen in de gele ballon.' : 'Nog geen tekst van deze zender. Klik op de pin om te luisteren; de server luistert dan mee.')}</div>`;
   } else {
     // 2026-09-09 (avond): verwachting-kaartjes eruit (Lex: "meerdaagse skippen"),
     // alleen nog de tekst; de vertaalslag zit in de gele ballon (nwrBallon).
@@ -7980,6 +7981,7 @@ function nwrPaneelVul() {
       return `<div><span class="nwr-tekst-tijd">${t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })}</span> ${escapeHtml(r.tekst)}</div>`;
     });
     if (regels.length) body += `<div class="nwr-tekst">${regels.join('')}</div>`;
+    else body += `<div class="nwr-leeg">${d.luister?.actief ? '🎧 De server luistert mee — eerste tekst over ~35 s.' : 'Nog geen tekst van deze zender.'}</div>`;
   }
   NWR_PANEEL_EL.innerHTML = kop + body;
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
@@ -8014,6 +8016,7 @@ function nwrSpeel(id) {
   }
   nwrHuidig = s;
   nwrLuisterStart(s.id); // 2026-09-09: server verstaat mee
+  nwrPaneelToon(s.id); // meteen open: "luistert mee…", vult zich daarna (Lex: "wat zie ik dan?")
   nwrSpelerToon(`${s.roepletters} laden…`, 'laden');
   nwrAudio.src = s.url;
   nwrAudio.play().catch((err) => {
