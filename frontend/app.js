@@ -7695,16 +7695,16 @@ async function tekenNwr() {
   nwrMarkers = new Map();
   for (const s of stations) {
     if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue;
-    const blok = nwrTeksten.get(s.id);
-    const verstaan = !!blok;
-    const tekstKnop = verstaan ? `<span class="nwr-pin-tekst${blok.luister?.actief ? ' is-luisterend' : ''}" title="Wat de zender zegt (verstaan op de server)">📝</span>` : '';
-    // 2026-09-09: het actuele weer bij de zender zelf (dichtstbijzijnde
-    // waarneming) in de pin — uitgezoomd is dat alles wat je ziet.
-    const dichtst = nwrDichtstbijzijndeWaarneming(blok, s);
-    const weer = dichtst ? `<span class="nwr-pin-weer" title="${escapeHtml(dichtst.naam)}">${dichtst.lucht?.icoon ?? '🌡️'}${dichtst.tempC != null ? `${dichtst.tempC}°` : ''}</span>` : '';
-    const html = `<div class="nwr-pin${nwrHuidig?.id === s.id ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(nwrOmschrijving(s))}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span>${weer}${tekstKnop}</div>`;
+    // 2026-09-09 (avond, opschoning op verzoek van Lex — "deze opeenstapeling
+    // van icons gaat aan zijn doel voorbij"): de pin toont alleen nog de
+    // roepletters. Het weer-bij-de-zender en het 📝 op elke verstane zender
+    // zijn eruit; 📝 staat alleen nog op de zender die speelt (heropent het
+    // paneel als je dat dichtgeklikt had).
+    const spelend = nwrHuidig?.id === s.id;
+    const tekstKnop = spelend ? '<span class="nwr-pin-tekst" title="Tekst van deze zender tonen">📝</span>' : '';
+    const html = `<div class="nwr-pin${spelend ? ' is-spelend' : ''}${s.getest ? '' : ' is-ongetest'}" title="${escapeHtml(nwrOmschrijving(s))}"><span class="nwr-pin-icoon">📻</span><span class="nwr-pin-label">${escapeHtml(s.roepletters)}</span>${tekstKnop}</div>`;
     const marker = L.marker([s.lat, s.lon], {
-      icon: L.divIcon({ className: '', html, iconSize: [verstaan ? 120 : 64, 22], iconAnchor: [11, 11] }),
+      icon: L.divIcon({ className: '', html, iconSize: [spelend ? 84 : 64, 22], iconAnchor: [11, 11] }),
     });
     marker.on('click', (e) => {
       // 2026-09-09: klik op 📝 opent het tekst-paneel i.p.v. te gaan spelen
@@ -7762,7 +7762,7 @@ function nwrTekstStart() {
 function nwrTekstStop() {
   if (nwrTekstTimer) { clearInterval(nwrTekstTimer); nwrTekstTimer = null; }
   if (nwrTekstLaag && kaart) { kaart.removeLayer(nwrTekstLaag); nwrTekstLaag = null; }
-  if (nwrFlitsLaag && kaart) { kaart.removeLayer(nwrFlitsLaag); nwrFlitsLaag = null; }
+  nwrSamenvattingWis();
   nwrWaarnemingMarkers = new Map();
   nwrTeksten = new Map();
   nwrPaneelOpen = false;
@@ -8095,71 +8095,70 @@ function nwrVakHtml(v) {
   return `<div class="nwr-vak${v.nacht ? ' is-nacht' : ''}"><div class="nwr-vak-label">${escapeHtml(v.labelNl)}</div><div class="nwr-vak-icoon">${uniek || '·'}</div><div class="nwr-vak-temp">${temp}</div>${regels.join('')}</div>`;
 }
 
-// 2026-09-09 (avond), Lex: "die waarden on the fly plotten en heel kort laten
-// staan". Zodra een omrekening in de lopende tekst compleet is: een geel
-// labeltje op de kaart — bij de plaats als de zin over een bekende plaats
-// ging (waarneming met dit fragment), anders in een kransje rond de zender.
-// Na NWR_FLITS_MS vervaagt het en gaat het weg.
-const NWR_FLITS_MS = 20 * 1000;
-const NWR_VANDAAG_MS = 12 * 60 * 1000; // verwachting voor vandaag blijft een cyclus staan
-let nwrFlitsLaag = null;
-let nwrFlitsGedaan = new Set(); // "tijd|index"
-let nwrFlitsTeller = 0;
-let nwrFlitsStapel = new Map(); // plek -> { n } (hoeveel labels er nu op die plek staan → trede)
-let nwrFlitsRecent = new Map(); // plek|vertaling -> tijd (dubbele meldingen overslaan)
+// 2026-09-09 (avond, v2): de "flits"-labels (gele omrekeningen die als een
+// trap schuin omhoog bij de zender stapelden) zijn eruit — Lex: "deze
+// opeenstapeling van icons gaat aan zijn doel voorbij". Daarvoor in de plaats
+// één vast samenvattingsblokje rechts naast de spelende pin: per soort
+// (🌡️ 💨 🌊 ☔ …) de LAATST gehoorde waarde; een nieuwe waarde overschrijft de
+// oude, dus het groeit nooit. Het blokje leeft zolang die zender speelt.
+// Alle herkende waarden blijven daarnaast gewoon als chips in het paneel.
+let nwrSamenvatting = new Map(); // icoon -> { tekst, tijd }
+let nwrSamenvattingMarker = null;
+const NWR_SAMENVATTING_MAX = 6;
 
-function nwrFlits(r, d, index) {
-  if (!kaart || !nwrSync) return;
-  const sleutel = `${r.tijd}|${index}`;
-  if (nwrFlitsGedaan.has(sleutel)) return;
-  nwrFlitsGedaan.add(sleutel);
-  if (nwrFlitsGedaan.size > 400) nwrFlitsGedaan = new Set([...nwrFlitsGedaan].slice(-200));
-  const blok = nwrTeksten.get(nwrSync.id);
-  const station = blok?.station ?? nwrHuidig;
-  if (!station) return;
-  const frag = d.tekst.toLowerCase().trim();
-  const w = (blok?.waarnemingen ?? []).find((x) => x.tijd === r.tijd && (x.bron ?? '').toLowerCase().includes(frag));
-  const lat = w ? w.lat : station.lat;
-  const lon = w ? w.lon : station.lon;
-  const plek = w ? `plaats|${w.naam}` : `zender|${station.id}`;
-  // dezelfde melding niet twee keer kort na elkaar op dezelfde plek
-  // Verwachting voor vandaag blijft staan tot de volgende cyclus (Lex 09/09:
-  // "dan kan ik ook beoordelen hoe ze worden neergezet"); actuele flitsen kort.
-  const duurMs = d.nu ? NWR_FLITS_MS : NWR_VANDAAG_MS;
-  const dubbel = `${plek}|${d.vertaling}`;
-  if (nwrFlitsRecent.has(dubbel) && Date.now() - nwrFlitsRecent.get(dubbel) < duurMs) return;
-  nwrFlitsRecent.set(dubbel, Date.now());
-  // Trap: alles op dezelfde plek schuin omhoog stapelen (Lex 09/09: "getrapt
-  // schuin omhoog"); de eerste bij de plaats zelf, elke volgende 16 px hoger en
-  // 12 px naar rechts. Bij de zender zonder bekende plaats hetzelfde.
-  const stapel = nwrFlitsStapel.get(plek) ?? { n: 0 };
-  const trede = stapel.n;
-  stapel.n += 1;
-  nwrFlitsStapel.set(plek, stapel);
-  // bij een bekende plaats staat daar al het vaste icoon: de trap begint een
-  // trede hoger en rechts ervan, zodat het icoon niet onder het label verdwijnt
-  // bij de zender: ruim boven de pin beginnen (die is ~120 px breed en 22 px hoog)
-  const dx = 12 * trede + (w ? 22 : 6);
-  const dy = 16 * trede + (w ? 16 : 34);
-  if (!nwrFlitsLaag) nwrFlitsLaag = L.layerGroup().addTo(kaart);
-  const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling ?? '');
-  const inhoud = mm ? `<span class="nwr-flits-icoon">${escapeHtml(mm[1])}</span>${d.woord ? '' : ` ${escapeHtml(mm[2])}`}` : escapeHtml(d.vertaling ?? '');
-  const soortKlasse = d.nu ? '' : ' is-vandaag';
-  const onderschrift = w ? (trede === 0 ? `<span class="nwr-flits-plaats">${escapeHtml(w.naam)}</span>` : '') : (d.nu ? '' : (trede === 0 ? '<span class="nwr-flits-plaats">vandaag</span>' : ''));
-  const html = `<div class="nwr-flits${soortKlasse}" title="${escapeHtml(d.tekst)}">${inhoud}${onderschrift}</div>`;
-  const marker = L.marker([lat, lon], { icon: L.divIcon({ className: 'nwr-flits-marker', html, iconSize: [10, 10], iconAnchor: [5 - dx, 5 + dy] }), interactive: false, zIndexOffset: 900 + trede });
-  nwrFlitsLaag.addLayer(marker);
-  setTimeout(() => marker.getElement()?.querySelector('.nwr-flits')?.classList.add('is-weg'), duurMs - 1200);
-  setTimeout(() => {
-    try { nwrFlitsLaag.removeLayer(marker); } catch (_) { /* weg */ }
-    const st = nwrFlitsStapel.get(plek);
-    if (st) { st.n -= 1; if (st.n <= 0) nwrFlitsStapel.delete(plek); }
-  }, duurMs);
+function nwrSamenvattingBij(d) {
+  if (!nwrHuidig || !d?.vertaling) return;
+  const mm = /^(\S+)\s+(.*)$/.exec(d.vertaling);
+  if (!mm) return;
+  nwrSamenvatting.delete(mm[1]); // opnieuw achteraan: nieuwste rechts
+  nwrSamenvatting.set(mm[1], { tekst: mm[2], tijd: Date.now(), soort: d.nu ? 'nu' : 'vandaag' });
+  while (nwrSamenvatting.size > NWR_SAMENVATTING_MAX) nwrSamenvatting.delete(nwrSamenvatting.keys().next().value);
+  nwrSamenvattingTeken();
+}
+
+function nwrSamenvattingWis() {
+  nwrSamenvatting = new Map();
+  nwrSamenvattingTeken();
+}
+
+function nwrSamenvattingTeken() {
+  if (!kaart) return;
+  if (nwrSamenvattingMarker) { kaart.removeLayer(nwrSamenvattingMarker); nwrSamenvattingMarker = null; }
+  const st = nwrHuidig;
+  if (!st || !nwrSamenvatting.size) return;
+  const delen = [...nwrSamenvatting].map(([icoon, v]) => `<span class="nwr-sv-item${v.soort === 'vandaag' ? ' is-vandaag' : ''}" title="${v.soort === 'vandaag' ? 'verwachting vandaag' : 'actueel'}">${escapeHtml(icoon)} ${escapeHtml(v.tekst)}</span>`);
+  const html = `<div class="nwr-sv">${delen.join('<span class="nwr-sv-sep">·</span>')}</div>`;
+  // rechts van de pin (die is ~84 px breed vanaf anker 11): negatief anker = naar rechts
+  nwrSamenvattingMarker = L.marker([st.lat, st.lon], { icon: L.divIcon({ className: 'nwr-sv-marker', html, iconSize: [10, 22], iconAnchor: [-78, 11] }), interactive: false, zIndexOffset: 950 });
+  nwrSamenvattingMarker.addTo(kaart);
 }
 
 // Eén tekstregel (blok) als HTML; `zichtbaar` (0..1) = hoeveel van de tekst al
 // getoond wordt — het spelende blok groeit woord voor woord mee met de audio
 // (Lex 09/09: "lastig te volgen omdat er een hele alinea tegelijk bijkomt").
+// 2026-09-09 (avond): NWR praat per dagdeel ("Tonight", "Thursday night",
+// "Friday"...). Zo'n kop wordt in de lopende tekst een eigen amber regel, in
+// het Nederlands — de plek voor de verwachting is het paneel, niet de kaart.
+const NWR_DAGDEEL_RE = /\b(Tonight|Overnight|Today|This afternoon|This evening|This morning|Rest of (?:today|tonight|the afternoon)|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?: night| afternoon| evening| morning)?)\b(?=\s*[,:.]?\s)/g;
+const NWR_DAGEN = { monday: 'maandag', tuesday: 'dinsdag', wednesday: 'woensdag', thursday: 'donderdag', friday: 'vrijdag', saturday: 'zaterdag', sunday: 'zondag' };
+function nwrDagdeelNl(en) {
+  const t = en.toLowerCase();
+  if (t === 'tonight') return 'vannacht';
+  if (t === 'overnight') return 'komende nacht';
+  if (t === 'today') return 'vandaag';
+  if (t === 'this afternoon') return 'vanmiddag';
+  if (t === 'this evening') return 'vanavond';
+  if (t === 'this morning') return 'vanochtend';
+  if (t.startsWith('rest of')) return 'rest van ' + (t.includes('tonight') ? 'de nacht' : t.includes('afternoon') ? 'de middag' : 'vandaag');
+  const m = /^(\w+)(?: (night|afternoon|evening|morning))?$/.exec(t);
+  if (!m) return en;
+  const dag = NWR_DAGEN[m[1]] ?? m[1];
+  return m[2] ? `${dag}${{ night: 'nacht', afternoon: 'middag', evening: 'avond', morning: 'ochtend' }[m[2]]}` : dag;
+}
+function nwrMetDagdelen(tekstHtml) {
+  return tekstHtml.replace(NWR_DAGDEEL_RE, (en) => `<span class="nwr-dagdeel"><span class="nwr-dagdeel-nl">${escapeHtml(nwrDagdeelNl(en))}</span> ${escapeHtml(en)}</span>`);
+}
+
 function nwrRegelHtml(r, zichtbaar = 1) {
   const spelend = zichtbaar < 1;
   const delen = Array.isArray(r.delen) && r.delen.length ? r.delen : [{ tekst: r.tekst }];
@@ -8171,11 +8170,11 @@ function nwrRegelHtml(r, zichtbaar = 1) {
     const heel = budget >= d.tekst.length;
     const tekst = heel ? d.tekst : d.tekst.slice(0, budget);
     budget -= d.tekst.length;
-    if (d.vertaling && heel && spelend && (d.nu || d.soort === 'vandaag')) nwrFlits(r, d, i); // 2026-09-09: actueel (geel) en de verwachting voor vandaag (blauw); later niet
+    if (d.vertaling && heel && spelend && !d.woord && (d.nu || d.soort === 'vandaag')) nwrSamenvattingBij(d); // 2026-09-09: laatste waarde per soort in het blokje bij de pin
     // Lex 09/09: in de tekst alleen omrekeningen (°C, km/h, Bft, hPa…); woorden
     // als "zonnig"/"buien" niet als label — die zijn alleen voor het icoon op de kaart.
     if (d.plaats && heel) { stukken.push(`<span class="nwr-plaats" data-lat="${d.lat}" data-lon="${d.lon}" title="${escapeHtml(d.plaats)} — klik om ernaartoe te gaan">${escapeHtml(tekst)}</span>`); return; } // 2026-09-09: herkende plaats, aanklikbaar
-    if (!d.vertaling || !heel || d.woord) { stukken.push(escapeHtml(tekst)); return; }
+    if (!d.vertaling || !heel || d.woord) { stukken.push(nwrMetDagdelen(escapeHtml(tekst))); return; }
     const m = /^(.*?)(\S+)$/s.exec(tekst) ?? [null, '', tekst];
     const uitKlasse = d.nu ? '' : (d.soort === 'vandaag' ? ' is-vandaag' : ' is-later');
     stukken.push(`<span class="nwr-vert"><span class="nwr-vert-bron">${escapeHtml(m[1])}<span class="nwr-vert-vast">${escapeHtml(m[2])} <span class="nwr-vert-uit${uitKlasse}">${escapeHtml(d.vertaling)}</span></span></span></span>`);
@@ -8285,6 +8284,8 @@ function nwrSpelerToon(tekst, staat) {
 
 function nwrMarkeerSpelend() {
   for (const [id, m] of nwrMarkers) m.getElement()?.querySelector('.nwr-pin')?.classList.toggle('is-spelend', nwrHuidig?.id === id);
+  tekenNwr(); // 📝 en breedte volgen de spelende zender (2026-09-09)
+  nwrSamenvattingTeken();
 }
 
 function nwrSpeel(id) {
@@ -8303,6 +8304,7 @@ function nwrSpeel(id) {
   }
   nwrHuidig = s;
   nwrSyncStop();
+  nwrSamenvattingWis(); // blokje hoort bij één zender
   if (!nwrCtx) { try { nwrCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { nwrCtx = null; } } // in de klik, voor iOS
   if (nwrCtx?.state === 'suspended') nwrCtx.resume().catch(() => {});
   nwrSessieStart = Date.now(); // paneel toont alleen tekst van deze sessie
@@ -8338,6 +8340,7 @@ function nwrStop() {
     nwrAudio.load(); // verbinding echt loslaten
   }
   nwrHuidig = null;
+  nwrSamenvattingWis();
   NWR_SPELER_EL?.classList.add('verborgen');
   nwrMarkeerSpelend();
 }
