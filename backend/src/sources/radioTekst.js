@@ -396,7 +396,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const gevonden = zoekPlaatsInWoorden(plaatsen, voor);
     if (!gevonden) continue;
     const segment = t.slice(grenzen[i] + 6, i + 1 < grenzen.length ? grenzen[i + 1] : Math.min(t.length, grenzen[i] + 260));
-    const temp = /(?:the\s+)?temperature was\s+(\d{1,3})\s*degrees?/.exec(segment) ?? /^\s*(\d{1,3})\s*degrees?\b/.exec(segment);
+    const temp = /(?:the\s+)?temperature\s+(?:was\s+|is\s+)?(\d{1,3})\s*degrees?/.exec(segment) ?? /^\s*(\d{1,3})\s*degrees?\b/.exec(segment);
     if (!temp) continue;
     const f = Number(temp[1]);
     if (f < -40 || f > 130) continue;
@@ -410,8 +410,8 @@ function parseWaarnemingen(blokken, plaatsen) {
         wind = { richting: r.kort, graden: r.graden, kmh, bft: kmhNaarBft(kmh), tekst: `${r.kort} ${kmh} km/h (${kmhNaarBft(kmh)} Bft)` };
       }
     }
-    const vocht = /humidity was\s+(\d{1,3})/.exec(segment);
-    const druk = /pressure was\s+(\d{2}\.\d{2})/.exec(segment);
+    const vocht = /humidity\s+(?:was\s+|is\s+)?(\d{1,3})/.exec(segment);
+    const druk = /(?:pressure|barometer)\s+(?:was\s+|is\s+)?(\d{2}\.\d{2})/.exec(segment);
     const { plaats } = gevonden;
     const eind = w ? w.index + w[0].length : temp.index + temp[0].length;
     zet(plaats.naam, grenzen[i], {
@@ -432,7 +432,12 @@ function parseWaarnemingen(blokken, plaatsen) {
   }
   // Tampa-stijl: "at tampa international light rain was falling the temperature was 86 degrees
   // the humidity was 79 percent the wind was southeast at 8 miles an hour the pressure was 29.98 ..."
-  const tre = /\b(?:the\s+)?temperature was\s+(\d{1,3})\s*degrees?/g;
+  // 2026-09-10, na KHB32 (Tampa Bay) nul waarnemingen gaf: Tampa laat het
+  // werkwoord weg -- "at tampa international the temperature 88 degrees, the
+  // dew point 74, the barometer 29.77 and the relative humidity 100%". Overal
+  // waar de parser op "was" stond is dat nu optioneel; het getal + de eenheid
+  // blijven het anker, dus vals-positieven worden er niet waarschijnlijker op.
+  const tre = /\b(?:the\s+)?temperature\s+(?:was\s+|is\s+)?(\d{1,3})\s*degrees?/g;
   while ((m = tre.exec(t)) !== null) {
     const f = Number(m[1]);
     if (f < -40 || f > 130) continue;
@@ -448,7 +453,7 @@ function parseWaarnemingen(blokken, plaatsen) {
     const segment = t.slice(m.index + m[0].length, Math.min(t.length, m.index + m[0].length + 220));
     const luchtTekst = voorTekst.slice(at.index + at[0].length);
     let wind = null;
-    const w = new RegExp(`(?:the\\s+)?winds? (?:was|were)\\s+(?:(calm|light and variable)|${RICHTING_RE}\\s+at\\s+(\\d{1,3})\\s*(miles an hour|miles per hour|mph|knots)?)`).exec(segment);
+    const w = new RegExp(`(?:the\\s+)?winds? (?:(?:was|were|is|are)\\s+)?(?:(calm|light and variable)|${RICHTING_RE}\\s+at\\s+(\\d{1,3})\\s*(miles an hour|miles per hour|mph|knots)?)`).exec(segment);
     if (w) {
       if (w[1]) wind = { richting: null, graden: null, kmh: 0, bft: 0, tekst: 'windstil' };
       else {
@@ -457,9 +462,9 @@ function parseWaarnemingen(blokken, plaatsen) {
         wind = { richting: r.kort, graden: r.graden, kmh, bft: kmhNaarBft(kmh), tekst: `${r.kort} ${kmh} km/h (${kmhNaarBft(kmh)} Bft)` };
       }
     }
-    const vocht = /humidity was\s+(\d{1,3})/.exec(segment);
-    const druk = /pressure was\s+(\d{2}\.\d{2})/.exec(segment);
-    const dauw = /dew ?point was\s+(\d{1,3})/.exec(segment);
+    const vocht = /humidity\s+(?:was\s+|is\s+)?(\d{1,3})/.exec(segment);
+    const druk = /(?:pressure|barometer)\s+(?:was\s+|is\s+)?(\d{2}\.\d{2})/.exec(segment);
+    const dauw = /dew ?point\s+(?:was\s+|is\s+)?(\d{1,3})/.exec(segment);
     const tijdW = tijdBij(m.index);
     const { plaats } = gevonden;
     const eind = w ? w.index + w[0].length : 0;
