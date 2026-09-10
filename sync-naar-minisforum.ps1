@@ -48,6 +48,12 @@ Write-Host "Bestanden inpakken..." -ForegroundColor Cyan
 # gebruiker faalt met "Cannot utime/Permission denied" - en daarmee de HELE
 # sync (inclusief npm install + herstart hieronder) liet mislukken, want
 # die stappen komen pas na deze tar-aanroep.
+# 2026-09-10: die permissiekant is opgelost - de service draait nu als lex
+# (User=%i in weer-app.service) en ~/weer-app is volledig lex-eigendom, dus
+# backend/data is geen root-eigendom meer. De uitsluiting blijft toch staan:
+# het is runtime-state van de LEVENDE server (historie, tegelcache, push-
+# abonnementen) en die hoort niet overschreven te worden door wat er
+# toevallig op de Windows-pc ligt.
 tar --exclude=".env" `
     --exclude="backend/data" `
     --exclude="kaart-vergelijking.html" `

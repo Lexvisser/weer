@@ -5,9 +5,21 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# 2026-09-10: zonder User= start systemd de app als root. Dat is nergens voor
+# nodig (de app luistert op 4780, ruim boven de 1024-grens) en het zette HOME
+# op /root: alles wat de code via homedir() schrijft — navtex_berichten.txt en
+# de drie NAVTEX-registers uit navtexLokaal.js — belandde daardoor in /root
+# in plaats van bij de gebruiker, en backend/data/ werd root-eigendom.
+# %i is de instantienaam (weer-app@lex -> lex), dus dit loopt vanzelf mee met
+# WorkingDirectory hieronder. Op de draaiende Minisforum staat dit als
+# drop-in in /etc/systemd/system/weer-app@lex.service.d/gebruiker.conf.
+User=%i
+Group=%i
 # Pas dit pad aan naar waar je de map op de Minisforum hebt uitgepakt:
 WorkingDirectory=/home/%i/weer-app/backend
-ExecStart=/usr/bin/node src/index.js
+# De Minisforum draait node uit nvm, niet de systeem-node; controleer bij een
+# verse installatie met "which node" en zet die uitkomst hieronder neer.
+ExecStart=/home/lex/.nvm/versions/node/v22.23.2/bin/node src/index.js
 Restart=on-failure
 RestartSec=5
 # Geen EnvironmentFile nodig: backend/src/index.js leest backend/.env zelf al
