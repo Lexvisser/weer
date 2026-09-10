@@ -834,7 +834,11 @@ function initMap() {
   kaart.on('mousemove', (e) => { if (gradenActief) toonGradenVak(e.latlng); });
   kaart.on('mouseout', () => { if (gradenActief) verbergGradenVak(); });
   kaart.on('click', (e) => { if (gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
-  kaart.on('click', () => { if (nwrHuidig) nwrStop(); }); // 2026-09-09: NWR — klik naast een zender = stoppen
+  // 2026-09-09: een klik naast een zender stopte het luisteren. Weer weggehaald
+  // op 2026-09-10 (Lex: "we moeten er toch ook vanaf dat een willekeurige klik
+  // het luisteren stopt") — inmiddels hangt er een luistersessie op de server
+  // aan vast, en die mag geen misklik onderbreken. Stoppen kan met ⏹ in het
+  // paneel/de balk, of door dezelfde zenderpin nog eens aan te tikken.
   kaart.on('zoomend', nwrZoomGewijzigd); // 2026-09-09: NWR-waarnemingen uitwaaieren/intrekken
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(STATIONS_KEY) === 'aan') toggleStations(); } catch (_) { /* privé-modus */ }
@@ -8120,17 +8124,16 @@ function nwrSamenvattingWis() {
 
 // 2026-09-10, op verzoek van Lex ("ik wil alleen plotten wat ACTUEEL is en de
 // PROGNOSE voor max # uur vooruit in een onderscheidende kleur", voorlopig tot
-// 6 uur): het blok bij de zenderpin heeft nu twee regels.
-//  - amber = ACTUEEL: de waarneming die de zender NU voorleest, van de plaats
-//    het dichtst bij de zender. ("it was 80 degrees" is de meting van het
-//    afgelopen uur — verleden tijd in het Engels, maar wel de actuele stand.)
-//  - blauw = PROGNOSE: alleen het EERSTE tijdvak van de verwachting (vandaag /
-//    vannacht / vanmiddag), dat ruwweg de komende uren dekt. Bewust niet meer
-//    dan één tijdvak: de verwachting geldt voor het hele zendgebied, en verder
-//    vooruit hoort in het paneel, niet op de kaart.
+// 6 uur): het blok bij de zenderpin heeft twee regels.
+//  - amber = ACTUEEL: de waarneming die de zender nu voorleest, van de plaats
+//    het dichtst bij de zender. ("it was 80 degrees" is verleden tijd in het
+//    Engels, maar het is wel de meting van het afgelopen uur — dus actueel.)
+//  - blauw = PROGNOSE: alleen het EERSTE tijdvak (vandaag/vannacht/vanmiddag),
+//    dat ruwweg de komende uren dekt. Bewust niet meer dan één: de verwachting
+//    geldt voor het hele zendgebied, en verder vooruit hoort in het paneel.
 // De klimaatsamenvatting die veel zenders eerst voorlezen (records, normalen,
-// "yesterday's high") komt hier per definitie niet in: dat zijn geen
-// waarnemingen en geen tijdvakken.
+// "yesterday's high") valt hier per definitie buiten: geen waarneming, geen
+// tijdvak.
 function nwrPrognoseHtml(blok) {
   const v = (blok?.verwachting ?? [])[0];
   if (!v) return '';
@@ -8152,7 +8155,6 @@ function nwrSamenvattingTeken() {
   const blok = st ? nwrTeksten.get(st.id) : null;
   const w = st ? nwrDichtstbijzijndeWaarneming(blok, st) : null;
   const prognose = st ? nwrPrognoseHtml(blok) : '';
-  if (!st || (!w && !prognose)) { nwrSamenvattingWis(); return; }
   const delen = [];
   if (w && stationsAfstandKm(w, st) <= NWR_SV_MAX_KM) {
     if (w.lucht?.icoon) delen.push(`<span class="nwr-sv-item" title="${escapeHtml(w.lucht.nl ?? '')}">${w.lucht.icoon}</span>`);
@@ -8161,8 +8163,8 @@ function nwrSamenvattingTeken() {
     if (w.golfM != null) delen.push(`<span class="nwr-sv-item">🌊 ${w.golfM} m</span>`);
   }
   const t = w?.tijd ? new Date(w.tijd).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-  const actueel = (w && delen.length) ? `<div class="nwr-sv" title="actueel, gehoord ${t}"><span class="nwr-sv-plaats">${escapeHtml(w.naam)}</span>${delen.join('<span class="nwr-sv-sep">·</span>')}</div>` : '';
-  if (!actueel && !prognose) { nwrSamenvattingWis(); return; }
+  const actueel = delen.length ? `<div class="nwr-sv" title="actueel, gehoord ${t}"><span class="nwr-sv-plaats">${escapeHtml(w.naam)}</span>${delen.join('<span class="nwr-sv-sep">·</span>')}</div>` : '';
+  if (!st || (!actueel && !prognose)) { nwrSamenvattingWis(); return; }
   const html = `<div class="nwr-sv-stapel">${actueel}${prognose}</div>`;
   const sleutel = `${st.id}|${html}`;
   if (nwrSamenvattingMarker && sleutel === nwrSamenvattingHtml) return; // ongewijzigd: niet hertekenen (knipperde)
