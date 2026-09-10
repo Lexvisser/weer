@@ -2169,6 +2169,7 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 /* 2026-09-10: melding in het zenderpaneel als het ophalen van de kaartdata
    mislukte (Lex: "het blijft erratic" -- voorheen bleef de kaart stil leeg). */
 .nwr-paneel-fout { padding:6px 10px; color:#ffb020; background:rgba(255,176,32,0.10); border-bottom:1px solid rgba(255,176,32,0.3); font-size:11px; }
+.nwr-paneel-fout.is-bezig { color:#9fb2c8; background:rgba(159,178,200,0.08); border-bottom-color:rgba(159,178,200,0.25); }
 .nwr-vakken { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:6px; padding:8px 10px; }
 .nwr-vak { border:1px solid rgba(255,255,255,0.14); border-radius:9px; padding:6px 8px; background:rgba(255,255,255,0.04); }
 .nwr-vak.is-nacht { background:rgba(60,80,140,0.18); }

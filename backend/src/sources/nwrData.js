@@ -42,15 +42,43 @@ const MAX_STATIONS = Number(process.env.NWR_DATA_MAX_STATIONS) || 0; // 0 = geen
 const geheugen = new Map(); // url -> { tot, waarde }
 let puntenCache = null;
 
+// 2026-09-10 (eind), na Lex' "ik krijg voortdurend dit": elke aanroep krijgt een
+// tijdslimiet en twee herkansingen. Zonder dat sloopte één hikkende aanroep de
+// hele zender — en juist /points en de stationslijst werden nergens opgevangen,
+// dus dan werd er ook niets gecachet en ging het de keer erna wéér mis.
+const AANROEP_MS = 8000;
+const POGINGEN = 3;
+
+async function haalEens(url) {
+  const stop = new AbortController();
+  const klok = setTimeout(() => stop.abort(), AANROEP_MS);
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/geo+json' }, signal: stop.signal });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.json();
+  } finally {
+    clearTimeout(klok);
+  }
+}
+
 async function haal(url, ms) {
   const nu = Date.now();
   const c = geheugen.get(url);
   if (c && c.tot > nu) return c.waarde;
-  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/geo+json' } });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} bij ${url}`);
-  const waarde = await res.json();
-  geheugen.set(url, { tot: nu + ms, waarde });
-  return waarde;
+  let laatste = null;
+  for (let poging = 1; poging <= POGINGEN; poging += 1) {
+    try {
+      const waarde = await haalEens(url);
+      geheugen.set(url, { tot: Date.now() + ms, waarde });
+      return waarde;
+    } catch (err) {
+      laatste = err;
+      const reden = err?.name === 'AbortError' ? `geen antwoord binnen ${AANROEP_MS / 1000} s` : err.message;
+      console.warn(`[weer] nwrData poging ${poging}/${POGINGEN} mislukt (${reden}): ${url}`);
+      if (poging < POGINGEN) await new Promise((r) => setTimeout(r, 700 * poging));
+    }
+  }
+  throw new Error(`${laatste?.name === 'AbortError' ? 'time-out' : laatste?.message} bij ${url}`);
 }
 
 function punten() {
