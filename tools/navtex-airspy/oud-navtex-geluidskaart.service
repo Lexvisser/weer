@@ -1,0 +1,35 @@
+# HISTORISCH — NIET INSTALLEREN.
+#
+# Dit was de eerste NAVTEX-keten op de Minisforum (aug 2026 t/m 5 sept 2026):
+# audio uit de geluidskaart van de ontvanger, via sox naar de fldigi-achtige
+# decoder navtex_rx_from_file, en de uitkomst met tee achter
+# /home/lex/navtex_berichten.txt geplakt.
+#
+# Vervangen door tools/navtex-airspy (navtex_usb_demod.py +
+# navtex-airspy.service): rechtstreekse USB-demodulatie van de Airspy HF+
+# Discovery, zonder geluidskaart en zonder de ATS Mini.
+#
+# Bewaard als naslag van de audioroute. Zet hem niet aan: hij schrijft in
+# hetzelfde navtex_berichten.txt dat de app leest, dus naast navtex-airspy
+# levert dat dubbele en half-overlappende berichten op.
+#
+# Op de server stond dit bestand als /etc/systemd/system/navtex.service
+# (disabled sinds 5 sept 2026, verwijderd op 10 sept 2026).
+
+[Unit]
+Description=Continu NAVTEX ontvangst en decodering
+After=sound.target
+
+[Service]
+Type=simple
+User=lex
+Group=lex
+SupplementaryGroups=audio
+Environment=HOME=/home/lex
+ExecStart=/bin/bash -o pipefail -c '/usr/bin/arecord -D hw:1,0 -f cd - | /usr/bin/sox -t wav - -c 1 -r 11025 -t raw - vol 0.3 | /usr/local/bin/navtex_rx_from_file 11025 | /usr/bin/tee -a /home/lex/navtex_berichten.txt'
+Restart=always
+RestartSec=5
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
