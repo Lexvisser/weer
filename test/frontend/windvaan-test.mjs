@@ -99,14 +99,29 @@ const warning23 = { categorie: 'navtex', tijd: '2026-08-27T23:00:00Z', detail: {
 const allClear0211 = { categorie: 'navtex', tijd: '2026-08-28T02:11:00Z', detail: { bericht: 'GALEWARNING, 28 AUG 02:11 UTC.\nDOVER. THAMES. HUMBER. GERMAN BIGHT. DOGGER.\nNO WARNING.\nNNNN', verlopen: false } };
 const warning0702 = { categorie: 'navtex', tijd: '2026-08-28T07:02:00Z', detail: { bericht: 'GALEWARNING, DTG 28 AUG 0702 UTC.\nDOVER. THAMES.\nSOUTHWEST 7.\nHUMBER. GERMAN BIGHT. DOGGER.\nNO WARNING.\nNNNN', verlopen: false } };
 
+// 2026-09-10, bijgewerkt: deze vier gevallen zijn geschreven op 28/08, toen
+// een "NO WARNING" na het aflossen gewoon uit de map verdween. Op 30/08 is
+// dat bewust veranderd (op verzoek van Lex, "is er verschil in gewicht?",
+// n.a.v. Dover PB18): de all-clear BLIJFT in de map staan als
+// `allClear: true`, zodat verversWindvanen() 'm kan gebruiken om een
+// verouderde gale uit de Met Office-synopsis te onderdrukken — een verse,
+// zelf ontvangen "NO WARNING" weegt zwaarder dan een zes uur oude
+// verwachting (zie app.js rond `navtexRuw?.allClear`: info = null, dus nog
+// steeds GEEN vaan). De test toetst daarom nu het verschil tussen "geen
+// vaan" (gebied ontbreekt) en "actief schoon gemeld" (=allClear) i.p.v. te
+// eisen dat de map leeg is.
 function perGebiedOm(moment, sigs) {
   class NepDate extends Date { static now() { return new Date(moment).getTime(); } }
   const m = maak(sigs, NepDate).navtexGaleInfoPerGebied();
-  return [...m.entries()].map(([g, i]) => `${g}=${i.kracht}`).sort();
+  return [...m.entries()].map(([g, i]) => `${g}=${i.allClear ? 'allClear' : i.kracht}`).sort();
 }
 check('01:00 — alleen de 23:00-warning actief', perGebiedOm('2026-08-28T01:00:00Z', [warning23]), ['Dover=8', 'Thames=8']);
-check('03:00 — nieuwere NO WARNING lost oudere warning af', perGebiedOm('2026-08-28T03:00:00Z', [warning23, allClear0211]), []);
-check('07:30 — verse warning wint weer van de all-clear', perGebiedOm('2026-08-28T07:30:00Z', [warning23, allClear0211, warning0702]), ['Dover=7', 'Thames=7']);
+check('03:00 — nieuwere NO WARNING lost oudere warning af (blijft als allClear staan)',
+  perGebiedOm('2026-08-28T03:00:00Z', [warning23, allClear0211]),
+  ['Dogger=allClear', 'Dover=allClear', 'German Bight=allClear', 'Humber=allClear', 'Thames=allClear']);
+check('07:30 — verse warning wint weer van de all-clear',
+  perGebiedOm('2026-08-28T07:30:00Z', [warning23, allClear0211, warning0702]),
+  ['Dogger=allClear', 'Dover=7', 'German Bight=allClear', 'Humber=allClear', 'Thames=7']);
 check('13:30 — 6-uursvenster verlopen', perGebiedOm('2026-08-28T13:30:00Z', [warning23, allClear0211, warning0702]), []);
 
 // ---- 2026-08-28 (2e ronde): voorspelde wind, zicht en drukgebieden ------
