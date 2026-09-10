@@ -2289,53 +2289,59 @@ function renderNavtexSchema() {
   NAVTEX_SCHEMA_INHOUD_EL.innerHTML = '';
 
   const uitleg = document.createElement('div');
-  uitleg.className = 'instellingen-uitleg';
+  uitleg.className = 'instellingen-uitleg navtex-schema-uitleg';
   uitleg.textContent = 'De tweede letter in de berichtcode (bv. de "A" in PA11) is het station, de rest het berichttype.';
   NAVTEX_SCHEMA_INHOUD_EL.appendChild(uitleg);
 
-  const stationsKop = document.createElement('div');
-  stationsKop.className = 'instellingen-uitleg';
-  stationsKop.textContent = 'Stations (zendschema UTC):';
-  NAVTEX_SCHEMA_INHOUD_EL.appendChild(stationsKop);
+  // 2026-09-10, op verzoek van Lex ("in kolommen ... de tijden in de kolom er
+  // meteen naast, de berichttypen in een aparte kolom rechts daarnaast"):
+  // twee blokken naast elkaar, elk zelf een tweekoloms-grid (grid i.p.v. een
+  // rij-per-station, zodat de tijden over alle regels heen uitlijnen).
+  // Op een smal scherm (telefoon) stapelen de twee blokken; zie styles.css.
+  const kolommen = document.createElement('div');
+  kolommen.className = 'navtex-schema-kolommen';
+  NAVTEX_SCHEMA_INHOUD_EL.appendChild(kolommen);
 
+  const maakBlok = (kopTekst) => {
+    const blok = document.createElement('section');
+    blok.className = 'navtex-schema-blok';
+    const kop = document.createElement('div');
+    kop.className = 'instellingen-uitleg navtex-schema-kop';
+    kop.textContent = kopTekst;
+    blok.appendChild(kop);
+    const tabel = document.createElement('div');
+    tabel.className = 'navtex-schema-tabel';
+    blok.appendChild(tabel);
+    kolommen.appendChild(blok);
+    return tabel;
+  };
+  const maakRegel = (tabel, links, rechts) => {
+    const a = document.createElement('span');
+    a.className = 'navtex-schema-links';
+    a.textContent = links;
+    const b = document.createElement('span');
+    b.className = 'navtex-schema-rechts';
+    b.textContent = rechts;
+    tabel.appendChild(a);
+    tabel.appendChild(b);
+  };
+
+  const stationsTabel = maakBlok('Stations (zendschema UTC)');
   const stations = NAVTEX_STATIONS_DATA ?? [];
   if (!stations.length) {
-    const leeg = document.createElement('div');
-    leeg.className = 'instellingen-uitleg';
-    leeg.textContent = '(nog aan het laden...)';
-    NAVTEX_SCHEMA_INHOUD_EL.appendChild(leeg);
+    maakRegel(stationsTabel, '(nog aan het laden...)', '');
   }
   stations.forEach((station) => {
-    const rij = document.createElement('div');
-    rij.className = 'instelling-item navtex-naslag-rij';
-    const label = document.createElement('span');
     // 2026-09-08: '@490' is intern (zie stationId in navtexLokaal.js) — alleen de letter tonen.
-    label.textContent = `${String(station.id).split('@')[0]}  ${station.naam}${station.land ? ` (${station.land})` : ''}`;
-    const tijden = document.createElement('span');
-    tijden.className = 'navtex-naslag-tijden';
-    tijden.textContent = station.zendschema?.length ? station.zendschema.join(', ') : 'onbekend';
-    rij.appendChild(label);
-    rij.appendChild(tijden);
-    NAVTEX_SCHEMA_INHOUD_EL.appendChild(rij);
+    maakRegel(
+      stationsTabel,
+      `${String(station.id).split('@')[0]}  ${station.naam}${station.land ? ` (${station.land})` : ''}`,
+      station.zendschema?.length ? station.zendschema.join(', ') : 'onbekend',
+    );
   });
 
-  const typeKop = document.createElement('div');
-  typeKop.className = 'instellingen-uitleg';
-  typeKop.textContent = 'Berichttype (2e letter van de code):';
-  NAVTEX_SCHEMA_INHOUD_EL.appendChild(typeKop);
-
-  NAVTEX_TYPE_NASLAG.forEach((regel) => {
-    const rij = document.createElement('div');
-    rij.className = 'instelling-item navtex-naslag-rij';
-    const letter = document.createElement('span');
-    letter.textContent = regel.letters;
-    const omschrijving = document.createElement('span');
-    omschrijving.className = 'navtex-naslag-tijden';
-    omschrijving.textContent = regel.omschrijving;
-    rij.appendChild(letter);
-    rij.appendChild(omschrijving);
-    NAVTEX_SCHEMA_INHOUD_EL.appendChild(rij);
-  });
+  const typeTabel = maakBlok('Berichttype (2e letter van de code)');
+  NAVTEX_TYPE_NASLAG.forEach((regel) => maakRegel(typeTabel, regel.letters, regel.omschrijving));
 }
 
 function openNavtexSchema() {
