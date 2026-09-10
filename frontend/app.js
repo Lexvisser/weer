@@ -7768,6 +7768,7 @@ function nwrTekstStop() {
   if (nwrTekstLaag && kaart) { kaart.removeLayer(nwrTekstLaag); nwrTekstLaag = null; }
   nwrSamenvattingWis();
   nwrWaarnemingMarkers = new Map();
+  nwrWisVanaf = new Map();
   nwrTeksten = new Map();
   nwrPaneelOpen = false;
   NWR_PANEEL_EL?.classList.add('verborgen');
@@ -7976,6 +7977,22 @@ function nwrWaarnemingPopupHtml(w) {
 const NWR_ZOOM_UITWAAIER = 6;
 let nwrWaarnemingMarkers = new Map(); // sleutel -> { marker, w }
 let nwrUitgewaaierd = false;
+// 2026-09-10, Lex: "het valt me op dat een klik op het station in ieder geval
+// niet meteen alles verwijdert, dat had ik wel verwacht". Commit aa49c65
+// beloofde dat wel, maar bevatte het niet. Nu echt: een klik op een zenderpin
+// = die zender opnieuw opbouwen. Alles wat vóór de klik van DÍE zender gehoord
+// is verdwijnt meteen van de kaart; de andere zenders blijven ongemoeid staan
+// (Lex: "die wil ik geplot blijven zien"). De backend houdt een buffer van
+// 45 min aan en weet niets van klikken, dus het filter zit hier: per zender
+// het moment van de klik onthouden en alles van daarvóór overslaan.
+let nwrWisVanaf = new Map(); // stationId -> ms; waarnemingen van vóór dit moment niet tonen
+
+function nwrVanVorigeSessie(w, stationId) {
+  const vanaf = nwrWisVanaf.get(stationId);
+  if (!vanaf) return false;
+  const t = w?.tijd ? new Date(w.tijd).getTime() : 0;
+  return t < vanaf;
+}
 // (2026-09-09, later op de avond: de gele "vertaalslag"-ballon is weer
 // vervallen — Lex: "hebben we wel dubbelop nodig? gewoon in de tekst in een
 // felle kleur de omrekening erachter". De omrekening staat nu inline in het
@@ -7991,7 +8008,7 @@ function nwrOpZender(w, station) {
 }
 
 function nwrDichtstbijzijndeWaarneming(blok, station) {
-  const lijst = (blok?.waarnemingen ?? []).filter((w) => w.tempC != null);
+  const lijst = (blok?.waarnemingen ?? []).filter((w) => w.tempC != null && !nwrVanVorigeSessie(w, station.id));
   if (!lijst.length) return null;
   let beste = null; let besteD = Infinity;
   for (const w of lijst) {
@@ -8025,6 +8042,7 @@ function nwrTekenWaarnemingen() {
       if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) continue;
       w._station = blok.station;
       if (nwrOpZender(w, blok.station)) continue;
+      if (nwrVanVorigeSessie(w, blok.station.id)) continue; // 2026-09-10: van vóór de klik op deze zender
       gewenst.set(`${blok.station.id}|${w.naam}`, w);
     }
   }
@@ -8324,6 +8342,10 @@ function nwrSpeel(id) {
   nwrHuidig = s;
   nwrSyncStop();
   nwrSamenvattingWis(); // blokje hoort bij één zender
+  // 2026-09-10: eigen oude waarnemingen meteen van de kaart (zie nwrWisVanaf);
+  // de plot van deze zender bouwt daarna opnieuw op uit wat we nú horen.
+  nwrWisVanaf.set(s.id, Date.now());
+  nwrTekenWaarnemingen();
   if (!nwrCtx) { try { nwrCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { nwrCtx = null; } } // in de klik, voor iOS
   if (nwrCtx?.state === 'suspended') nwrCtx.resume().catch(() => {});
   nwrSessieStart = Date.now(); // paneel toont alleen tekst van deze sessie
