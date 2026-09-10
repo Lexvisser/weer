@@ -8118,20 +8118,52 @@ function nwrSamenvattingWis() {
   nwrSamenvattingHtml = '';
 }
 
+// 2026-09-10, op verzoek van Lex ("ik wil alleen plotten wat ACTUEEL is en de
+// PROGNOSE voor max # uur vooruit in een onderscheidende kleur", voorlopig tot
+// 6 uur): het blok bij de zenderpin heeft nu twee regels.
+//  - amber = ACTUEEL: de waarneming die de zender NU voorleest, van de plaats
+//    het dichtst bij de zender. ("it was 80 degrees" is de meting van het
+//    afgelopen uur — verleden tijd in het Engels, maar wel de actuele stand.)
+//  - blauw = PROGNOSE: alleen het EERSTE tijdvak van de verwachting (vandaag /
+//    vannacht / vanmiddag), dat ruwweg de komende uren dekt. Bewust niet meer
+//    dan één tijdvak: de verwachting geldt voor het hele zendgebied, en verder
+//    vooruit hoort in het paneel, niet op de kaart.
+// De klimaatsamenvatting die veel zenders eerst voorlezen (records, normalen,
+// "yesterday's high") komt hier per definitie niet in: dat zijn geen
+// waarnemingen en geen tijdvakken.
+function nwrPrognoseHtml(blok) {
+  const v = (blok?.verwachting ?? [])[0];
+  if (!v) return '';
+  const stukken = [];
+  const iconen = [...new Set([v.lucht?.icoon, ...(v.neerslag ?? []).map((n) => n.icoon)].filter(Boolean))].slice(0, 2).join('');
+  if (iconen) stukken.push(`<span class="nwr-sv-item">${iconen}</span>`);
+  const temp = v.nacht ? (v.laagTekst ? `min ${v.laagTekst}` : '') : (v.hoogTekst ? `max ${v.hoogTekst}` : (v.laagTekst ? `min ${v.laagTekst}` : ''));
+  if (temp) stukken.push(`<span class="nwr-sv-item">🌡️ ${escapeHtml(temp)}</span>`);
+  if (v.wind?.tekst) stukken.push(`<span class="nwr-sv-item">💨 ${escapeHtml(v.wind.tekst)}</span>`);
+  if (v.kansRegen != null) stukken.push(`<span class="nwr-sv-item">☔ ${v.kansRegen} %</span>`);
+  if (v.heatIndexC != null) stukken.push(`<span class="nwr-sv-item">🥵 ${v.heatIndexC} °C</span>`);
+  if (!stukken.length) return '';
+  return `<div class="nwr-sv is-prognose"><span class="nwr-sv-plaats">${escapeHtml(v.labelNl ?? 'straks')}</span>${stukken.join('<span class="nwr-sv-sep">·</span>')}</div>`;
+}
+
 function nwrSamenvattingTeken() {
   if (!kaart) return;
   const st = nwrHuidig;
   const blok = st ? nwrTeksten.get(st.id) : null;
   const w = st ? nwrDichtstbijzijndeWaarneming(blok, st) : null;
-  if (!st || !w || stationsAfstandKm(w, st) > NWR_SV_MAX_KM) { nwrSamenvattingWis(); return; }
+  const prognose = st ? nwrPrognoseHtml(blok) : '';
+  if (!st || (!w && !prognose)) { nwrSamenvattingWis(); return; }
   const delen = [];
-  if (w.lucht?.icoon) delen.push(`<span class="nwr-sv-item" title="${escapeHtml(w.lucht.nl ?? '')}">${w.lucht.icoon}</span>`);
-  if (w.tempC != null) delen.push(`<span class="nwr-sv-item">🌡️ ${w.tempC} °C</span>`);
-  if (w.wind?.tekst) delen.push(`<span class="nwr-sv-item">💨 ${escapeHtml(w.wind.tekst)}</span>`);
-  if (w.golfM != null) delen.push(`<span class="nwr-sv-item">🌊 ${w.golfM} m</span>`);
-  if (!delen.length) { nwrSamenvattingWis(); return; }
-  const t = w.tijd ? new Date(w.tijd).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-  const html = `<div class="nwr-sv" title="gehoord ${t}"><span class="nwr-sv-plaats">${escapeHtml(w.naam)}</span>${delen.join('<span class="nwr-sv-sep">·</span>')}</div>`;
+  if (w && stationsAfstandKm(w, st) <= NWR_SV_MAX_KM) {
+    if (w.lucht?.icoon) delen.push(`<span class="nwr-sv-item" title="${escapeHtml(w.lucht.nl ?? '')}">${w.lucht.icoon}</span>`);
+    if (w.tempC != null) delen.push(`<span class="nwr-sv-item">🌡️ ${w.tempC} °C</span>`);
+    if (w.wind?.tekst) delen.push(`<span class="nwr-sv-item">💨 ${escapeHtml(w.wind.tekst)}</span>`);
+    if (w.golfM != null) delen.push(`<span class="nwr-sv-item">🌊 ${w.golfM} m</span>`);
+  }
+  const t = w?.tijd ? new Date(w.tijd).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  const actueel = (w && delen.length) ? `<div class="nwr-sv" title="actueel, gehoord ${t}"><span class="nwr-sv-plaats">${escapeHtml(w.naam)}</span>${delen.join('<span class="nwr-sv-sep">·</span>')}</div>` : '';
+  if (!actueel && !prognose) { nwrSamenvattingWis(); return; }
+  const html = `<div class="nwr-sv-stapel">${actueel}${prognose}</div>`;
   const sleutel = `${st.id}|${html}`;
   if (nwrSamenvattingMarker && sleutel === nwrSamenvattingHtml) return; // ongewijzigd: niet hertekenen (knipperde)
   nwrSamenvattingHtml = sleutel;
