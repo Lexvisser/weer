@@ -52,6 +52,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { makeSignal, afstandKm, navtexErnst } from '../normalize.js';
 import { meldNavtexNood } from '../navtexNoodAlarm.js'; // 2026-09-03: telefoonalarm voor type-D-berichten
+import { levenshtein } from './navtexKustrapporten.js'; // 2026-09-10: bitfout-tolerant afzendernamen lezen, zie ZELF_IDENTIFICATIE hieronder
 
 // Standaard: zelfde thuismap als waar Lex' eigen tee-commando naartoe
 // schrijft (~/navtex_berichten.txt op lexdev-nw, waar de app-service ook
@@ -217,8 +218,81 @@ export const STATIONS_490 = [
   { id: 'C', naam: 'Portpatrick Radio 490', land: 'UK', lat: 54.85, lon: -5.12, navarea: 'I', kleur: '#7b4cf0', zendschema: ['00:20', '04:20', '08:20', '12:20', '16:20', '20:20'] },
   { id: 'L', naam: 'Pinneberg Radio 490 (Duitstalig)', land: 'DE', lat: 53.652, lon: 9.797, navarea: 'I', kleur: '#8c8cf0', zendschema: ['01:50', '05:50', '09:50', '13:50', '17:50', '21:50'] },
   { id: 'E', naam: 'CROSS Corsen 490 (Franstalig)', land: 'FR', lat: 48.41, lon: -4.79, navarea: 'II', kleur: '#4cd9f0', zendschema: ['00:40', '04:40', '08:40', '12:40', '16:40', '20:40'] },
+  // 2026-09-10, eigen nacht-ontvangst: vijf blokken (EA02, EA06, EA07, EA08,
+  // EA09) met DTG '100040 UTC SEP 26' en kopregel 'MONDOLFO RADIO' —
+  // COSTAVURNAV/NAVAREA III-inhoud over de Adriatische Zee. De DTG valt exact
+  // op het E-slot van de letterformule (00:40 + n x 4h). Daarmee is de
+  // 490-letter van Mondolfo beantwoord: E. Alleen: die letter is hierboven al
+  // van CROSS Corsen (Bretagne). Dat is geen fout in een van beide — de
+  // NAVTEX-letters worden PER NAVAREA opnieuw uitgedeeld, en 's nachts halen
+  // we via ruimtegolf allebei de gebieden. Vandaar dit record onder een eigen
+  // sleutel 'E-IT': GEEN uitzendletter, maar een intern id voor groepering en
+  // weergave. Het wordt nooit via de letter gevonden (de Map hieronder houdt
+  // 'E' = Corsen), alleen als het blok zichzelf 'MONDOLFO RADIO' noemt —
+  // zie ZELF_IDENTIFICATIE_490. Zonder zelfnoeming blijft E dus Corsen: dat
+  // is de gedocumenteerde toewijzing, en liever de bekende dan een gok.
+  { id: 'E-IT', naam: 'Mondolfo Radio 490 (Italiaanstalig)', land: 'IT', lat: 43.75, lon: 13.10, navarea: 'III', kleur: '#3fb0a0', zendschema: ['00:40', '04:40', '08:40', '12:40', '16:40', '20:40'] },
+  // 2026-09-10, zelfde nacht: een blok met verminkte kop ("ZCZC FA'0;10050 U
+  // C EC )6") maar leesbare afzenderregel 'SQLAT RADIO' = SPLIT RADIO, en
+  // Kroatische tekst (JADRAN, ZABRANJENE SVE AKTIVNOSTI, PLJUSAK S
+  // GRMLJAVINOM) over een explosief object voor de Dalmatische kust. De DTG
+  // '10050 U C' = 100050 UTC valt op het F-slot (00:50 + n x 4h) en 'FA' is
+  // nog leesbaar in de kop. ~1150 km, de verste eigen ontvangst tot nu toe,
+  // alleen 's nachts. Coordinaat is de plaats Split (benadering, zelfde
+  // afspraak als bij de andere stations hierboven). NB: F is op 518 kHz
+  // Sint-Petersburg — andere band, andere tabel, geen botsing.
+  { id: 'F', naam: 'Split Radio 490 (Kroatisch)', land: 'HR', lat: 43.51, lon: 16.44, navarea: 'III', kleur: '#f0a04c', zendschema: ['00:50', '04:50', '08:50', '12:50', '16:50', '20:50'] },
 ];
 const STATION_PER_ID_490 = new Map(STATIONS_490.map((s) => [s.id, s]));
+
+// 2026-09-10 — een station dat zichzelf in de kop noemt wint van de letter.
+// Twee aanleidingen in dezelfde nacht:
+//  (1) 'E' op 490 is zowel CROSS Corsen (gedocumenteerd) als Mondolfo
+//      (eigen ontvangst) — de letters worden per NAVAREA opnieuw uitgedeeld.
+//      De enige harde scheidsrechter is de afzenderregel in het bericht zelf.
+//  (2) Split Radio kwam binnen met een verminkte ZCZC, waardoor er helemaal
+//      geen leesbare letter was, maar met een wel leesbare (zij het
+//      bitfout-houdende) naam 'SQLAT RADIO'.
+// Bewust smal gehouden, want dit overschrijft de afzender:
+//  - alleen de eerste drie regels van een blok tellen mee (codelijn,
+//    datumregel, eerste bodyregel), zodat een bericht dat een ander station
+//    NOEMT ('RELAYED FROM ...') de afzender niet kan kapen;
+//  - de naam moet direct voor het woord RADIO staan;
+//  - max 2 tekens afwijking, en nooit fuzzy onder de 5 tekens — dezelfde
+//    regel als bij de stationsnamen in navtexKustrapporten.js;
+//  - alleen zenders die we zelf bevestigd ontvangen hebben.
+const ZELF_IDENTIFICATIE_518 = [
+  { naam: 'MONDOLFO', id: 'U' },
+];
+const ZELF_IDENTIFICATIE_490 = [
+  { naam: 'MONDOLFO', id: 'E-IT' },
+  { naam: 'SPLIT', id: 'F' },
+];
+
+const gemeldZelfIdentificatie = new Set();
+
+function zoekZelfIdentificatie(kop, lijst, stations) {
+  if (!lijst?.length || !kop) return null;
+  const schoon = kop.toUpperCase().replace(/[^A-Z\s]/g, ' ');
+  for (const treffer of schoon.matchAll(/([A-Z]{4,12})\s*RADIO\b/g)) {
+    const gelezen = treffer[1];
+    for (const { naam, id } of lijst) {
+      if (gelezen !== naam) {
+        if (naam.length < 5) continue;
+        if (levenshtein(gelezen, naam) > 2) continue;
+      }
+      const station = stations.get(id);
+      if (!station) continue;
+      if (gelezen !== naam && !gemeldZelfIdentificatie.has(gelezen)) {
+        gemeldZelfIdentificatie.add(gelezen);
+        console.log(`[weer] navtexLokaal: afzender "${gelezen} RADIO" gelezen als "${naam}" (${station.naam})`);
+      }
+      return station;
+    }
+  }
+  return null;
+}
+
 const STATION_KLEUR_ONBEKEND = '#9aa0b4'; // zelfde neutraal-grijs als de BEVESTIGD-pil elders — "geen idee welk station"
 
 const TYPE_OMSCHRIJVING = {
@@ -1537,7 +1611,7 @@ function segmenteerBerichten(tekst) {
 // al ÓP de ZCZC-match zelf, dus dit vangt alleen nog een eventueel restje
 // vóór die exacte match), en (2) de station/type-uitlezing is stricter, zie
 // leesStationEnType().
-function parseBlok(blok, stations = STATION_PER_ID) {
+function parseBlok(blok, stations = STATION_PER_ID, zelfIdentificatie = []) {
   const zczcIndex = blok.search(/ZCZC/i);
   if (zczcIndex < 0) return null; // geen herkenbare berichtstart in dit blok
   const vanafZczc = blok.slice(zczcIndex);
@@ -1621,8 +1695,14 @@ function parseBlok(blok, stations = STATION_PER_ID) {
   // (zie styles.css), dus dit is puur een backend-aanpassing.
   const weergaveTekst = lines.slice(2).join('\n');
 
-  const { stationId, typeLetter } = leesStationEnType(code);
-  const station = stationId ? stations.get(stationId) ?? null : null;
+  const { stationId: letterId, typeLetter } = leesStationEnType(code);
+  // 2026-09-10: zelfnoeming in de kop wint van de letter (zie
+  // ZELF_IDENTIFICATIE_490 hierboven voor het waarom en de grenzen). Ook
+  // `stationId` gaat mee, zodat de 72-uur-vervalregel en de groepering
+  // Mondolfo en Corsen als APARTE stations bijhouden i.p.v. onder één 'E'.
+  const genoemd = zoekZelfIdentificatie(lines.slice(0, 3).join('\n'), zelfIdentificatie, stations);
+  const station = genoemd ?? (letterId ? stations.get(letterId) ?? null : null);
+  const stationId = genoemd ? genoemd.id : letterId;
   const ruweDatum = datumIn(datumregel) ?? datumInBodyZonderGeldigheidsclausules(body); // sommige blokken missen de aparte datumregel niet, maar staat 'ie soms toch pas in de body
   // 2026-08-24-fix, op melding van Lex (een NAVTEX-melding met datum "12 sep"
   // terwijl vandaag 24 aug is): een NAVTEX-bericht kan niet uit de toekomst
@@ -1688,12 +1768,12 @@ function laadRuweBlokTijden(tijdenBestand) {
 // eigen stationstabel, eigen bloktijdenregister, eigen id-voorvoegsel (zodat
 // "BA12" op 490 en "BA12" op 518 nooit samensmelten). fetchNavtexLokaal()
 // draait de hele verwerking per band. BAND_518 is wat de 📻-viewer toont.
-const BAND_518 = { frequentieKhz: 518, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND, stations: STATION_PER_ID, idPrefix: 'navtexlokaal', tijdenBestand: RUW_TIJDEN_BESTAND, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND) };
+const BAND_518 = { frequentieKhz: 518, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND, stations: STATION_PER_ID, zelfId: ZELF_IDENTIFICATIE_518, idPrefix: 'navtexlokaal', tijdenBestand: RUW_TIJDEN_BESTAND, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND) };
 // 490-pad: expliciet via NAVTEX_LOKAAL_BESTAND_490, anders NAAST het 518-
 // bestand (zelfde map, '_490' erachter) — niet via homedir(), want de app
 // draait als root en het 518-pad staat in .env op /home/lex (gezien
 // 2026-09-08: '/root/navtex_berichten_490.txt bestaat nog niet').
-const BAND_490 = { frequentieKhz: 490, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND_490 || BAND_518.bestand().replace(/(\.[^.\/]*)?$/, (ext) => `_490${ext}`), stations: STATION_PER_ID_490, idPrefix: 'navtexlokaal490', tijdenBestand: RUW_TIJDEN_BESTAND_490, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND_490) };
+const BAND_490 = { frequentieKhz: 490, bestand: () => process.env.NAVTEX_LOKAAL_BESTAND_490 || BAND_518.bestand().replace(/(\.[^.\/]*)?$/, (ext) => `_490${ext}`), stations: STATION_PER_ID_490, zelfId: ZELF_IDENTIFICATIE_490, idPrefix: 'navtexlokaal490', tijdenBestand: RUW_TIJDEN_BESTAND_490, tijden: laadRuweBlokTijden(RUW_TIJDEN_BESTAND_490) };
 const BANDEN = [BAND_518, BAND_490];
 
 // Aangeroepen vanuit fetchNavtexBand() met de zojuist gelezen RAUWE tekst
@@ -2018,7 +2098,7 @@ async function fetchNavtexBand(env, band) {
   const blokken = segmenteerBerichten(tekst);
   const ruweBerichten = blokken
     .map((blok, i) => {
-      const b = parseBlok(blok, band.stations);
+      const b = parseBlok(blok, band.stations, band.zelfId);
       if (b) b.ontvangstTijd = tijdPerOffset.get(ruweOffsets[i]) ?? null;
       return b;
     })

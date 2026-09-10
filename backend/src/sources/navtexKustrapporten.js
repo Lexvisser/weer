@@ -112,7 +112,11 @@ function normaliseerNaam(naam) {
 // Bitfout-tolerant opzoeken (2026-09-09, "MANSVON" = MANSTON): eerst exact,
 // anders de bekende naam met de kleinste bewerkingsafstand, mits die ≤ 2 is
 // en de naam lang genoeg is om niet per ongeluk te matchen.
-function levenshtein(a, b) {
+// 2026-09-10: geëxporteerd omdat navtexLokaal.js dezelfde bitfout-tolerantie
+// nodig heeft voor afzendernamen in de kopregels ("SQLAT RADIO" = SPLIT
+// RADIO). Komt er een derde gebruiker bij, dan hoort 'ie in een gedeelde
+// helper thuis i.p.v. hier.
+export function levenshtein(a, b) {
   const rij = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i += 1) {
     let vorige = rij[0];
