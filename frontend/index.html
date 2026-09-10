@@ -256,6 +256,16 @@
            bron van de fronten-laag, Florida tot Rusland) schermvullend
            bekijken. Zie openDwdKaart() in app.js. -->
       <button id="toggleDwdKaart" class="satelliet-toggle" title="Volledige DWD-Bodenanalyse (bron van de fronten-laag) schermvullend">🗺️<span class="knop-tekst"> DWD</span></button>
+      <!-- 2026-09-09, op verzoek van Lex (na God's Eye View / Radio Browser:
+           "het gaat me met name om zaken als NOAA radio"): NOAA Weather
+           Radio-zenders (VS, 162 MHz) als kaartlaag — pin per zender; klik =
+           meteen luisteren, klik op de kaart/dezelfde pin = stop, andere pin
+           = wisselen (geen popup, Lex wilde het simpel). Eén <audio>-speler. Stationslijst in
+           frontend/data/nwr-stations.json (statisch, zelf uit te breiden);
+           streams komen rechtstreeks van hobby-relays (wxradio.org e.a.),
+           bewust zonder backend-proxy. Zie toggleNwr() in app.js. 2026-09-10 op verzoek van Lex ("verplaats de NWR
+           knop naar links") van de rechtergroep naar deze linkergroep. -->
+      <button id="toggleNwr" class="satelliet-toggle" title="NOAA Weather Radio-zenders (VS) — klik op een pin om te luisteren">📻<span class="knop-tekst"> NWR</span></button>
       </div>
       <div class="radar-groep radar-groep-rechts">
       <!-- 2026-08-20, op verzoek van Lex ("elke icons uitzetten, of een heel
@@ -281,15 +291,6 @@
            ("TBD" volgens Lex) — kan later vervangen worden door een eigen
            SVG zoals bij Lifeliner, zonder dat de rest van de logica
            verandert. Zie toggleVliegradar()/toggleVaarradar() in app.js. -->
-      <!-- 2026-09-09, op verzoek van Lex (na God's Eye View / Radio Browser:
-           "het gaat me met name om zaken als NOAA radio"): NOAA Weather
-           Radio-zenders (VS, 162 MHz) als kaartlaag — pin per zender; klik =
-           meteen luisteren, klik op de kaart/dezelfde pin = stop, andere pin
-           = wisselen (geen popup, Lex wilde het simpel). Eén <audio>-speler. Stationslijst in
-           frontend/data/nwr-stations.json (statisch, zelf uit te breiden);
-           streams komen rechtstreeks van hobby-relays (wxradio.org e.a.),
-           bewust zonder backend-proxy. Zie toggleNwr() in app.js. -->
-      <button id="toggleNwr" class="satelliet-toggle" title="NOAA Weather Radio-zenders (VS) — klik op een pin om te luisteren">📻<span class="knop-tekst"> NWR</span></button>
       <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
       <!-- 2026-09-02, op verzoek van Lex ("een verticaal menu voor AIS aan de
            rechterkant. Uitklappen = aan en daaronder alle opties") --
