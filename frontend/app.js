@@ -7790,15 +7790,28 @@ function nwrPlotBron() {
   return nwrDataBlokken;
 }
 
+// 2026-09-10 (eind): de kaart wordt pas gewisseld als de nieuwe data er is —
+// eerst maakte de klik hem meteen leeg, en bij een mislukte aanvraag zag je
+// dus niets, zonder melding. Een antwoord dat te laat komt (je klikte inmiddels
+// een andere zender) wordt genegeerd; daarvoor is nwrDataVerzoek.
+let nwrDataVerzoek = 0;
+let nwrDataFout = null; // stationId waarvan het ophalen mislukte
 async function nwrDataHalen(id) {
+  const mijn = ++nwrDataVerzoek;
   try {
     const d = await fetch(`/api/nwr-data?station=${encodeURIComponent(id)}`, { cache: 'no-store' }).then((r) => r.json());
-    if (!d?.beschikbaar) { console.warn('[weer] nwr-data:', d?.fout); return null; }
+    if (mijn !== nwrDataVerzoek) return null; // inmiddels een andere zender aangeklikt
+    if (!d?.beschikbaar) throw new Error(d?.fout ?? 'geen data');
+    nwrDataFout = null;
     nwrDataBlokken = new Map([[id, d]]); // altijd maar één zender tegelijk op de kaart
     tekenNwr(); nwrTekenWaarnemingen(); nwrSamenvattingTeken();
+    if (nwrPaneelOpen) nwrPaneelVul();
     return d;
   } catch (err) {
     console.warn('[weer] nwr-data ophalen mislukt:', err);
+    if (mijn !== nwrDataVerzoek) return null;
+    nwrDataFout = id;
+    if (nwrPaneelOpen) nwrPaneelVul();
     return null;
   }
 }
@@ -8295,7 +8308,10 @@ function nwrPaneelVul() {
   // zendernaam vast in de kop (Lex 09/09: "het ging me om de stations zelf"), status apart erachter
   const plaats = `${st?.plaats ?? ''}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}`;
   const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}${plaats ? ` · <span class="nwr-paneel-plaats">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}</span>` : ''}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${luister.replace(/^ · /, '')}</span>${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
-  let body = '';
+  const foutRegel = nwrDataFout && nwrDataFout === nwrPaneelStation
+    ? '<div class="nwr-paneel-fout">⚠️ kaartdata ophalen mislukt — tik de zender nog eens aan</div>'
+    : '';
+  let body = foutRegel;
   if (!d) {
     const luistert = nwrHuidig?.id === nwrPaneelStation;
     body = `<div class="nwr-leeg">${nwrKanLuisteren === false ? 'De server heeft whisper.cpp niet — verstaan kan niet.' : (luistert ? '🎧 De server luistert mee — eerste blok over ~20 s, daarna elke 15 s. Geluid, tekst en ballon lopen gelijk.' : 'Nog geen tekst van deze zender. Klik op de pin om te luisteren; de server luistert dan mee.')}</div>`;
@@ -8366,9 +8382,10 @@ function nwrSpeel(id) {
   nwrSyncStop();
   nwrSamenvattingWis(); // blokje hoort bij één zender
   // Lex 10/09: klik op de pin = de data van DEZE zender plotten; die van de
-  // vorige verdwijnt. Nog eens op dezelfde pin klikken loopt via nwrStop().
-  nwrDataBlokken = new Map();
-  nwrTekenWaarnemingen();
+  // vorige verdwijnt zodra de nieuwe binnen is (niet eerder — anders staar je
+  // naar een lege kaart als het ophalen misgaat). Nog eens op dezelfde pin
+  // klikken loopt via nwrStop().
+  nwrDataFout = null;
   nwrDataHalen(s.id);
   if (!nwrCtx) { try { nwrCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { nwrCtx = null; } } // in de klik, voor iOS
   if (nwrCtx?.state === 'suspended') nwrCtx.resume().catch(() => {});
@@ -8405,7 +8422,9 @@ function nwrStop() {
     nwrAudio.load(); // verbinding echt loslaten
   }
   nwrHuidig = null;
+  nwrDataVerzoek += 1; // een nog lopende aanvraag mag de kaart niet meer vullen
   nwrDataBlokken = new Map(); // plot van deze zender weg
+  nwrDataFout = null;
   nwrTekenWaarnemingen();
   nwrSamenvattingWis();
   NWR_SPELER_EL?.classList.add('verborgen');

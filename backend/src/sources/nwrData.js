@@ -111,6 +111,15 @@ function kortUitGraden(g) {
   return KOMPAS[Math.round((((g % 360) + 360) % 360) / 22.5) % 16];
 }
 
+// Een lijst afwerken met hooguit `grootte` verzoeken tegelijk.
+async function inBlokjes(lijst, grootte, doe) {
+  const uit = [];
+  for (let i = 0; i < lijst.length; i += grootte) {
+    uit.push(...await Promise.all(lijst.slice(i, i + grootte).map(doe)));
+  }
+  return uit;
+}
+
 function afstandKm(aLat, aLon, bLat, bLon) {
   const dLat = (aLat - bLat) * 111;
   const dLon = (aLon - bLon) * 111 * Math.cos((((aLat + bLat) / 2) * Math.PI) / 180);
@@ -280,10 +289,16 @@ export async function fetchNwrData(stationId) {
   lijst.sort((a, b) => a.km - b.km);
   if (MAX_STATIONS > 0) lijst = lijst.slice(0, MAX_STATIONS);
 
-  const gemeten = await Promise.all(lijst.map((s) => waarnemingVoor(s, station.lon).catch((err) => {
+  // 2026-09-10 (eind), Lex: "het blijft erratic". Gereproduceerd: twee zenders
+  // vlak achter elkaar opvragen liet ze allebéi mislukken. Oorzaak was dit:
+  // alle metingen tegelijk (voor Philadelphia 92 verbindingen in één klap), en
+  // bij twee overlappende zenders ruim 150 — dan breken er verbindingen af en
+  // komt er van geen van beide iets terug. Nu in blokjes van acht: een paar
+  // seconden trager, maar het houdt stand.
+  const gemeten = await inBlokjes(lijst, 8, (s) => waarnemingVoor(s, station.lon).catch((err) => {
     console.warn(`[weer] nwrData ${stationId}/${s.id}: ${err.message}`);
     return null;
-  })));
+  }));
   const waarnemingen = gemeten.filter(Boolean).filter((w) => w.tempC != null || w.wind);
 
   let watWater = [];
