@@ -8112,16 +8112,26 @@ function nwrTekenWaarnemingen() {
   for (const [sleutel, w] of gewenst) {
     const bestaand = nwrWaarnemingMarkers.get(sleutel);
     if (bestaand) {
+      // 2026-09-10, Lex: "de icons flashen op regelmaat (3 sec)". Zolang er
+      // geluisterd wordt draait nwrSyncPoll elke 3 s en werd hier voor élke
+      // marker setIcon() aangeroepen — Leaflet bouwt dan het DOM-element van de
+      // divIcon opnieuw op, en dát zie je knipperen. Alleen nog vervangen als de
+      // inhoud echt anders is; bij ongewijzigde waarden blijft het element staan.
+      const html = nwrWaarnemingIcoonHtml(w);
       bestaand.w = w;
-      bestaand.marker.setIcon(L.divIcon({ className: 'nwr-los-marker', html: nwrWaarnemingIcoonHtml(w), iconSize: [64, 28], iconAnchor: [14, 14] }));
+      if (html !== bestaand.html) {
+        bestaand.html = html;
+        bestaand.marker.setIcon(L.divIcon({ className: 'nwr-los-marker', html, iconSize: [64, 28], iconAnchor: [14, 14] }));
+      }
       continue;
     }
     const st = w._station;
+    const html = nwrWaarnemingIcoonHtml(w);
     const marker = L.marker([st?.lat ?? w.lat, st?.lon ?? w.lon], {
-      icon: L.divIcon({ className: 'nwr-los-marker', html: nwrWaarnemingIcoonHtml(w), iconSize: [64, 28], iconAnchor: [14, 14] }),
+      icon: L.divIcon({ className: 'nwr-los-marker', html, iconSize: [64, 28], iconAnchor: [14, 14] }),
     }).bindPopup(() => nwrWaarnemingPopupHtml(w), { maxWidth: 280 });
     nwrTekstLaag.addLayer(marker);
-    nwrWaarnemingMarkers.set(sleutel, { marker, w });
+    nwrWaarnemingMarkers.set(sleutel, { marker, w, html });
     const el = marker.getElement();
     if (el && st) {
       el.classList.add('is-glijdend');
@@ -8392,10 +8402,12 @@ function nwrSpeel(id) {
   nwrHuidig = s;
   nwrSyncStop();
   nwrSamenvattingWis(); // blokje hoort bij één zender
-  // Lex 10/09: klik op de pin = de data van DEZE zender plotten; die van de
-  // vorige verdwijnt zodra de nieuwe binnen is (niet eerder — anders staar je
-  // naar een lege kaart als het ophalen misgaat). Nog eens op dezelfde pin
-  // klikken loopt via nwrStop().
+  // Lex 10/09: klik op de pin = de data van DEZE zender plotten. De vorige zender
+  // gaat er meteen af ("de data bij de andere zender verdwijnt niet instantaan"),
+  // dus even is de kaart leeg; het paneel meldt zolang "kaartdata ophalen…".
+  // Nog eens op dezelfde pin klikken loopt via nwrStop().
+  nwrDataBlokken = new Map();
+  nwrTekenWaarnemingen();
   nwrDataHalen(s.id);
   if (!nwrCtx) { try { nwrCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { nwrCtx = null; } } // in de klik, voor iOS
   if (nwrCtx?.state === 'suspended') nwrCtx.resume().catch(() => {});

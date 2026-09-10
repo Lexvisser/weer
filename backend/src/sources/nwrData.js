@@ -38,6 +38,13 @@ const BOEIEN_MS = 10 * 60 * 1000;
 // desgewenst met NWR_DATA_MAX_KM in .env.
 const MAX_KM = Number(process.env.NWR_DATA_MAX_KM) || 0; // 0 = geen grens
 const MAX_STATIONS = Number(process.env.NWR_DATA_MAX_STATIONS) || 0; // 0 = geen grens
+// 2026-09-10, na Lex' vraag of die geschrapte stations wel écht dood zijn: een
+// 404 op /observations/latest betekent niet alleen "bestaat niet", maar ook
+// "heeft op dit moment geen recente meting". Een station dat een week uit de
+// lucht is geeft dezelfde 404. Daarom niet meer schrappen maar parkeren met een
+// datum, en na een week één keer opnieuw proberen. Meet hij weer, dan staat hij
+// er vanzelf weer bij.
+const HERKANSING_MS = 7 * 24 * 3600 * 1000;
 
 const geheugen = new Map(); // url -> { tot, waarde }
 let puntenCache = null;
@@ -328,7 +335,10 @@ export async function fetchNwrData(stationId) {
   if (!station) return { beschikbaar: false, fout: 'onbekende zender' };
   const punt = await puntVoor(station);
 
-  let lijst = punt.stations.map((s) => ({ ...s, km: afstandKm(station.lat, station.lon, s.lat, s.lon) }));
+  const nu = Date.now();
+  let lijst = punt.stations
+    .filter((s) => !s.geen || nu - new Date(s.geen).getTime() > HERKANSING_MS)
+    .map((s) => ({ ...s, km: afstandKm(station.lat, station.lon, s.lat, s.lon) }));
   if (MAX_KM > 0) lijst = lijst.filter((s) => s.km <= MAX_KM);
   lijst.sort((a, b) => a.km - b.km);
   if (MAX_STATIONS > 0) lijst = lijst.slice(0, MAX_STATIONS);
@@ -339,15 +349,23 @@ export async function fetchNwrData(stationId) {
   // bij twee overlappende zenders ruim 150 — dan breken er verbindingen af en
   // komt er van geen van beide iets terug. Nu in blokjes van acht: een paar
   // seconden trager, maar het houdt stand.
-  const dood = new Set(); // stations zonder metingen-endpoint (404): één keer leren is genoeg
-  const gemeten = await inBlokjes(lijst, 8, (s) => waarnemingVoor(s, station.lon).catch((err) => {
-    if (err?.status === 404) dood.add(s.id); else console.warn(`[weer] nwrData ${stationId}/${s.id}: ${err.message}`);
-    return null;
-  }));
-  if (dood.size) {
-    punt.stations = punt.stations.filter((s) => !dood.has(s.id));
+  const geenMeting = new Set(); // 404: geparkeerd, over een week opnieuw proberen
+  const herleefd = new Set();   // stond geparkeerd en meet nu weer
+  const gemeten = await inBlokjes(lijst, 8, (s) => waarnemingVoor(s, station.lon)
+    .then((w) => { if (w && s.geen) herleefd.add(s.id); return w; })
+    .catch((err) => {
+      if (err?.status === 404) geenMeting.add(s.id); else console.warn(`[weer] nwrData ${stationId}/${s.id}: ${err.message}`);
+      return null;
+    }));
+  if (geenMeting.size || herleefd.size) {
+    const stempelNu = new Date().toISOString();
+    for (const s of punt.stations) {
+      if (geenMeting.has(s.id)) s.geen = stempelNu;
+      else if (herleefd.has(s.id)) delete s.geen;
+    }
     puntenBewaar();
-    console.log(`[weer] nwrData ${stationId}: ${dood.size} station(s) zonder metingen uit de lijst gehaald (${[...dood].join(', ')}), ${punt.stations.length} over`);
+    if (geenMeting.size) console.log(`[weer] nwrData ${stationId}: ${geenMeting.size} station(s) zonder meting, een week geparkeerd (${[...geenMeting].join(', ')})`);
+    if (herleefd.size) console.log(`[weer] nwrData ${stationId}: ${herleefd.size} geparkeerd station meet weer (${[...herleefd].join(', ')})`);
   }
   const waarnemingen = gemeten.filter(Boolean).filter((w) => w.tempC != null || w.wind);
 
