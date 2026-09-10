@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Radio-vertaler test — °F → °C</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f1a2a; color: #dfe8f3; margin: 0; padding: 24px; }
+  h1 { font-size: 1.2rem; margin: 0 0 8px; }
+  p.uitleg { color: #9fb2c8; margin: 0 0 16px; max-width: 60ch; }
+  button { font-size: 1rem; padding: 10px 18px; border: 0; border-radius: 8px; cursor: pointer; background: #1e90ff; color: #fff; }
+  button.stop { background: #c0392b; }
+  #status { margin-left: 12px; color: #9fb2c8; }
+  #tekst { margin-top: 18px; background: #0a1220; border-radius: 8px; padding: 12px; min-height: 8em; max-height: 40vh; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 0.95rem; line-height: 1.5; white-space: pre-wrap; }
+  #tekst .voorlopig { color: #7f93aa; }
+  #tekst .treffer { background: #f39c12; color: #000; border-radius: 3px; padding: 0 3px; }
+  #ballon { position: fixed; right: 24px; bottom: 24px; background: #f1c40f; color: #111; font-size: 2rem; font-weight: 700; padding: 18px 26px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.5); opacity: 0; transform: translateY(20px); transition: opacity .25s, transform .25s; pointer-events: none; }
+  #ballon.aan { opacity: 1; transform: translateY(0); }
+  #ballon small { display: block; font-size: 0.9rem; font-weight: 400; margin-top: 4px; color: #333; }
+  #log { margin-top: 12px; color: #9fb2c8; font-size: 0.85rem; }
+  .speler { display: flex; gap: 8px; margin-bottom: 14px; max-width: 700px; }
+  .speler input { flex: 1; font-size: 0.95rem; padding: 8px 10px; border-radius: 8px; border: 1px solid #2c3e50; background: #0a1220; color: #dfe8f3; }
+  button.klein { font-size: 0.95rem; padding: 8px 14px; background: #27ae60; }
+</style>
+</head>
+<body>
+<h1>Radio-vertaler test — °F → °C</h1>
+<p class="uitleg">Zet een Engelstalig radiostation aan via de speakers, klik op Start en geef de microfoon vrij. Hieronder verschijnt wat Chrome verstaat; zodra er een temperatuur voorbijkomt ("clear and 78", "78 degrees") komt er rechtsonder een ballon met de omrekening.</p>
+<div class="speler">
+  <input id="url" type="url" placeholder="stream-adres (http…/…mp3 of …aac)" list="stations">
+  <datalist id="stations">
+    <option value="https://playerservices.streamtheworld.com/api/livestream-redirect/WCBSAM.mp3">WCBS 880 New York (nieuws/weer)</option>
+    <option value="https://playerservices.streamtheworld.com/api/livestream-redirect/KNXAM.mp3">KNX 1070 Los Angeles</option>
+    <option value="https://playerservices.streamtheworld.com/api/livestream-redirect/WTOPFM.mp3">WTOP Washington</option>
+  </datalist>
+  <button id="speel" class="klein">▶ Speel</button>
+  <audio id="audio" preload="none"></audio>
+</div>
+<button id="knop">Start</button><span id="status">niet gestart</span>
+<div id="tekst"></div>
+<div id="log"></div>
+<div id="ballon"></div>
+<script>
+(() => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const knop = document.getElementById('knop');
+  const status = document.getElementById('status');
+  const tekst = document.getElementById('tekst');
+  const log = document.getElementById('log');
+  const ballon = document.getElementById('ballon');
+  if (!SR) { status.textContent = 'Deze browser heeft geen spraakherkenning (gebruik Chrome).'; knop.disabled = true; return; }
+
+  let rec = null;
+  let actief = false;
+  let regels = [];
+  let laatsteTreffer = { getal: null, tijd: 0 };
+  let ballonTimer = null;
+
+  // Getallen als woorden (Chrome geeft meestal cijfers, maar niet altijd)
+  const WOORDEN = { zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19, twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
+  function woordenNaarCijfers(s) {
+    return s.replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](one|two|three|four|five|six|seven|eight|nine)\b/gi, (m, t, e) => WOORDEN[t.toLowerCase()] + WOORDEN[e.toLowerCase()])
+            .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/gi, (m) => WOORDEN[m.toLowerCase()]);
+  }
+
+  // Temperatuur-context: "clear and 78", "78 degrees", "temperature 78", "high of 78", "it's 78 out"
+  const PATRONEN = [
+    /\b(?:degrees?|°)\s*(?:fahrenheit)?\s*(-?\d{1,3})\b/i,
+    /\b(-?\d{1,3})\s*(?:degrees?|°)/i,
+    /\b(?:clear|sunny|cloudy|overcast|rain(?:y|ing)?|snow(?:y|ing)?|foggy|windy|humid|mild|warm|cold|chilly|hot)\s+and\s+(-?\d{1,3})\b/i,
+    /\b(?:temperature|temp|currently|right now|high of|low of|highs? (?:in the|around|near|of)|lows? (?:in the|around|near|of)|it'?s)\s+(?:about|around|near|a )?\s*(-?\d{1,3})\b/i,
+  ];
+  // Bereiken zoals "upper 80s", "mid 80s", "low 80s", "in the 80s" (Chrome verstaat "highs" ook wel als "pies")
+  const BEREIK_RE = /\b(?:(upper|high|mid|middle|low|lower)\s+)?(?:in the\s+|the\s+)?([2-9]|1[0-2])0s\b/i;
+  function zoekBereik(t) {
+    const m = BEREIK_RE.exec(t);
+    if (!m) return null;
+    const tien = Number(m[2]) * 10;
+    const deel = (m[1] || '').toLowerCase();
+    let lo = tien, hi = tien + 9, naam = `in the ${tien}s`;
+    if (deel.startsWith('up') || deel === 'high') { lo = tien + 6; hi = tien + 9; naam = `upper ${tien}s`; }
+    else if (deel.startsWith('mid')) { lo = tien + 4; hi = tien + 6; naam = `mid ${tien}s`; }
+    else if (deel.startsWith('low')) { lo = tien; hi = tien + 3; naam = `low ${tien}s`; }
+    return { fLo: lo, fHi: hi, naam, fragment: m[0] };
+  }
+
+  function zoekTemperatuur(s) {
+    const t = woordenNaarCijfers(s);
+    const b = zoekBereik(t);
+    if (b) return { f: (b.fLo + b.fHi) / 2, bereik: b, fragment: b.fragment };
+    for (const re of PATRONEN) {
+      const m = re.exec(t);
+      if (m) {
+        const f = Number(m[1]);
+        if (f >= -40 && f <= 130) return { f, fragment: m[0] };
+      }
+    }
+    return null;
+  }
+
+  const naarC = (f) => Math.round(((f - 32) * 5) / 9);
+  function toonBallon(f, bereik) {
+    const tekstF = bereik ? `${bereik.naam} (${bereik.fLo}–${bereik.fHi} °F)` : `${f} °F`;
+    const tekstC = bereik ? `${naarC(bereik.fLo)}–${naarC(bereik.fHi)} °C` : `${naarC(f)} °C`;
+    ballon.innerHTML = `${tekstF} = ${tekstC}<small>${new Date().toLocaleTimeString('nl-NL')}</small>`;
+    ballon.classList.add('aan');
+    clearTimeout(ballonTimer);
+    ballonTimer = setTimeout(() => ballon.classList.remove('aan'), 8000);
+  }
+
+  function markeer(s, fragment) {
+    if (!fragment) return s;
+    const i = s.toLowerCase().indexOf(fragment.toLowerCase());
+    if (i < 0) return s;
+    return s.slice(0, i) + '<span class="treffer">' + s.slice(i, i + fragment.length) + '</span>' + s.slice(i + fragment.length);
+  }
+
+  function render(voorlopig) {
+    tekst.innerHTML = regels.map((r) => markeer(r.tekst, r.fragment)).join('\n') + (voorlopig ? '\n<span class="voorlopig">' + voorlopig + '</span>' : '');
+    tekst.scrollTop = tekst.scrollHeight;
+  }
+
+  function verwerk(zin, definitief) {
+    const tr = zoekTemperatuur(zin);
+    if (tr) {
+      const nu = Date.now();
+      // zelfde getal binnen 15 s niet nog eens (voorlopige en definitieve resultaten overlappen)
+      if (!(tr.f === laatsteTreffer.getal && nu - laatsteTreffer.tijd < 15000)) {
+        laatsteTreffer = { getal: tr.f, tijd: nu };
+        toonBallon(tr.f, tr.bereik);
+        log.textContent = `Treffer ${new Date().toLocaleTimeString('nl-NL')}: "${tr.fragment}"`;
+      }
+    }
+    if (definitief) regels.push({ tekst: zin, fragment: tr?.fragment });
+    return tr;
+  }
+
+  function start() {
+    rec = new SR();
+    rec.lang = 'en-US';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    rec.onstart = () => { status.textContent = 'luistert… (en-US)'; };
+    rec.onresult = (e) => {
+      let voorlopig = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const zin = e.results[i][0].transcript.trim();
+        if (e.results[i].isFinal) verwerk(zin, true);
+        else { voorlopig += zin + ' '; verwerk(zin, false); }
+      }
+      render(voorlopig.trim());
+    };
+    rec.onerror = (e) => { status.textContent = 'fout: ' + e.error + (e.error === 'not-allowed' ? ' (microfoon geweigerd)' : ''); };
+    rec.onend = () => { if (actief) { try { rec.start(); } catch (_) { setTimeout(() => actief && rec.start(), 500); } } else status.textContent = 'gestopt'; };
+    rec.start();
+  }
+
+  // Ingebouwd spelertje: het geluid gaat gewoon naar de speakers, Stereo-mix pikt het op.
+  const audio = document.getElementById('audio');
+  const url = document.getElementById('url');
+  const speel = document.getElementById('speel');
+  try { url.value = localStorage.getItem('radioVertalerUrl') || ''; } catch (_) {}
+  speel.addEventListener('click', () => {
+    if (!audio.paused) { audio.pause(); speel.textContent = '▶ Speel'; return; }
+    if (!url.value) return;
+    try { localStorage.setItem('radioVertalerUrl', url.value); } catch (_) {}
+    audio.src = url.value;
+    audio.play().then(() => { speel.textContent = '⏸ Pauze'; }).catch((e) => { log.textContent = 'stream start niet: ' + e.message; });
+  });
+  audio.addEventListener('error', () => { log.textContent = 'stream-fout (adres klopt niet of station blokkeert afspelen in de browser)'; speel.textContent = '▶ Speel'; });
+
+  knop.addEventListener('click', () => {
+    actief = !actief;
+    knop.textContent = actief ? 'Stop' : 'Start';
+    knop.classList.toggle('stop', actief);
+    if (actief) start(); else rec && rec.stop();
+  });
+})();
+</script>
+</body>
+</html>

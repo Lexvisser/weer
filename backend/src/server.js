@@ -21,7 +21,8 @@ import { fetchKnmi } from './sources/knmi.js';
 import { fetchKnmiStations } from './sources/knmiStations.js'; // 2026-09-07, weerstations-laag
 import { fetchRwsMeetpunten } from './sources/rwsMeetpunten.js'; // 2026-09-07, RWS-meetpunten (zelfde laag)
 import { fetchNavtexKustrapporten } from './sources/navtexKustrapporten.js'; // 2026-09-08, Niton-490 kustrapporten (zelfde laag)
-import { fetchRadioTekst, stationInfo as nwrStationInfo, radioRapport } from './sources/radioTekst.js'; // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
+import { fetchRadioTekst, stationInfo as nwrStationInfo, radioRapport } from './sources/radioTekst.js';
+import { fetchNwrData } from './sources/nwrData.js'; // 2026-09-10: dezelfde NWR-informatie uit de NWS-tekstproducten i.p.v. uit de verstane tekst // 2026-09-09, NOAA Weather Radio verstaan (radio-whisper → ~/radio_tekst.txt)
 import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar, blokkenStatus, blokAudioPad } from './sources/radioLuister.js';
 import { zoekVrij as geocodeZoekVrij } from './sources/nwrGeocode.js'; // 2026-09-09, zoekveld // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
@@ -1462,6 +1463,20 @@ export function createApp(env) {
         return sendJson(res, 200, { treffer: await geocodeZoekVrij(q) });
       } catch (err) {
         return sendJson(res, 502, { fout: `zoeken mislukt: ${err.message}` });
+      }
+    }
+    if (url === '/api/nwr-data') {
+      // 2026-09-10, Lex: "deze info kunnen we vast wel ergens tekstbased vandaan
+      // halen" — waarnemingen en verwachting van de NWS zelf, zelfde vorm als
+      // /api/radio-tekst, zodat de kaart alleen van bron hoeft te wisselen.
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      const id = params.get('station');
+      if (!id) return sendJson(res, 400, { beschikbaar: false, fout: 'geen zender' });
+      try {
+        return sendJson(res, 200, await fetchNwrData(id));
+      } catch (err) {
+        console.error('[weer] nwr-data mislukt:', err.message ?? err);
+        return sendJson(res, 502, { beschikbaar: false, fout: String(err.message ?? err) });
       }
     }
     if (url === '/api/radio-luister') {

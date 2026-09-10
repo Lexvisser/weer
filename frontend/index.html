@@ -290,6 +290,14 @@
            streams komen rechtstreeks van hobby-relays (wxradio.org e.a.),
            bewust zonder backend-proxy. Zie toggleNwr() in app.js. -->
       <button id="toggleNwr" class="satelliet-toggle" title="NOAA Weather Radio-zenders (VS) — klik op een pin om te luisteren">📻<span class="knop-tekst"> NWR</span></button>
+      <!-- 2026-09-10, op verzoek van Lex ("een extra knop waarmee we de gelezen
+           tekst kunnen overrullen als we dat willen"): wat er bij een zender
+           geplot wordt komt óf uit de verstane uitzending (whisper) óf uit de
+           tekstproducten van de NWS (/api/nwr-data). Alleen zichtbaar zolang de
+           NWR-laag aanstaat, net als de Stations-subknoppen. Zie nwrBronToggle(). -->
+      <span id="nwrSub" class="stations-sub verborgen">
+        <button id="nwrBronKnop" class="satelliet-toggle stations-subknop" title="Bron voor wat er op de kaart komt: de verstane uitzending of de tekstproducten van de NWS">🗣️<span class="knop-tekst"> Verstaan</span></button>
+      </span>
       <button id="toggleVliegradar" class="satelliet-toggle">✈️<span class="knop-tekst"> Vlucht</span></button>
       <!-- 2026-09-02, op verzoek van Lex ("een verticaal menu voor AIS aan de
            rechterkant. Uitklappen = aan en daaronder alle opties") --

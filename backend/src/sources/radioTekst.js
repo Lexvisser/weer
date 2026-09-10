@@ -151,7 +151,7 @@ function woordenNaarCijfers(t) {
 }
 
 // ---- eenheden -----------------------------------------------------------
-const fNaarC = (f) => Math.round(((f - 32) * 5) / 9);
+export const fNaarC = (f) => Math.round(((f - 32) * 5) / 9);
 const mphNaarKmh = (v) => Math.round(v * 1.609344);
 const knNaarKmh = (v) => Math.round(v * 1.852);
 const ftNaarM = (v) => Math.round(v * 0.3048 * 10) / 10;
@@ -161,7 +161,7 @@ function msNaarBft(ms) {
   for (const g of grenzen) if (ms >= g) bft += 1;
   return bft;
 }
-const kmhNaarBft = (kmh) => msNaarBft(kmh / 3.6);
+export const kmhNaarBft = (kmh) => msNaarBft(kmh / 3.6);
 
 const RICHTINGEN = {
   north: 0, 'north northeast': 22.5, northeast: 45, 'east northeast': 67.5, east: 90, 'east southeast': 112.5,
@@ -185,12 +185,17 @@ const LUCHT = [
   [/mostly cloudy/, { nl: 'overwegend bewolkt', icoon: '🌥️' }],
   [/\bsunny\b/, { nl: 'zonnig', icoon: '☀️' }],
   [/mostly clear|\bclear\b/, { nl: 'helder', icoon: '🌙' }],
+  // 2026-09-10: de METAR-omschrijvingen van de NWS-API (textDescription) gebruiken
+  // andere woorden dan de voorgelezen tekst — "Fair" en "A Few Clouds" zijn daar
+  // de gewone termen voor helder resp. vrijwel onbewolkt.
+  [/\bfair\b/, { nl: 'helder', icoon: '🌙' }],
+  [/a few clouds/, { nl: 'vrijwel onbewolkt', icoon: '🌤️' }],
   [/\bcloudy\b|overcast/, { nl: 'bewolkt', icoon: '☁️' }],
   [/patchy fog|\bfog(gy)?\b|\bmist\b/, { nl: 'mist', icoon: '🌫️' }],
   [/\bhaz(e|y)\b/, { nl: 'heiig', icoon: '🌫️' }],
 ];
 // dag: true/false/null — "clear" is overdag ☀️ en 's nachts 🌙
-function lucht(txt, dag = null) {
+export function lucht(txt, dag = null) {
   const t = txt.toLowerCase();
   for (const [re, v] of LUCHT) {
     if (!re.test(t)) continue;
@@ -201,7 +206,7 @@ function lucht(txt, dag = null) {
 }
 
 // Grof dag/nacht op basis van lengtegraad (zonnetijd ≈ UTC + lon/15 uur).
-function isDag(tijdIso, lon) {
+export function isDag(tijdIso, lon) {
   if (!tijdIso || !Number.isFinite(lon)) return null;
   const d = new Date(tijdIso);
   const uur = ((d.getUTCHours() + d.getUTCMinutes() / 60 + lon / 15) % 24 + 24) % 24;
@@ -217,7 +222,7 @@ const NEERSLAG = [
   [/drizzle/, { nl: 'motregen', icoon: '🌧️' }],
   [/\bsnow(?:ing)?\b/, { nl: 'sneeuw', icoon: '🌨️' }],
 ];
-function neerslag(txt) {
+export function neerslag(txt) {
   const t = txt.toLowerCase().replace(/chance of (?:rain|precipitation)\s+(?:is\s+)?\d{1,3}\s*(?:%|percent)/g, ' ');
   const uit = [];
   const re = /(slight chance|chance|likely|definite)?\s*(?:of\s+)?(showers and thunderstorms|thunderstorms and showers|thunderstorms?|t-storms?|showers?|light rain|heavy rain|\brain(?:ing|y)?\b|drizzle|\bsnow(?:ing)?\b)(\s+likely)?/g;
@@ -254,7 +259,7 @@ function tempBereik(txt) {
   if (m) { const f = Number(m[1]); if (f > 0 && f < 130) return { fLo: f, fHi: f, cLo: fNaarC(f), cHi: fNaarC(f), tekstF: `${f}` }; }
   return null;
 }
-function tempTekstC(b) {
+export function tempTekstC(b) {
   if (!b) return null;
   return b.cLo === b.cHi ? `${b.cLo} °C` : `${b.cLo}–${b.cHi} °C`;
 }
@@ -282,7 +287,7 @@ const DAGEN = { monday: 'maandag', tuesday: 'dinsdag', wednesday: 'woensdag', th
 const DAG_RE = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)';
 const TIJDVAK_RE = new RegExp(`\\b(today|tonight|rest of today|${DAG_RE}(?:\\s+night)?(?:\\s+through\\s+${DAG_RE}(?:\\s+night)?)?)\\b[,.:]?\\s`, 'gi');
 
-function tijdvakNl(label) {
+export function tijdvakNl(label) {
   const l = label.toLowerCase().replace(/\s+/g, ' ');
   if (l === 'today' || l === 'rest of today') return 'vandaag';
   if (l === 'tonight' || l === 'overnight') return 'vannacht';
@@ -296,7 +301,7 @@ function tijdvakNl(label) {
 // NWR zegt "today"/"tonight" voor vandaag; een losse dagnaam is dus altijd een
 // van de volgende dagen (een genoemde "thursday" op donderdag = over een week).
 const DAG_NR = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-function tijdvakOffset(label, nu = new Date()) {
+export function tijdvakOffset(label, nu = new Date()) {
   const l = String(label).toLowerCase().replace(/\s+/g, ' ').trim();
   if (/^(today|rest of today|this afternoon)$/.test(l)) return 0;
   if (/^(tonight|overnight|this evening)$/.test(l)) return 0.5;

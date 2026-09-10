@@ -7799,9 +7799,11 @@ async function nwrTekstVervers() {
 // Klik op een pin = luisteren in de browser én de server laten meeluisteren
 // (één cyclus, ~12 min); daarna staan waarnemingen en verwachting een paar
 // uur op de kaart. Geen aparte handeling nodig (Lex, 09/09).
-async function nwrLuisterStart(id) {
+async function nwrLuisterStart(id, verleng = false) {
   try {
-    const r = await fetch(`/api/radio-luister?station=${encodeURIComponent(id)}`).then((x) => x.json());
+    // verleng=1: aflopende sessie oprekken, geen nieuwe klik — de server gooit
+    // de tekst tot nu toe dan niet weg (2026-09-10, zie radioTekst.js #station).
+    const r = await fetch(`/api/radio-luister?station=${encodeURIComponent(id)}${verleng ? '&verleng=1' : ''}`).then((x) => x.json());
     if (!r.ok) { console.warn('[weer] radio-luister:', r.fout); return false; }
     setTimeout(nwrTekstVervers, 12 * 1000); // #station-kopregel na ~10 s
     return true;
@@ -7873,7 +7875,7 @@ async function nwrSyncPoll(id) {
   if (!d.actief && nwrHuidig?.id === id && !nwrSync.verlengd) {
     nwrSync.verlengd = true;
     // mislukt (server herstart, sessie nog aan het afronden)? dan over 8 s nog eens — anders 'hangt' het venster
-    nwrLuisterStart(id).then((ok) => { if (nwrSync?.id !== id) return; if (ok) nwrSync.verlengd = false; else setTimeout(() => { if (nwrSync?.id === id) nwrSync.verlengd = false; }, 8000); });
+    nwrLuisterStart(id, true).then((ok) => { if (nwrSync?.id !== id) return; if (ok) nwrSync.verlengd = false; else setTimeout(() => { if (nwrSync?.id === id) nwrSync.verlengd = false; }, 8000); });
   }
   if (d.actief && nwrSync.verlengd) nwrSync.verlengd = false;
 }
@@ -8172,7 +8174,12 @@ function nwrSamenvattingTeken() {
   const st = nwrHuidig;
   const blok = st ? nwrTeksten.get(st.id) : null;
   const w = st ? nwrDichtstbijzijndeWaarneming(blok, st) : null;
-  const prognose = st ? nwrPrognoseHtml(blok) : '';
+  // 2026-09-10: de verwachting heeft geen tijdstempel per tijdvak, dus na een
+  // klik op deze zender het blauwe regeltje weglaten tot er tekst van ná die
+  // klik binnen is — anders blijft de prognose van de vorige sessie hangen.
+  const vanaf = st ? nwrWisVanaf.get(st.id) : null;
+  const versGenoeg = !vanaf || (blok?.bijgewerkt ? new Date(blok.bijgewerkt).getTime() >= vanaf : false);
+  const prognose = st && versGenoeg ? nwrPrognoseHtml(blok) : '';
   const delen = [];
   if (w && stationsAfstandKm(w, st) <= NWR_SV_MAX_KM) {
     if (w.lucht?.icoon) delen.push(`<span class="nwr-sv-item" title="${escapeHtml(w.lucht.nl ?? '')}">${w.lucht.icoon}</span>`);
