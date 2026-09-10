@@ -53,6 +53,28 @@ function whisperVolgende() {
   });
 }
 
+// 2026-09-10: deze twee schrijfacties stonden kaal in de code, en één
+// EACCES nam het hele Node-proces mee ("Main process exited, code=exited,
+// status=1/FAILURE" bij elke klik op een zender, waarna systemd vijf seconden
+// later herstartte — Lex zag dat als ERR_CONNECTION_REFUSED en "het blijft
+// erratic"). Oorzaak was de omzetting van root naar lex: de tekstbestanden in
+// /home/lex waren nog van root. Dat is rechtgezet, maar een rechtenprobleem
+// mag sowieso nooit de app kunnen neerhalen — dus afgevangen.
+let schrijfKlachtGemeld = false;
+function schrijfRegel(id, regel) {
+  try {
+    appendFileSync(radioBestand(id), `${regel}\n`);
+    schrijfKlachtGemeld = false;
+    return true;
+  } catch (err) {
+    if (!schrijfKlachtGemeld) {
+      console.error(`[weer] radioLuister ${id}: kan niet schrijven naar ${radioBestand(id)} (${err.code ?? err.message}) — verstaan levert nu niets op`);
+      schrijfKlachtGemeld = true;
+    }
+    return false;
+  }
+}
+
 function stempelNaarIso(s) {
   const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(s);
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])).toISOString() : null;
@@ -185,7 +207,7 @@ function verwerkBlokken(id) {
           }
         }
       }
-      appendFileSync(radioBestand(id), `[${stamp}] ${tekst}\n`);
+      schrijfRegel(id, `[${stamp}] ${tekst}`);
       // 2026-09-09: blok bewaren voor het synchroon meeluisteren — de browser
       // speelt precies dit blok af op het moment dat de tekst ervan er is.
       const klaarPad = path.join(a.werk, `klaar-${stamp}.wav`);
@@ -222,7 +244,7 @@ export function startLuisteren(station, opties = {}) {
   // opnieuw opbouwen (2026-09-10, Lex: "een klik verwijdert niet meteen alles,
   // dat had ik wel verwacht"). Met " verleng" = dezelfde sessie oprekken, dan
   // blijft de tekst tot nu toe staan.
-  appendFileSync(radioBestand(id), `[${stempel()}] #station ${id}${opties.verleng ? ' verleng' : ''}\n`);
+  schrijfRegel(id, `[${stempel()}] #station ${id}${opties.verleng ? ' verleng' : ''}`);
 
   const proces = spawn(FFMPEG, [
     '-loglevel', 'error', '-nostdin',
