@@ -369,12 +369,21 @@ export async function fetchNwrData(stationId) {
   }
   const waarnemingen = gemeten.filter(Boolean).filter((w) => w.tempC != null || w.wind);
 
+  // 2026-09-10, Lex: "alles rond USA mag getoond worden als dat niet te zwaar
+  // belast". Ophalen kost niets extra — NDBC levert alles in één bestand dat
+  // tien minuten gecachet blijft — dus geen straal meer rond de zendmast, maar
+  // een ruime doos om de Verenigde Staten (incl. Alaska, Hawaï en Puerto Rico).
+  // De belasting zit in het tekenen, en dat lost de app op door alleen te
+  // tekenen wat in beeld staat. Met NWR_DATA_MAX_KM aan geldt die straal wél,
+  // dan is inperken immers de bedoeling.
   let watWater = [];
   try {
-    const straal = MAX_KM > 0 ? MAX_KM : 150; // boeien altijd begrenzen: anders komt de halve Golf van Mexico mee
-    watWater = (await boeien())
-      .filter((b) => afstandKm(station.lat, station.lon, b.lat, b.lon) <= straal)
-      .map(boeiAlsWaarneming);
+    const inVs = (b) => b.lat >= 14 && b.lat <= 73 && b.lon >= -180 && b.lon <= -59;
+    const alle = await boeien();
+    watWater = (MAX_KM > 0
+      ? alle.filter((b) => afstandKm(station.lat, station.lon, b.lat, b.lon) <= MAX_KM)
+      : alle.filter(inVs)
+    ).map(boeiAlsWaarneming);
   } catch (err) {
     console.warn(`[weer] nwrData ${stationId}: boeien mislukt: ${err.message}`);
   }

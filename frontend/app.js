@@ -840,6 +840,7 @@ function initMap() {
   // aan vast, en die mag geen misklik onderbreken. Stoppen kan met ⏹ in het
   // paneel/de balk, of door dezelfde zenderpin nog eens aan te tikken.
   kaart.on('zoomend', nwrZoomGewijzigd); // 2026-09-09: NWR-waarnemingen uitwaaieren/intrekken
+  kaart.on('moveend', nwrKaartVerschoven); // 2026-09-10: alleen tekenen wat in beeld staat
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(STATIONS_KEY) === 'aan') toggleStations(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(NWR_KEY) === 'aan') toggleNwr(); } catch (_) { /* privé-modus */ }
@@ -8086,10 +8087,17 @@ function nwrTekenWaarnemingen() {
   const uitwaaieren = kaart.getZoom() >= NWR_ZOOM_UITWAAIER;
   const gewenst = new Map();
   if (uitwaaieren) {
+    // 2026-09-10, Lex: "alles rond USA mag getoond worden als dat niet te zwaar
+    // belast". De backend stuurt nu alle NDBC-boeien van de VS mee (honderden),
+    // dus tekenen we alleen wat in beeld staat — met een randje eromheen, zodat
+    // een klein sleepje niet meteen gaten laat vallen. Bij pannen/zoomen wordt
+    // dit opnieuw bepaald (zie nwrKaartVerschoven).
+    const zicht = kaart.getBounds().pad(0.25);
     for (const blok of nwrPlotBron().values()) for (const w of blok.waarnemingen ?? []) {
       if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) continue;
       w._station = blok.station;
       if (nwrOpZender(w, blok.station)) continue;
+      if (!zicht.contains([w.lat, w.lon])) continue;
       gewenst.set(`${blok.station.id}|${w.naam}`, w);
     }
   }
@@ -8147,6 +8155,15 @@ function nwrTekenWaarnemingen() {
 function nwrZoomGewijzigd() {
   if (!nwrActief) return;
   if ((kaart.getZoom() >= NWR_ZOOM_UITWAAIER) !== nwrUitgewaaierd) nwrTekenWaarnemingen();
+}
+
+// Pannen/zoomen: opnieuw bepalen wat er in beeld staat. Even wachten, anders
+// hertekent hij tijdens het slepen bij elke frame.
+let nwrVerschuifTimer = null;
+function nwrKaartVerschoven() {
+  if (!nwrActief || !nwrDataBlokken.size) return;
+  clearTimeout(nwrVerschuifTimer);
+  nwrVerschuifTimer = setTimeout(() => { if (nwrActief) nwrTekenWaarnemingen(); }, 200);
 }
 
 function nwrPaneelToon(stationId) {
