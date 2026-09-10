@@ -14,9 +14,8 @@
 // verwachting[]), zodat de kaart er niets van hoeft te weten: de app zet in de
 // NWR-balk een schakelaar om en tekent verder met dezelfde functies.
 //
-// Lex 10/09: "ik wil ze eerst allemaal en daarna beoordelen" — dus geen straal
-// en geen maximum; alle stations die /points teruggeeft komen op de kaart.
-// Krapper maken kan later met NWR_DATA_MAX_KM / NWR_DATA_MAX_STATIONS.
+// Lex 10/09: geen straal en geen maximum — alle stations die /points voor deze
+// zender teruggeeft. Wél strikt één zender per keer: alleen die waar je op klikt.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -32,7 +31,12 @@ const UA = 'weer-app-persoonlijk (contact: lokaal project)';
 const OBS_MS = 10 * 60 * 1000; // METAR's komen elk uur, soms elk half uur
 const VERWACHTING_MS = 30 * 60 * 1000;
 const BOEIEN_MS = 10 * 60 * 1000;
-const MAX_KM = Number(process.env.NWR_DATA_MAX_KM) || 0; // 0 = geen grens (Lex: eerst allemaal)
+// Geen straal (Lex 10/09: "je hoeft die straal dus niet te beperken tot 80,
+// blijf daar vanaf"): alle waarneemstations die /points voor deze zender
+// teruggeeft komen op de kaart. Wat de kaart rustig houdt is dat er maar één
+// zender tegelijk wordt opgehaald — de zender waar je op klikt. Inperken kan
+// desgewenst met NWR_DATA_MAX_KM in .env.
+const MAX_KM = Number(process.env.NWR_DATA_MAX_KM) || 0; // 0 = geen grens
 const MAX_STATIONS = Number(process.env.NWR_DATA_MAX_STATIONS) || 0; // 0 = geen grens
 
 const geheugen = new Map(); // url -> { tot, waarde }

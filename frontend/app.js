@@ -941,9 +941,9 @@ function initMap() {
   if (TOGGLE_GRADEN_EL) TOGGLE_GRADEN_EL.addEventListener('click', toggleGradenGrid);
   if (TOGGLE_STATIONS_EL) TOGGLE_STATIONS_EL.addEventListener('click', toggleStations); // 2026-09-07, weerstations-laag
   if (TOGGLE_NWR_EL) TOGGLE_NWR_EL.addEventListener('click', toggleNwr); // 2026-09-09, NOAA Weather Radio-laag
-  if (NWR_BRON_EL) NWR_BRON_EL.addEventListener('click', nwrBronToggle); // 2026-09-10, verstaan <-> data
+  // 2026-09-10: de bronknop (verstaan <-> data) zit in de kop van het zenderpaneel,
+  // zie nwrPaneelVul(); hier alleen de bewaarde stand terughalen.
   try { if (localStorage.getItem(NWR_BRON_KEY) === 'data') { nwrBron = 'data'; nwrDataTimerStart(); } } catch (_) { /* privé-modus */ }
-  nwrBronKnopBijwerken();
   document.getElementById('nwrStopKnop')?.addEventListener('click', nwrStop);
   STATIONS_SUB_EL?.querySelectorAll('.stations-subknop').forEach((k) => k.addEventListener('click', () => stationsSubToggle(k.dataset.deel)));
   stationsSubKnoppenBijwerken();
@@ -7612,8 +7612,6 @@ const NWR_KEY = 'weerNwrLaag';
 // voorleest (whisper, nwrTeksten) óf wat de NWS zelf publiceert (/api/nwr-data,
 // nwrDataBlokken). Het paneel blijft altijd de verstane tekst tonen — dat is
 // het meeluisteren, en dat is een andere vraag dan "wat klopt er".
-const NWR_SUB_EL = document.getElementById('nwrSub');
-const NWR_BRON_EL = document.getElementById('nwrBronKnop');
 const NWR_BRON_KEY = 'weerNwrBron';
 let nwrBron = 'verstaan'; // 'verstaan' | 'data'
 let nwrDataBlokken = new Map(); // stationId -> blok uit /api/nwr-data
@@ -7680,7 +7678,6 @@ KAART_ZOEK_EL?.addEventListener('submit', (e) => { e.preventDefault(); kaartZoek
 function toggleNwr() {
   nwrActief = !nwrActief;
   TOGGLE_NWR_EL?.classList.toggle('actief', nwrActief);
-  NWR_SUB_EL?.classList.toggle('verborgen', !nwrActief);
   KAART_ZOEK_EL?.classList.toggle('verborgen', !nwrActief);
   if (nwrActief) {
     tekenNwr();
@@ -7819,30 +7816,25 @@ function nwrDataTimerStart() {
 
 function nwrBronToggle() {
   nwrBron = nwrBron === 'data' ? 'verstaan' : 'data';
-  nwrBronKnopBijwerken();
   try { localStorage.setItem(NWR_BRON_KEY, nwrBron); } catch (_) { /* privé-modus */ }
-  if (nwrBron === 'data') {
-    nwrDataTimerStart();
-    // alles waar we al naar geluisterd hebben meteen ophalen, plus de zender
-    // die nu speelt — anders is de kaart na het omzetten even leeg
-    const ids = new Set([...nwrTeksten.keys(), ...nwrDataBlokken.keys()]);
-    if (nwrHuidig?.id) ids.add(nwrHuidig.id);
-    if (nwrPaneelStation) ids.add(nwrPaneelStation);
-    for (const id of ids) nwrDataHalen(id);
-  }
+  // 2026-09-10, Lex: "we zouden het ophangen aan: KLIK OP HET STATION en dan
+  // PLOT." De knop kiest alleen de bron; ophalen en plotten gebeurt uitsluitend
+  // bij een klik op een zenderpin (zie nwrSpeel). Omzetten haalt dus niets op —
+  // eerder deed hij dat voor elke zender waar ooit tekst van was, en dan stond
+  // het halve land vol iconen.
+  if (nwrBron === 'data') nwrDataTimerStart();
   tekenNwr();
   nwrTekenWaarnemingen();
   nwrSamenvattingTeken();
+  if (nwrPaneelOpen) nwrPaneelVul(); // de knop in de kop toont de nieuwe stand
 }
 
-function nwrBronKnopBijwerken() {
-  if (!NWR_BRON_EL) return;
+function nwrBronKnopHtml() {
   const data = nwrBron === 'data';
-  NWR_BRON_EL.classList.toggle('actief', data);
-  NWR_BRON_EL.innerHTML = data ? '📊<span class="knop-tekst"> Data</span>' : '🗣️<span class="knop-tekst"> Verstaan</span>';
-  NWR_BRON_EL.title = data
+  const titel = data
     ? 'De kaart toont metingen en verwachting van de NWS (api.weather.gov + NDBC). Klik voor de verstane uitzending.'
     : 'De kaart toont wat de zender voorleest (verstaan met whisper). Klik voor de tekstproducten van de NWS.';
+  return `<button type="button" id="nwrPaneelBron" class="nwr-paneel-bron${data ? ' is-data' : ''}" title="${titel}">${data ? '📊 Data' : '🗣️ Verstaan'}</button>`;
 }
 
 async function nwrTekstVervers() {
@@ -8350,7 +8342,7 @@ function nwrPaneelVul() {
   const stopKnop = speelt ? `<button type="button" id="nwrPaneelMute" title="${nwrGedempt ? 'Geluid aan' : 'Geluid uit (tekst loopt door)'}">${nwrGedempt ? '🔇' : '🔊'}</button><button type="button" id="nwrPaneelStop" title="Stoppen met luisteren">⏹</button>` : '';
   // zendernaam vast in de kop (Lex 09/09: "het ging me om de stations zelf"), status apart erachter
   const plaats = `${st?.plaats ?? ''}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}`;
-  const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}${plaats ? ` · <span class="nwr-paneel-plaats">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}</span>` : ''}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${luister.replace(/^ · /, '')}</span>${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
+  const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}${plaats ? ` · <span class="nwr-paneel-plaats">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}</span>` : ''}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${luister.replace(/^ · /, '')}</span>${nwrBronKnopHtml()}${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
   let body = '';
   if (!d) {
     const luistert = nwrHuidig?.id === nwrPaneelStation;
@@ -8374,6 +8366,7 @@ function nwrPaneelVul() {
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
   NWR_PANEEL_EL.querySelector('#nwrPaneelStop')?.addEventListener('click', () => { nwrStop(); nwrPaneelSluit(); });
   NWR_PANEEL_EL.querySelector('#nwrPaneelMute')?.addEventListener('click', nwrMuteToggle);
+  NWR_PANEEL_EL.querySelector('#nwrPaneelBron')?.addEventListener('click', nwrBronToggle); // 2026-09-10, verstaan <-> data
   if (!NWR_PANEEL_EL.dataset.plaatsKlik) {
     NWR_PANEEL_EL.dataset.plaatsKlik = '1';
     NWR_PANEEL_EL.addEventListener('mousedown', (e) => { if (e.target.closest?.('.nwr-tekst')) nwrPaneelMuisVast = true; });
