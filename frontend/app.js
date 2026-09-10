@@ -941,9 +941,7 @@ function initMap() {
   if (TOGGLE_GRADEN_EL) TOGGLE_GRADEN_EL.addEventListener('click', toggleGradenGrid);
   if (TOGGLE_STATIONS_EL) TOGGLE_STATIONS_EL.addEventListener('click', toggleStations); // 2026-09-07, weerstations-laag
   if (TOGGLE_NWR_EL) TOGGLE_NWR_EL.addEventListener('click', toggleNwr); // 2026-09-09, NOAA Weather Radio-laag
-  // 2026-09-10: de bronknop (verstaan <-> data) zit in de kop van het zenderpaneel,
-  // zie nwrPaneelVul(); hier alleen de bewaarde stand terughalen.
-  try { if (localStorage.getItem(NWR_BRON_KEY) === 'data') { nwrBron = 'data'; nwrDataTimerStart(); } } catch (_) { /* privé-modus */ }
+  nwrDataTimerStart(); // 2026-09-10: NWS-data is de enige kaartbron, dus altijd verversen
   document.getElementById('nwrStopKnop')?.addEventListener('click', nwrStop);
   STATIONS_SUB_EL?.querySelectorAll('.stations-subknop').forEach((k) => k.addEventListener('click', () => stationsSubToggle(k.dataset.deel)));
   stationsSubKnoppenBijwerken();
@@ -7607,14 +7605,14 @@ const VLIEGRADAR_KLIK_ZOOM = 12;
 // Voorkeur (laag aan/uit) per toestel bewaard, zelfde patroon als Stations.
 const TOGGLE_NWR_EL = document.getElementById('toggleNwr');
 const NWR_KEY = 'weerNwrLaag';
-// 2026-09-10, op verzoek van Lex ("een extra knop waarmee we de gelezen tekst
-// kunnen overrullen als we dat willen"): de kaart plot óf wat de zender
-// voorleest (whisper, nwrTeksten) óf wat de NWS zelf publiceert (/api/nwr-data,
-// nwrDataBlokken). Het paneel blijft altijd de verstane tekst tonen — dat is
-// het meeluisteren, en dat is een andere vraag dan "wat klopt er".
-const NWR_BRON_KEY = 'weerNwrBron';
-let nwrBron = 'verstaan'; // 'verstaan' | 'data'
-let nwrDataBlokken = new Map(); // stationId -> blok uit /api/nwr-data
+// 2026-09-10 (eind), Lex: "standaard moet daar data staan. Het hele Verstaan
+// moet geen functie hebben anders dan het omrekenen van de tekst." De kaart
+// tekent dus uitsluitend uit /api/nwr-data — metingen en verwachting van de NWS
+// zelf. De verstane uitzending blijft alleen in het paneel staan, als tekst met
+// de omrekeningen erachter; die voedt de kaart niet meer. Er is altijd hooguit
+// ÉÉN zender geplot: klik op een pin haalt die op, nog eens klikken of een
+// andere pin aantikken laat de vorige verdwijnen.
+let nwrDataBlokken = new Map(); // stationId -> blok uit /api/nwr-data (max. één)
 let nwrDataTimer = null;
 const NWR_SPELER_EL = document.getElementById('nwrSpeler');
 const NWR_SPELER_TEKST_EL = document.getElementById('nwrSpelerTekst');
@@ -7780,24 +7778,24 @@ function nwrTekstStop() {
   if (nwrTekstLaag && kaart) { kaart.removeLayer(nwrTekstLaag); nwrTekstLaag = null; }
   nwrSamenvattingWis();
   nwrWaarnemingMarkers = new Map();
-  nwrWisVanaf = new Map();
   nwrDataBlokken = new Map();
   nwrTeksten = new Map();
   nwrPaneelOpen = false;
   NWR_PANEEL_EL?.classList.add('verborgen');
 }
 
-// Welke blokken tekent de kaart? (het paneel gebruikt altijd nwrTeksten)
+// Welke blokken tekent de kaart? Altijd de NWS-data; het paneel houdt zijn
+// eigen bron (nwrTeksten, de verstane uitzending).
 function nwrPlotBron() {
-  return nwrBron === 'data' ? nwrDataBlokken : nwrTeksten;
+  return nwrDataBlokken;
 }
 
 async function nwrDataHalen(id) {
   try {
     const d = await fetch(`/api/nwr-data?station=${encodeURIComponent(id)}`, { cache: 'no-store' }).then((r) => r.json());
     if (!d?.beschikbaar) { console.warn('[weer] nwr-data:', d?.fout); return null; }
-    nwrDataBlokken.set(id, d);
-    if (nwrBron === 'data') { tekenNwr(); nwrTekenWaarnemingen(); nwrSamenvattingTeken(); }
+    nwrDataBlokken = new Map([[id, d]]); // altijd maar één zender tegelijk op de kaart
+    tekenNwr(); nwrTekenWaarnemingen(); nwrSamenvattingTeken();
     return d;
   } catch (err) {
     console.warn('[weer] nwr-data ophalen mislukt:', err);
@@ -7809,32 +7807,8 @@ async function nwrDataHalen(id) {
 function nwrDataTimerStart() {
   if (nwrDataTimer) return;
   nwrDataTimer = setInterval(() => {
-    if (nwrBron !== 'data') return;
     for (const id of [...nwrDataBlokken.keys()]) nwrDataHalen(id);
   }, 10 * 60 * 1000);
-}
-
-function nwrBronToggle() {
-  nwrBron = nwrBron === 'data' ? 'verstaan' : 'data';
-  try { localStorage.setItem(NWR_BRON_KEY, nwrBron); } catch (_) { /* privé-modus */ }
-  // 2026-09-10, Lex: "we zouden het ophangen aan: KLIK OP HET STATION en dan
-  // PLOT." De knop kiest alleen de bron; ophalen en plotten gebeurt uitsluitend
-  // bij een klik op een zenderpin (zie nwrSpeel). Omzetten haalt dus niets op —
-  // eerder deed hij dat voor elke zender waar ooit tekst van was, en dan stond
-  // het halve land vol iconen.
-  if (nwrBron === 'data') nwrDataTimerStart();
-  tekenNwr();
-  nwrTekenWaarnemingen();
-  nwrSamenvattingTeken();
-  if (nwrPaneelOpen) nwrPaneelVul(); // de knop in de kop toont de nieuwe stand
-}
-
-function nwrBronKnopHtml() {
-  const data = nwrBron === 'data';
-  const titel = data
-    ? 'De kaart toont metingen en verwachting van de NWS (api.weather.gov + NDBC). Klik voor de verstane uitzending.'
-    : 'De kaart toont wat de zender voorleest (verstaan met whisper). Klik voor de tekstproducten van de NWS.';
-  return `<button type="button" id="nwrPaneelBron" class="nwr-paneel-bron${data ? ' is-data' : ''}" title="${titel}">${data ? '📊 Data' : '🗣️ Verstaan'}</button>`;
 }
 
 async function nwrTekstVervers() {
@@ -8042,23 +8016,7 @@ function nwrWaarnemingPopupHtml(w) {
 const NWR_ZOOM_UITWAAIER = 6;
 let nwrWaarnemingMarkers = new Map(); // sleutel -> { marker, w }
 let nwrUitgewaaierd = false;
-// 2026-09-10, Lex: "het valt me op dat een klik op het station in ieder geval
-// niet meteen alles verwijdert, dat had ik wel verwacht". Commit aa49c65
-// beloofde dat wel, maar bevatte het niet. Nu echt: een klik op een zenderpin
-// = die zender opnieuw opbouwen. Alles wat vóór de klik van DÍE zender gehoord
-// is verdwijnt meteen van de kaart; de andere zenders blijven ongemoeid staan
-// (Lex: "die wil ik geplot blijven zien"). De backend houdt een buffer van
-// 45 min aan en weet niets van klikken, dus het filter zit hier: per zender
-// het moment van de klik onthouden en alles van daarvóór overslaan.
-let nwrWisVanaf = new Map(); // stationId -> ms; waarnemingen van vóór dit moment niet tonen
 
-function nwrVanVorigeSessie(w, stationId) {
-  if (nwrBron === 'data') return false; // een METAR is al gauw een half uur oud; die hoort er juist wél te staan
-  const vanaf = nwrWisVanaf.get(stationId);
-  if (!vanaf) return false;
-  const t = w?.tijd ? new Date(w.tijd).getTime() : 0;
-  return t < vanaf;
-}
 // (2026-09-09, later op de avond: de gele "vertaalslag"-ballon is weer
 // vervallen — Lex: "hebben we wel dubbelop nodig? gewoon in de tekst in een
 // felle kleur de omrekening erachter". De omrekening staat nu inline in het
@@ -8074,7 +8032,7 @@ function nwrOpZender(w, station) {
 }
 
 function nwrDichtstbijzijndeWaarneming(blok, station) {
-  const lijst = (blok?.waarnemingen ?? []).filter((w) => w.tempC != null && !nwrVanVorigeSessie(w, station.id));
+  const lijst = (blok?.waarnemingen ?? []).filter((w) => w.tempC != null);
   if (!lijst.length) return null;
   let beste = null; let besteD = Infinity;
   for (const w of lijst) {
@@ -8108,7 +8066,6 @@ function nwrTekenWaarnemingen() {
       if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) continue;
       w._station = blok.station;
       if (nwrOpZender(w, blok.station)) continue;
-      if (nwrVanVorigeSessie(w, blok.station.id)) continue; // 2026-09-10: van vóór de klik op deze zender
       gewenst.set(`${blok.station.id}|${w.naam}`, w);
     }
   }
@@ -8238,12 +8195,7 @@ function nwrSamenvattingTeken() {
   const st = nwrHuidig;
   const blok = st ? nwrPlotBron().get(st.id) : null;
   const w = st ? nwrDichtstbijzijndeWaarneming(blok, st) : null;
-  // 2026-09-10: de verwachting heeft geen tijdstempel per tijdvak, dus na een
-  // klik op deze zender het blauwe regeltje weglaten tot er tekst van ná die
-  // klik binnen is — anders blijft de prognose van de vorige sessie hangen.
-  const vanaf = st && nwrBron !== 'data' ? nwrWisVanaf.get(st.id) : null;
-  const versGenoeg = !vanaf || (blok?.bijgewerkt ? new Date(blok.bijgewerkt).getTime() >= vanaf : false);
-  const prognose = st && versGenoeg ? nwrPrognoseHtml(blok) : '';
+  const prognose = st ? nwrPrognoseHtml(blok) : '';
   const delen = [];
   if (w && stationsAfstandKm(w, st) <= NWR_SV_MAX_KM) {
     if (w.lucht?.icoon) delen.push(`<span class="nwr-sv-item" title="${escapeHtml(w.lucht.nl ?? '')}">${w.lucht.icoon}</span>`);
@@ -8342,7 +8294,7 @@ function nwrPaneelVul() {
   const stopKnop = speelt ? `<button type="button" id="nwrPaneelMute" title="${nwrGedempt ? 'Geluid aan' : 'Geluid uit (tekst loopt door)'}">${nwrGedempt ? '🔇' : '🔊'}</button><button type="button" id="nwrPaneelStop" title="Stoppen met luisteren">⏹</button>` : '';
   // zendernaam vast in de kop (Lex 09/09: "het ging me om de stations zelf"), status apart erachter
   const plaats = `${st?.plaats ?? ''}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}`;
-  const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}${plaats ? ` · <span class="nwr-paneel-plaats">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}</span>` : ''}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${luister.replace(/^ · /, '')}</span>${nwrBronKnopHtml()}${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
+  const kop = `<div class="nwr-paneel-kop"><span>📻 ${escapeHtml(st?.roepletters ?? 'NWR')}${plaats ? ` · <span class="nwr-paneel-plaats">${escapeHtml(st?.plaats ?? '')}${st?.staat ? `, ${escapeHtml(st.staat)}` : ''}</span>` : ''}</span><span class="nwr-paneel-sub" id="nwrPaneelSub">${luister.replace(/^ · /, '')}</span>${stopKnop}<button type="button" id="nwrPaneelSluit">✕</button></div>`;
   let body = '';
   if (!d) {
     const luistert = nwrHuidig?.id === nwrPaneelStation;
@@ -8366,7 +8318,6 @@ function nwrPaneelVul() {
   NWR_PANEEL_EL.querySelector('#nwrPaneelSluit')?.addEventListener('click', nwrPaneelSluit);
   NWR_PANEEL_EL.querySelector('#nwrPaneelStop')?.addEventListener('click', () => { nwrStop(); nwrPaneelSluit(); });
   NWR_PANEEL_EL.querySelector('#nwrPaneelMute')?.addEventListener('click', nwrMuteToggle);
-  NWR_PANEEL_EL.querySelector('#nwrPaneelBron')?.addEventListener('click', nwrBronToggle); // 2026-09-10, verstaan <-> data
   if (!NWR_PANEEL_EL.dataset.plaatsKlik) {
     NWR_PANEEL_EL.dataset.plaatsKlik = '1';
     NWR_PANEEL_EL.addEventListener('mousedown', (e) => { if (e.target.closest?.('.nwr-tekst')) nwrPaneelMuisVast = true; });
@@ -8414,11 +8365,11 @@ function nwrSpeel(id) {
   nwrHuidig = s;
   nwrSyncStop();
   nwrSamenvattingWis(); // blokje hoort bij één zender
-  // 2026-09-10: eigen oude waarnemingen meteen van de kaart (zie nwrWisVanaf);
-  // de plot van deze zender bouwt daarna opnieuw op uit wat we nú horen.
-  nwrWisVanaf.set(s.id, Date.now());
+  // Lex 10/09: klik op de pin = de data van DEZE zender plotten; die van de
+  // vorige verdwijnt. Nog eens op dezelfde pin klikken loopt via nwrStop().
+  nwrDataBlokken = new Map();
   nwrTekenWaarnemingen();
-  if (nwrBron === 'data') nwrDataHalen(s.id); // Lex 10/09: ophalen alleen bij een klik op de zender
+  nwrDataHalen(s.id);
   if (!nwrCtx) { try { nwrCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { nwrCtx = null; } } // in de klik, voor iOS
   if (nwrCtx?.state === 'suspended') nwrCtx.resume().catch(() => {});
   nwrSessieStart = Date.now(); // paneel toont alleen tekst van deze sessie
@@ -8454,6 +8405,8 @@ function nwrStop() {
     nwrAudio.load(); // verbinding echt loslaten
   }
   nwrHuidig = null;
+  nwrDataBlokken = new Map(); // plot van deze zender weg
+  nwrTekenWaarnemingen();
   nwrSamenvattingWis();
   NWR_SPELER_EL?.classList.add('verborgen');
   nwrMarkeerSpelend();

@@ -658,6 +658,15 @@ function parseWaarnemingen(blokken, plaatsen) {
 // met een getal-met-eenheid krijgt een omrekening voor de gele ballon, ook
 // zonder plaats of pin: "highs in the lower 90s", "heat index up to 105",
 // "winds 5 to 10 knots", "seas 2 feet", "visibility 5 miles", "29.98 inches".
+// 2026-09-10 (eind), Lex: "het hele Verstaan moet geen functie hebben anders
+// dan het omrekenen van de tekst. Maar Beaufort en Celsius en Hpascal etc. Ook
+// niet sunny naar zonnig en ook geen SW naar ZW." Deze tabel rekent dus alleen
+// nog EENHEDEN om achter het getal: °F → °C, mph/knopen → km/h + Bft, voet → m,
+// mijl → km, inches → hPa of mm. Woordvertalingen (sunny → zonnig, "chance of
+// showers" → "kans op buien", calm → windstil) en het vernederlandsen van de
+// windrichting zijn eruit; die tekst blijft staan zoals de zender hem uitspreekt.
+// De kaart komt sinds vandaag helemaal uit /api/nwr-data (nwrData.js) — deze
+// omrekeningen zijn puur voor het meelezen in het paneel.
 const VERTAAL_RE = [
   // temperatuur-bereiken ("in the lower 90s", "highs around 90", "lows near 74")
   [/\b(?:highs?|lows?|temperatures?|temps?)\s+(?:will be\s+)?(?:in the\s+)?(?:(upper|mid|middle|lower|low)[\s-]*)?(\d)0s\b/g, (m) => {
@@ -670,8 +679,9 @@ const VERTAAL_RE = [
   // klimaatsamenvatting: "the normal high is 91", "record low of 49" (zonder 'degrees')
   [/\b(?:normal|record|average)\s+(?:high|low)(?:\s+temperature)?\s+(?:is|was|of|for today is)\s+(-?\d{1,3})\b(?!\s*degrees)/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   [/\bwind ?chill(?: values?)?\s+(?:down to|around|near|of|to)\s+(-?\d{1,3})\b/g, (m) => `🥶 gevoel ${fNaarC(Number(m[1]))} °C`],
-  // "mostly sunny and 79", "cloudy and 68", "light rain and 83 degrees" → lucht-icoon + temperatuur (actueel)
-  [/\b((?:mostly |partly |light |heavy )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke))\s*,?\s+(?:(?:and|at)\s+)?(-?\d{1,3})\b(?:\s*degrees?)?(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g, (m) => { const f = Number(m[2]); if (!(f > -30 && f < 125)) return null; const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return `${l?.icoon ?? '🌡️'} ${fNaarC(f)} °C`; }],
+  // "mostly sunny and 79", "cloudy and 68", "light rain and 83 degrees" → alleen de
+  // temperatuur omrekenen; het luchtwoord blijft staan zoals het klinkt (Lex 10/09)
+  [/\b((?:mostly |partly |light |heavy )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke))\s*,?\s+(?:(?:and|at)\s+)?(-?\d{1,3})\b(?:\s*degrees?)?(?!\s*(?:percent|%|miles|mph|knots|inches|feet|a\.?m|p\.?m))/g, (m) => { const f = Number(m[2]); return f > -30 && f < 125 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // luchtvochtigheid is al een percentage — Whisper zegt soms "humidity 57 degrees": niets omrekenen, wel het stuk bezet houden
   [/\b(?:relative\s+)?humidity\s+(?:was|is|of|at|around|near)?\s*(\d{1,3})\s*(?:degrees?|percent|%)?/g, () => ({ negeer: true })],
   // verschil, geen absolute waarde: "4 degrees below normal", "10 degrees above average" → Δ°C
@@ -679,41 +689,28 @@ const VERTAAL_RE = [
   // "between 86 and 88 degrees", "86 to 88 degrees"
   [/\b(?:between\s+)?(-?\d{1,3})\s+(?:and|to)\s+(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const a = Number(m[1]); const b = Number(m[2]); return a > -50 && b < 135 && b >= a ? `🌡️ ${fNaarC(a)}–${fNaarC(b)} °C` : null; }],
   [/\b(-?\d{1,3})\s*degrees?\b(?!\s*(?:true|magnetic))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
-  // actuele lucht/neerslag zonder getal: "it was mostly cloudy", "skies were clear", "currently raining"
-  [/\b(?:it was|it is|it's|skies? (?:were|are|is)|currently|sky condition(?:s)? (?:were|are|is)?)\s+((?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rain(?:y|ing)?|drizzl(?:e|ing)|snow(?:y|ing)?|thunderstorms?|showers|fog|haze|smoke|light rain|heavy rain))\b/g, (m) => { const l = lucht(m[1], vertaalDag) ?? neerslag(m[1])[0]; return l ? { woord: true, tekst: `${l.icoon} ${l.nl ?? l.tekst}` } : null; }],
   [/\b(-?\d{1,3})\s+with\s+(?:mostly |partly )?(?:clear|sunny|cloudy|overcast|fair|foggy|hazy|rainy)\s+skies\b/g, (m) => { const f = Number(m[1]); return f > -30 && f < 125 ? `🌡️ ${fNaarC(f)} °C` : null; }],
-  // verwachting: neerslag ("a chance of showers and thunderstorms", "isolated storms", "showers likely")
-  [/\b(slight chance of|chance of|scattered|isolated|numerous|widespread|periods of|occasional)?\s*((?:showers and thunderstorms|thunderstorms and showers|thunderstorms|t-storms|storms|showers|rain showers|rain|light rain|heavy rain|drizzle|snow|sleet|freezing rain|fog|patchy fog|dense fog))(\s+(?:likely|possible))?\b/g, (m) => {
-    const soort = m[2].replace(/^storms$/, 'thunderstorms').replace(/^rain showers$/, 'showers');
-    const l = neerslag(soort)[0] ?? lucht(soort);
-    if (!l) return null;
-    const kans = { 'slight chance of': 'kleine kans op', 'chance of': 'kans op', scattered: 'verspreid', isolated: 'plaatselijk', numerous: 'veel', widespread: 'wijdverbreid', 'periods of': 'perioden met', occasional: 'af en toe' }[(m[1] ?? '').trim()] ?? '';
-    const na = /likely/.test(m[3] ?? '') ? ' (waarschijnlijk)' : (/possible/.test(m[3] ?? '') ? ' (mogelijk)' : '');
-    return { woord: true, tekst: `${l.icoon} ${kans ? kans + ' ' : ''}${l.nl ?? l.tekst}${na}` }; }],
-  // verwachting: lucht direct na een tijdvak of "then/becoming" ("Tonight, clear", "then becoming partly cloudy")
-  [/\b(today|tonight|overnight|this afternoon|this evening|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|then|becoming|night)[,.]?\s+(?:becoming\s+)?((?:mostly |partly )?(?:sunny|clear|cloudy|overcast|fair)|(?:mostly |partly )?(?:sunny|cloudy) (?:in the (?:morning|afternoon|evening)))\b/g, (m) => {
-    const nacht = /^(tonight|overnight|night|this evening)$/.test(m[1]);
-    const l = lucht(m[2], nacht ? false : (/^(today|this afternoon|tomorrow)$/.test(m[1]) ? true : vertaalDag)); return l ? { woord: true, tekst: `${l.icoon} ${l.nl}` } : null; }],
   // "the temperature was 70" (zonder "degrees"), "dew point 65"
   [/\b(?:temperature|temp|dew ?point)\s+(?:was|is|of|around|near|at)?\s*(-?\d{1,3})\b(?!\s*(?:percent|%|degrees|miles|mph|knots))/g, (m) => { const f = Number(m[1]); return f > -50 && f < 135 ? `🌡️ ${fNaarC(f)} °C` : null; }],
   // wind
   // waarneming: "the wind was southeast at 8 miles an hour", "winds were calm" staat verderop
   [new RegExp(`\\bwinds?\\s+(?:was|were|is|are)\\s+${RICHTING_RE}\\s+at\\s+(?:around\\s+|near\\s+|about\\s+)?(\\d{1,3})\\s*(miles per hour|miles an hour|mph|knots)?`, 'g'), (m) => {
-    const r = richting(m[1]); const v = /knots/.test(m[3] ?? '') ? knNaarKmh(Number(m[2])) : mphNaarKmh(Number(m[2])); return `💨 ${r.kort} ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
+    const v = /knots/.test(m[3] ?? '') ? knNaarKmh(Number(m[2])) : mphNaarKmh(Number(m[2])); return `💨 ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
   [new RegExp(`\\b${RICHTING_RE}\\s+winds?\\s+(?:(\\d{1,3})\\s+to\\s+(\\d{1,3})|(?:around|near|about|at)\\s+(?:the\\s+)?(\\d{1,3}))\\s*(miles per hour|miles an hour|mph|knots)`, 'g'), (m) => {
-    const w = windUitVerwachting(m[0].replace(/\bthe\s+/, '')); return w ? `💨 ${w.tekst}` : null; }],
+    const w = windUitVerwachting(m[0].replace(/\bthe\s+/, '')); if (!w) return null;
+    const bft = w.bftLo === w.bftHi ? `${w.bftHi}` : `${w.bftLo}–${w.bftHi}`;
+    return `💨 ${w.kmhLo === w.kmhHi ? w.kmhLo : `${w.kmhLo}–${w.kmhHi}`} km/h (${bft} Bft)`; }],
   [new RegExp(`\\bwinds?\\s+(?:${RICHTING_RE}\\s+)?(?:(\\d{1,3})\\s+to\\s+(\\d{1,3})|(?:around|near|about|at)\\s+(?:the\\s+)?(\\d{1,3}))\\s*(miles per hour|miles an hour|mph|knots)`, 'g'), (m) => {
-    const r = m[1] ? richting(m[1]) : null; m = [m[0], m[2], m[3], m[4], m[5]];
+    m = [m[0], m[2], m[3], m[4], m[5]];
     const kn = /knots/.test(m[4]); const lo = Number(m[1] ?? m[3]); const hi = Number(m[2] ?? m[3]);
     const a = kn ? knNaarKmh(lo) : mphNaarKmh(lo); const b = kn ? knNaarKmh(hi) : mphNaarKmh(hi);
-    return `💨 ${r ? r.kort + ' ' : ''}${a === b ? a : `${a}–${b}`} km/h (${kmhNaarBft(a) === kmhNaarBft(b) ? kmhNaarBft(b) : `${kmhNaarBft(a)}–${kmhNaarBft(b)}`} Bft)`; }],
+    return `💨 ${a === b ? a : `${a}–${b}`} km/h (${kmhNaarBft(a) === kmhNaarBft(b) ? kmhNaarBft(b) : `${kmhNaarBft(a)}–${kmhNaarBft(b)}`} Bft)`; }],
   // kale snelheid: "wind gust observed was 23 miles per hour", "16 miles an hour" (na de specifiekere windpatronen)
   [/\b(\d{1,3})\s*(miles per hour|miles an hour|mph|knots)\b/g, (m) => {
     const v = /knots/.test(m[2]) ? knNaarKmh(Number(m[1])) : mphNaarKmh(Number(m[1])); return `💨 ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
   // "wind south at 8", "southeast at 3" (geen eenheid: NWS bedoelt mph)
   [new RegExp(`\\b(?:winds?\\s+)?${RICHTING_RE}\\s+at\\s+(\\d{1,2})\\b(?!\\s*(?:miles|mph|knots|percent|%|a\\.?m|p\\.?m|degrees))`, 'g'), (m) => {
-    const r = richting(m[1]); const v = mphNaarKmh(Number(m[2])); return `💨 ${r.kort} ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
-  [/\bwinds?\s+(?:were\s+|was\s+)?calm\b/g, () => '💨 windstil'],
+    const v = mphNaarKmh(Number(m[2])); return `💨 ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
   [/\bgusts?\s+(?:up to|to|around|near)\s+(\d{1,3})\s*(miles per hour|miles an hour|mph|knots)/g, (m) => {
     const v = /knots/.test(m[2]) ? knNaarKmh(Number(m[1])) : mphNaarKmh(Number(m[1])); return `💨 stoten ${v} km/h (${kmhNaarBft(v)} Bft)`; }],
   // zee
