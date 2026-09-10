@@ -1470,7 +1470,9 @@ export function createApp(env) {
       const station = id ? nwrStationInfo(id) : null;
       if (!station) return sendJson(res, 400, { ok: false, fout: 'onbekende zender' });
       if (params.get('stop')) return sendJson(res, 200, stopLuisteren(id));
-      return sendJson(res, 200, startLuisteren(station));
+      // verleng=1: de app rekt een aflopende sessie op (elke ~12 min). Dat is
+      // geen nieuwe klik, dus de tekst tot nu toe mag blijven staan.
+      return sendJson(res, 200, startLuisteren(station, { verleng: params.get('verleng') === '1' }));
     }
     if (url === '/api/navtex-kustrapporten') {
       try {

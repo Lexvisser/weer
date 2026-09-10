@@ -291,6 +291,23 @@ function tijdvakNl(label) {
   return l.replace(new RegExp(DAG_RE, 'g'), (d) => DAGEN[d]).replace(/\s+night/g, 'nacht').replace(/\s+through\s+/, ' t/m ');
 }
 
+// Hoeveel dagen ligt een tijdvak-label vooruit? Halve dag erbij voor een nacht,
+// zodat "vandaag" vóór "vannacht" komt en "vrijdag" vóór "vrijdagnacht".
+// NWR zegt "today"/"tonight" voor vandaag; een losse dagnaam is dus altijd een
+// van de volgende dagen (een genoemde "thursday" op donderdag = over een week).
+const DAG_NR = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+function tijdvakOffset(label, nu = new Date()) {
+  const l = String(label).toLowerCase().replace(/\s+/g, ' ').trim();
+  if (/^(today|rest of today|this afternoon)$/.test(l)) return 0;
+  if (/^(tonight|overnight|this evening)$/.test(l)) return 0.5;
+  const m = new RegExp(`^(${DAG_RE})( night)?`).exec(l);
+  if (!m) return 99;
+  const doel = DAG_NR[m[1]];
+  if (doel == null) return 99;
+  const dagen = ((doel - nu.getDay() + 7) % 7) || 7;
+  return dagen + (m[2] ? 0.5 : 0);
+}
+
 // Knipt de verwachtingstekst in tijdvakken; per tijdvak de kenmerken.
 function parseVerwachting(tekst) {
   const t = woordenNaarCijfers(tekst.toLowerCase());
@@ -339,7 +356,16 @@ function parseVerwachting(tekst) {
       perLabel.set(k.label, vak);
     }
   }
-  return volgorde.map((l) => perLabel.get(l)).map((v) => ({ ...v, hoogTekst: tempTekstC(v.hoog), laagTekst: tempTekstC(v.laag) }));
+  // 2026-09-10, Lex: "hoe komen we sws aan zaterdagnacht prognose, dat is 2 dagen
+  // verderop!" — de volgorde was de volgorde in de TEKST, niet in de tijd. De
+  // startRe matcht ook "the EXTENDED forecast for", dus als de buffer net na het
+  // gewone rondje (today/tonight) begint, is het eerste gevonden tijdvak dat van
+  // de extended forecast: zaterdag. Nu chronologisch sorteren, zodat het eerste
+  // tijdvak (het blauwe regeltje bij de pin) echt het eerstvolgende is.
+  return volgorde
+    .map((l) => perLabel.get(l))
+    .sort((a, b) => tijdvakOffset(a.label) - tijdvakOffset(b.label))
+    .map((v) => ({ ...v, hoogTekst: tempTekstC(v.hoog), laagTekst: tempTekstC(v.laag) }));
 }
 
 // ---- waarnemingen -------------------------------------------------------
@@ -857,8 +883,11 @@ function leesBestand(pad, stationIdHint) {
     const tijd = parseStempel(m[1]);
     if (!tijd) continue;
     const inhoud = m[2].trim();
-    const kop = /^#station\s+(\S+)/.exec(inhoud);
-    if (kop) { stationId = kop[1]; continue; }
+    // Kopregel van radioLuister.js. "#station KHB32" = nieuwe klik: alles wat
+    // ervóór staat is van een vorige luistersessie en telt niet meer mee (2026-09-10).
+    // "#station KHB32 verleng" = dezelfde sessie oprekken, dus niets weggooien.
+    const kop = /^#station\s+(\S+)(?:\s+(\S+))?/.exec(inhoud);
+    if (kop) { stationId = kop[1]; if (kop[2] !== 'verleng') regels.length = 0; continue; }
     if (!inhoud) continue;
     regels.push({ tijd, tekst: inhoud });
   }

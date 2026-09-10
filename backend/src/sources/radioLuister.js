@@ -196,7 +196,7 @@ function verwerkBlokken(id) {
   });
 }
 
-export function startLuisteren(station) {
+export function startLuisteren(station, opties = {}) {
   const id = station?.id;
   if (!id || !station.url) return { ok: false, fout: 'geen zender/stream' };
   if (!beschikbaar()) return { ok: false, fout: 'whisper.cpp of model niet gevonden op de server' };
@@ -217,7 +217,12 @@ export function startLuisteren(station) {
   const werk = `/dev/shm/radio-luister-${id}`;
   try { rmSync(werk, { recursive: true, force: true }); } catch (_) { /* leeg */ }
   mkdirSync(werk, { recursive: true });
-  appendFileSync(radioBestand(id), `[${stempel()}] #station ${id}\n`);
+  // Kopregel in het tekstbestand. Zonder achtervoegsel = nieuwe klik: radioTekst.js
+  // gooit alles daarvóór weg, zodat waarnemingen én verwachting van deze zender
+  // opnieuw opbouwen (2026-09-10, Lex: "een klik verwijdert niet meteen alles,
+  // dat had ik wel verwacht"). Met " verleng" = dezelfde sessie oprekken, dan
+  // blijft de tekst tot nu toe staan.
+  appendFileSync(radioBestand(id), `[${stempel()}] #station ${id}${opties.verleng ? ' verleng' : ''}\n`);
 
   const proces = spawn(FFMPEG, [
     '-loglevel', 'error', '-nostdin',
