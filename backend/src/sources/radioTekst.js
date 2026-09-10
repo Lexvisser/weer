@@ -551,6 +551,66 @@ function parseWaarnemingen(blokken, plaatsen) {
       golfM: zee ? ftNaarM(Number(zee[1])) : null,
     });
   }
+  // 2026-09-10, na KHB32 (Tampa Bay): daar zit het interessante deel niet in
+  // de steden (Tampa leest er maar één voor -- downtown St. Petersburg) maar in
+  // de kust- en zeerapporten erna: "at the c-man site at cedar key winds
+  // southeast 8 knots, air temperature 82 degrees ... 100 miles west of
+  // bayport winds were from the south at 6 knots, sea temperature 86 degrees,
+  // air temperature 84, wave heights 1 foot". Whisper hoort "c-man" als "sea
+  // man"/"seaman"; dat vangen we hier op (de mishoorde PLAATSnamen staan als
+  // alias in data/nwr-plaatsen.json). Twee vormen:
+  //   - "(the) c-man site at <plaats>"  -> op de plaats zelf
+  //   - "<N> miles <richting> of <plaats>" -> N mijl uit de kust verschoven,
+  //     zodat zo'n boei ook echt op zee komt te liggen en niet in het dorp.
+  const MARINE_RE = new RegExp(`\\b(?:(?:the\\s+)?(?:c[\\s-]?man|sea\\s?man|seaman|see\\s?man)\\s+site\\s+at\\s+([a-z' ]{3,40}?)|(\\d{1,3})\\s+miles\\s+${RICHTING_RE}\\s+of\\s+([a-z' ]{3,40}?))\\s+(?=winds?\\b|air\\s+temperature|sea\\s+temperature|wave\\s+heights?|seas?\\b)`, 'g');
+  while ((m = MARINE_RE.exec(t)) !== null) {
+    const naamRuw = (m[1] ?? m[4] ?? '').trim();
+    if (!naamRuw) continue;
+    const plaats = zoekPlaats(plaatsen, naamRuw, true);
+    if (!plaats) continue;
+    const segment = t.slice(m.index + m[0].length, Math.min(t.length, m.index + m[0].length + 200));
+    // niet doorlopen in het volgende rapport
+    const knip = segment.search(new RegExp(`(?:c[\\s-]?man|sea\\s?man|seaman)\\s+site|\\d{1,3}\\s+miles\\s+${RICHTING_RE}\\s+of\\b|\\bthe forecast\\b|\\bcoastal waters\\b`));
+    const seg = knip > 0 ? segment.slice(0, knip) : segment;
+    const luchtT = /air\s+temperature\s+(?:was\s+|is\s+|of\s+)?(\d{1,3})/.exec(seg);
+    const zeeT = /sea\s+temperature\s+(?:was\s+|is\s+|of\s+)?(\d{1,3})/.exec(seg);
+    const golf = /(?:wave\s+heights?|seas?)\s+(?:were\s+|was\s+|of\s+|around\s+)?(\d{1,2})\s*(?:foot|feet)/.exec(seg);
+    const w = new RegExp(`winds?\\s+(?:(?:were|was|are|is)\\s+)?(?:from\\s+the\\s+|for\\s+|at\\s+)?${RICHTING_RE}\\s*(?:at\\s+)?(\\d{1,3})\\s*(?:knots?|kts?)`).exec(seg);
+    if (!luchtT && !zeeT && !golf && !w) continue;
+    let { lat, lon } = plaats;
+    if (m[2]) { // "<N> miles <richting> of <plaats>": verschuiven vanaf de plaats
+      const km = Number(m[2]) * 1.609344;
+      const graden = richting(m[3]).graden;
+      if (graden != null) {
+        lat = plaats.lat + (km * Math.cos((graden * Math.PI) / 180)) / 111;
+        lon = plaats.lon + (km * Math.sin((graden * Math.PI) / 180)) / (111 * Math.cos((plaats.lat * Math.PI) / 180));
+      }
+    }
+    let wind = null;
+    if (w) {
+      const r = richting(w[1]);
+      const kn = Number(w[2]);
+      const kmh = knNaarKmh(kn);
+      wind = { richting: r.kort, graden: r.graden, kmh, kn, bft: kmhNaarBft(kmh), tekst: `${r.kort} ${kn} kn · ${kmhNaarBft(kmh)} Bft` };
+    }
+    const fLucht = luchtT ? Number(luchtT[1]) : null;
+    const naam = m[2] ? `${m[2]} mijl ${richting(m[3]).kort} van ${plaats.naam}` : plaats.naam;
+    zet(naam, m.index, {
+      naam,
+      naamGehoord: m[0].trim(),
+      lat,
+      lon,
+      soort: 'boei',
+      tijd: tijdBij(m.index),
+      bron: `${m[0].trim()} ${seg.slice(0, 120).trim()}`,
+      lucht: null,
+      tempF: fLucht,
+      tempC: fLucht != null && fLucht >= -40 && fLucht <= 130 ? fNaarC(fLucht) : null,
+      zeeTempC: zeeT ? fNaarC(Number(zeeT[1])) : null,
+      wind,
+      golfM: golf ? ftNaarM(Number(golf[1])) : null,
+    });
+  }
   const lijst = [...uit.values()].map(({ _index, ...w }) => w);
   const uniek = [];
   for (const w of lijst) {

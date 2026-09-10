@@ -477,5 +477,216 @@
       "lon": -97.1,
       "aliassen": []
     }
+  ],
+  "KHB32": [
+    {
+      "naam": "Tampa International",
+      "lat": 27.98,
+      "lon": -82.53,
+      "aliassen": [
+        "tampa",
+        "tampa international airport",
+        "tampa airport"
+      ]
+    },
+    {
+      "naam": "St. Petersburg",
+      "lat": 27.77,
+      "lon": -82.64,
+      "aliassen": [
+        "st petersburg",
+        "saint petersburg",
+        "downtown st petersburg",
+        "downtown saint petersburg",
+        "albert whitted",
+        "st pete"
+      ]
+    },
+    {
+      "naam": "Clearwater",
+      "lat": 27.97,
+      "lon": -82.8,
+      "aliassen": [
+        "clearwater airpark",
+        "clearwater air park"
+      ]
+    },
+    {
+      "naam": "Clearwater Beach",
+      "lat": 27.98,
+      "lon": -82.83,
+      "aliassen": [
+        "clearwater beach c man",
+        "clearwater beach site"
+      ]
+    },
+    {
+      "naam": "Lakeland",
+      "lat": 28.04,
+      "lon": -81.95,
+      "aliassen": [
+        "lakeland linder",
+        "lakeland linder international",
+        "lake windlander",
+        "lake windlander international",
+        "lakeland lender"
+      ]
+    },
+    {
+      "naam": "Brooksville",
+      "lat": 28.47,
+      "lon": -82.45,
+      "aliassen": [
+        "brooksville tampa bay",
+        "hernando county airport"
+      ]
+    },
+    {
+      "naam": "Sarasota",
+      "lat": 27.34,
+      "lon": -82.55,
+      "aliassen": [
+        "sarasota bradenton",
+        "sarasota bradenton international",
+        "sarasota airport"
+      ]
+    },
+    {
+      "naam": "Bradenton",
+      "lat": 27.5,
+      "lon": -82.57
+    },
+    {
+      "naam": "Winter Haven",
+      "lat": 28.02,
+      "lon": -81.73,
+      "aliassen": [
+        "winter haven airport"
+      ]
+    },
+    {
+      "naam": "Plant City",
+      "lat": 28.02,
+      "lon": -82.11
+    },
+    {
+      "naam": "Bartow",
+      "lat": 27.9,
+      "lon": -81.84,
+      "aliassen": [
+        "bartow airport"
+      ]
+    },
+    {
+      "naam": "Zephyrhills",
+      "lat": 28.23,
+      "lon": -82.16
+    },
+    {
+      "naam": "Wauchula",
+      "lat": 27.55,
+      "lon": -81.81
+    },
+    {
+      "naam": "Arcadia",
+      "lat": 27.22,
+      "lon": -81.86
+    },
+    {
+      "naam": "Inverness",
+      "lat": 28.84,
+      "lon": -82.33
+    },
+    {
+      "naam": "Crystal River",
+      "lat": 28.9,
+      "lon": -82.59
+    },
+    {
+      "naam": "Tarpon Springs",
+      "lat": 28.15,
+      "lon": -82.76
+    },
+    {
+      "naam": "Venice",
+      "lat": 27.07,
+      "lon": -82.45,
+      "aliassen": [
+        "venice pier",
+        "venice c man",
+        "venice site"
+      ]
+    },
+    {
+      "naam": "Cedar Key",
+      "lat": 29.14,
+      "lon": -83.03,
+      "aliassen": [
+        "theater key",
+        "cedar key site",
+        "seter key",
+        "cedar quay"
+      ]
+    },
+    {
+      "naam": "Egmont Key",
+      "lat": 27.6,
+      "lon": -82.76,
+      "aliassen": [
+        "egmont key site",
+        "edmont key"
+      ]
+    },
+    {
+      "naam": "Bayport",
+      "lat": 28.53,
+      "lon": -82.65,
+      "aliassen": [
+        "bay port"
+      ]
+    },
+    {
+      "naam": "Old Port Tampa",
+      "lat": 27.86,
+      "lon": -82.55,
+      "aliassen": [
+        "old port tampa site"
+      ]
+    },
+    {
+      "naam": "Port Manatee",
+      "lat": 27.64,
+      "lon": -82.56
+    },
+    {
+      "naam": "Naples",
+      "lat": 26.14,
+      "lon": -81.79,
+      "aliassen": [
+        "naples airport"
+      ]
+    },
+    {
+      "naam": "Fort Myers",
+      "lat": 26.59,
+      "lon": -81.86,
+      "aliassen": [
+        "fort myers airport",
+        "southwest florida international"
+      ]
+    },
+    {
+      "naam": "Ocala",
+      "lat": 29.19,
+      "lon": -82.14
+    },
+    {
+      "naam": "Orlando",
+      "lat": 28.54,
+      "lon": -81.38,
+      "aliassen": [
+        "orlando international"
+      ]
+    }
   ]
 }

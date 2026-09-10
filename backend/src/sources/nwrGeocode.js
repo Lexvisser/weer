@@ -52,7 +52,11 @@ const NIET = new Set(('sunny clear cloudy overcast fair fog foggy haze hazy rain
   + 'these those here there now then also again once still just very more most some any all each other such into out up down over under '
   + 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty '
   + 'air to from for by as be been being not no yes so if or but than too about after before during between around near across along '
-  + 'reporting observed current currently conditions condition visibility sky skies partly mostly light heavy variable').split(' '));
+  + 'reporting observed current currently conditions condition visibility sky skies partly mostly light heavy variable '
+  // 2026-09-10 (KHB32): "downtown st petersburg" landde bij Nominatim op een wijk "Downtown" -- zulke
+  // bijwoorden horen niet in de zoekterm; door ze hier te weigeren valt de parser terug op de kortere
+  // kandidaat ("st petersburg"), die wel klopt. Idem voor omschrijvende woorden uit de zeerapporten.
+  + 'downtown uptown midtown elsewhere region regional site sites buoy buoys offshore coastal yesterday normal record climate summary').split(' '));
 export function geschikt(naam) {
   const n = String(naam).toLowerCase().trim();
   if (n.length < 4 || /\d/.test(n)) return false;
@@ -99,6 +103,8 @@ async function volgende() {
         .map((x) => ({ lat: Number(x.lat), lon: Number(x.lon), naam: (x.name || x.display_name || taak.naam).split(',')[0], soort: `${x.category ?? x.class}/${x.type}`, adres: x.addresstype ?? '', belang: Number(x.importance ?? 0) }))
         // geen staten/county's/landen: "oklahoma" (uit "oklahoma city", te ver) landde anders op de staat Oklahoma
         .filter((x) => !/^(state|county|country|region|province)$/.test(x.adres) && !/^(state|county|country|region|province)$/.test(x.soort.split('/')[1]))
+        // generieke wijknamen zeggen niets over waar het weer gemeten is (2026-09-10)
+        .filter((x) => !/^(downtown|uptown|midtown|city cent(er|re)|centre|center)$/i.test(x.naam.trim()))
         .filter((x) => Number.isFinite(x.lat) && afstandKm(station.lat, station.lon, x.lat, x.lon) <= MAX_KM)
         // plaatsen, vliegvelden, waterlichamen; geen straten/winkels
         .filter((x) => /^(place|aeroway|boundary\/administrative|natural\/(bay|cape|beach|water)|landuse\/military)/.test(x.soort))
