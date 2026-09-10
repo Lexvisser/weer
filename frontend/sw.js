@@ -8,7 +8,7 @@
 // aggregator-service even niet bereikbaar is. Verhoog CACHE_NAAM telkens als
 // je wilt garanderen dat oude installaties de nieuwe versie ophalen.
 
-const CACHE_NAAM = 'weer-shell-v22'; // v22: Noodweer-iconen + nieuwe head-links (2026-08-28)
+const CACHE_NAAM = 'weer-shell-v23'; // v23: NWR-kaartlaag op NWS-data (2026-09-10) — v22 stond er nog van 28 aug, terwijl app.js sindsdien vaak wijzigde; bij een herstart van de server viel de pagina dan terug op die oude schil
 const SHELL_BESTANDEN = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
