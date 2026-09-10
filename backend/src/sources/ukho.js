@@ -123,6 +123,12 @@ const EVENT_REGELS = [
   // generieke label + NAVTEX_PLATFORM_SVG in app.js -- beter dan het
   // booreiland-icoon, ook zonder per-platform detail.
   { type: 'platform-defect', label: 'Platform(s) met defect', re: /FOLLOWING\s+PLATFORMS?\b/i },
+  // 2026-09-10, zelfde toevoeging als in navtexLokaal.js (PA46 / MSI 230/26,
+  // "THE FOLLOWING WIND TURBINES HAVE DEFECTS ..."): zonder eigen type valt
+  // zo'n bericht door naar de licht-/misthoornregels hieronder en daarmee
+  // naar classificeerGeometrie(), die de losse turbineposities als EEN
+  // polygoon aan elkaar knoopt. Moet dus vóór die regels staan.
+  { type: 'turbine-defect', label: 'Windturbine(s) met defect', re: /FOLLOWING\s+WIND\s*TURBINES?\b/i },
   { type: 'boei-vermist', label: 'Boei vermist/beschadigd', re: /BUOY[^.]{0,20}\bMISSING\b|BUOY[^.]{0,25}\b(TOPMARK|DAMAGED?)\b/i },
   // 2026-08-24, zelfde verbreding als navtexLokaal.js op verzoek van Lex.
   // 2026-08-24, zelfde verbreding als navtexLokaal.js op verzoek van Lex
@@ -211,20 +217,93 @@ function classificeerGeometrie(body, coords, eventType) {
 // gehouden, geen aparte kop-woordenlijst nodig. Werkt hier omdat UKHO's
 // brontekst (cheerio .text() op de <pre>-tag) de originele regeleindes
 // bewaart — zie parseWaarschuwing() hierboven.
-function splitsRiglijst(body) {
+// 2026-09-10, zelfde als in navtexLokaal.js (zie de toelichting daar bij
+// classificeerRiglijstStatus/parkKopUit) -- bewust een eigen kopie, net als de
+// rest van dit bestand: ukho.js is een losstaande kopie van deze logica met
+// zijn eigen brontekst-eigenaardigheden (hier: originele regeleindes bewaard,
+// wat het uitlezen van de sectiekop juist eenvoudiger maakt dan daar).
+const RIGLIJST_STATUSWOORD_REGEX = /^\s*(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|FOGHORN|FOG\s+(?:HORN|SIGNAL)S?|DEFECTIVE|NOT\s+WORKING|OUT\s+OF\s+ORDER|SILENT)\b/i;
+function classificeerRiglijstStatus(statusTekst) {
+  if (!statusTekst) return null;
+  if (/\bFOG\s*(?:HORNS?|SIGNALS?)\b[^.]{0,40}\b(INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE|SILENT|UNRELIABLE)\b/i.test(statusTekst)) {
+    return { type: 'foghorn', label: 'Misthoorn defect' };
+  }
+  if (/\bBLACK\s*OUT\b/i.test(statusTekst)) return { type: 'blackout', label: 'Totale black-out' };
+  if (/\b(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|OUT\s+OF\s+ORDER|NOT\s+WORKING|DEFECTIVE)\b/i.test(statusTekst)) {
+    return { type: 'licht-onbetrouwbaar', label: 'Licht onbetrouwbaar/uit' };
+  }
+  return null;
+}
+// Sectiekop = windpark/gebied waaronder de volgende posities vallen
+// ("HOLLANDSE KUST ZUID"). Zie navtexLokaal.js voor dezelfde afweging.
+function parkKopUit(tekst) {
+  if (!tekst) return null;
+  const t = String(tekst).replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  if (/\b(CANCEL|CANCELLED|MSI|NAVAREA|NNNN|ZCZC)\b/i.test(t)) return null;
+  if (!/^[A-Z][A-Z '-]*$/i.test(t)) return null;
+  const woorden = t.split(' ');
+  if (woorden.length > 5) return null;
+  return t.slice(0, 40);
+}
+
+// `metPark`: alleen turbinelijsten krijgen de sectiekop als windpark mee. Bij
+// een gewone riglijst is die kop een zeegebied-omschrijving ("NORTH SEA: 55N
+// TO 60N, EAST OF 5W"), geen park -- die titels bewust ongemoeid laten.
+function splitsRiglijst(body, metPark = false) {
   const entries = [];
   const regex = new RegExp(COORD_REGEX.source, 'gi');
   const matches = [...body.matchAll(regex)];
+  // 2026-09-10: sectiekop per positie. Regel voor regel langslopen en de
+  // laatst geziene kopregel onthouden -- regels met een coördinaat erin zijn
+  // posities, geen koppen, en een positie zonder eigen kop erboven valt onder
+  // dezelfde kop als de vorige.
+  const parkPerPositie = [];
+  {
+    let offset = 0;
+    let park = null;
+    let volgende = 0;
+    for (const regel of body.split('\n')) {
+      const eind = offset + regel.length;
+      let heeftCoord = false;
+      while (volgende < matches.length && matches[volgende].index >= offset && matches[volgende].index <= eind) {
+        parkPerPositie[volgende] = park;
+        volgende++;
+        heeftCoord = true;
+      }
+      if (!heeftCoord) {
+        const kop = parkKopUit(regel);
+        if (kop) park = kop;
+      }
+      offset = eind + 1; // +1 voor de \n
+    }
+  }
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i];
     const vanaf = match.index + match[0].length;
     const tot = i + 1 < matches.length ? matches[i + 1].index : body.length;
     const naamKandidaat = body.slice(vanaf, tot).split('\n')[0].trim(); // alleen de rest van DEZE regel, nooit doorlopen naar een volgende (sectiekop-)regel
-    const naam = naamKandidaat ? naamKandidaat.slice(0, 60) : null;
+    let naam = naamKandidaat ? naamKandidaat.slice(0, 60) : null;
+    // 2026-09-10: bij een turbine-/platformlijst staat achter de naam nog een
+    // status ("HNF4 UNLIT"). Alleen splitsen als het woord ná het eerste woord
+    // ook echt een statuswoord is -- een rignaam als "VALARIS 121" of "NOBLE
+    // HANS DEUL" blijft daardoor gewoon in zijn geheel de naam.
+    let status = null;
+    const woorden = naamKandidaat.split(/\s+/).filter(Boolean);
+    if (woorden.length >= 2 && RIGLIJST_STATUSWOORD_REGEX.test(woorden.slice(1).join(' '))) {
+      naam = woorden[0].slice(0, 60);
+      status = classificeerRiglijstStatus(woorden.slice(1).join(' '));
+    }
     const lat = (Number(match[1]) + Number(match[2] || 0) / 60) * (match[3].toUpperCase() === 'S' ? -1 : 1);
     const lon = (Number(match[4]) + Number(match[5] || 0) / 60) * (match[6].toUpperCase() === 'W' ? -1 : 1);
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      entries.push({ naam: naam || null, lat: +lat.toFixed(6), lon: +lon.toFixed(6) });
+      entries.push({
+        naam: naam || null,
+        lat: +lat.toFixed(6),
+        lon: +lon.toFixed(6),
+        park: (metPark ? parkPerPositie[i] : null) ?? null,
+        ...(status ? { eventType: status.type, eventLabel: status.label } : {}),
+      });
     }
   }
   return entries;
@@ -414,8 +493,9 @@ export async function fetchUkho(env = {}) {
       // Lex ("alle rigs meenemen ongeacht hoe ver... ik wil ze allemaal
       // zien") slaat een riglijst-bericht het bereik-filter hieronder
       // (binnenBereik) sowieso over -- zie daar.
-      if (eventInfo.type === 'riglijst' || eventInfo.type === 'platform-defect') {
-        const rigs = splitsRiglijst(w.description).map((rig) => ({ ...rig, afstandTotJouKm: afstandKm(homeLat, homeLon, rig.lat, rig.lon) }));
+      // 2026-09-10: 'turbine-defect' loopt langs exact hetzelfde pad.
+      if (eventInfo.type === 'riglijst' || eventInfo.type === 'platform-defect' || eventInfo.type === 'turbine-defect') {
+        const rigs = splitsRiglijst(w.description, eventInfo.type === 'turbine-defect').map((rig) => ({ ...rig, afstandTotJouKm: afstandKm(homeLat, homeLon, rig.lat, rig.lon) }));
         const afstandTotJouKm = rigs.length ? Math.min(...rigs.map((r) => r.afstandTotJouKm)) : null;
         return { ...w, coords: [], positie: rigs[0] ?? null, rigs, afstandTotJouKm, datum, eventInfo, referentie, zelfVervalDatum };
       }
@@ -438,7 +518,7 @@ export async function fetchUkho(env = {}) {
   // 2026-08-25, op verzoek van Lex ("alle rigs meenemen ongeacht hoe ver...
   // ik wil ze allemaal zien") — riglijst-berichten slaan het afstandsfilter
   // hier helemaal over, zelfde als navtexLokaal.js.
-  const binnenBereik = metPositie.filter((w) => w.eventInfo.type === 'riglijst' || w.eventInfo.type === 'platform-defect' || (w.afstandTotJouKm != null && w.afstandTotJouKm <= straalKm));
+  const binnenBereik = metPositie.filter((w) => w.eventInfo.type === 'riglijst' || w.eventInfo.type === 'platform-defect' || w.eventInfo.type === 'turbine-defect' || (w.afstandTotJouKm != null && w.afstandTotJouKm <= straalKm));
   const nietVervallen = binnenBereik.filter((w) => {
     if (w.zelfVervalDatum && w.zelfVervalDatum.getTime() < nu) return false; // "CANCEL THIS MSG <datum>" al gepasseerd
     if (w.referentie && GEANNULEERDE_REFERENTIES.has(w.referentie)) return false; // door een later bericht ingetrokken
@@ -496,19 +576,30 @@ export async function fetchUkho(env = {}) {
     // uit de metPositie-stap hierboven -- geen eigen bereik-filter meer hier
     // (zie de toelichting daar), de afstand blijft alleen nog informatief in
     // de detail staan.
-    if (w.eventInfo.type === 'riglijst' || w.eventInfo.type === 'platform-defect') {
+    if (w.eventInfo.type === 'riglijst' || w.eventInfo.type === 'platform-defect' || w.eventInfo.type === 'turbine-defect') {
       const rigs = w.rigs ?? [];
       if (rigs.length === 0) return [];
       return rigs.map((rig, i) =>
         makeSignal({
           id: `ukho-${idVeilig}-rig${i}`,
           categorie: 'navtex',
-          titel: `${w.type} - ${w.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''} - ${w.reference}`,
+          // 2026-09-10: per-positie status ("Misthoorn defect") en windpark,
+          // zie splitsRiglijst() hierboven -- zelfde opzet als navtexLokaal.js.
+          titel: `${w.type} - ${rig.eventLabel ?? w.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''}${rig.park ? ` (${rig.park})` : ''} - ${w.reference}`,
           ernst: navtexErnst(w.description), // 2026-09-04
           lat: rig.lat,
           lon: rig.lon,
           tijd: w.datum ? w.datum.toISOString() : eersteOntvangst(`ukho-${idVeilig}-rig${i}`),
-          detail: { ...gedeeldeDetail, afstandTotJouKm: rig.afstandTotJouKm, positie: rig, riglijstIndex: i, riglijstTotaal: rigs.length },
+          detail: {
+            ...gedeeldeDetail,
+            afstandTotJouKm: rig.afstandTotJouKm,
+            positie: rig,
+            riglijstIndex: i,
+            riglijstTotaal: rigs.length,
+            rigStatusType: rig.eventType ?? null,
+            rigStatusLabel: rig.eventLabel ?? null,
+            rigPark: rig.park ?? null,
+          },
         })
       );
     }
