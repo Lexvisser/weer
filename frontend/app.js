@@ -3496,16 +3496,25 @@ function popupHtml(s) {
 // dus opnieuw op uit s.detail (dezelfde velden als de backend gebruikte om
 // s.titel te maken), puur voor déze popup-weergave.
 function riglijstTitelHtml(s) {
-  if (s.categorie !== 'navtex' || (s.detail?.eventType !== 'riglijst' && s.detail?.eventType !== 'platform-defect')) return null;
+  // 2026-09-10: 'turbine-defect' erbij (PA46 / MSI 230/26) -- zonder dit
+  // vervalt deze popup-titel én de "(1/5)"-teller voor turbinelijsten.
+  const RIGLIJST_TYPES = ['riglijst', 'platform-defect', 'turbine-defect'];
+  if (s.categorie !== 'navtex' || !RIGLIJST_TYPES.includes(s.detail?.eventType)) return null;
   const d = s.detail;
   // navtexLokaal.js zet titel altijd met het vaste woord "NAVTEX" vooraan;
   // ukho.js gebruikt daar w.type (bv. "NAVAREA 1") — zie detail.bron.
   const kop = d.bron === 'ukho' ? d.land : 'NAVTEX';
+  // "Onbekend platform" past niet bij een turbine, zie detail.eventType.
+  const onbekendLabel = d.eventType === 'turbine-defect' ? 'Onbekende turbine' : 'Onbekend platform';
   const naamHtml = d.positie?.naam
     ? `<span class="popup-rig-naam">${escapeHtml(d.positie.naam)}</span>`
-    : `<span class="popup-rig-naam popup-rig-naam-onbekend">Onbekend platform</span>`;
+    : `<span class="popup-rig-naam popup-rig-naam-onbekend">${onbekendLabel}</span>`;
+  // 2026-09-10, op verzoek van Lex: windpark/sectiekop achter de naam
+  // ("HZD6 (Hollandse Kust Zuid)") -- alleen als de backend er een vond,
+  // zie rigPark/parkKopUit() in navtexLokaal.js.
+  const parkHtml = d.rigPark ? ` <span class="popup-rig-park">(${escapeHtml(d.rigPark)})</span>` : '';
   const tellerHtml = d.riglijstTotaal > 1 ? ` <span class="popup-rig-teller">(${d.riglijstIndex + 1}/${d.riglijstTotaal})</span>` : '';
-  return `${escapeHtml(kop ?? '')} - ${escapeHtml(d.rigStatusLabel ?? d.eventLabel ?? '')} - ${naamHtml}${tellerHtml} - ${escapeHtml(d.station ?? '')}`;
+  return `${escapeHtml(kop ?? '')} - ${escapeHtml(d.rigStatusLabel ?? d.eventLabel ?? '')} - ${naamHtml}${parkHtml}${tellerHtml} - ${escapeHtml(d.station ?? '')}`;
 }
 
 // Simpele HTML-escape voor tekst die in een attribuut (title="...") belandt —
@@ -3889,6 +3898,35 @@ const NAVTEX_PLATFORM_SVG = `
       <path d="M17 9 V4.3"/>
     </g>
     <circle cx="17" cy="3.3" r="0.95" fill="#ff8a3d"/>
+  </svg>
+`.trim();
+
+// 2026-09-10, op verzoek van Lex ("laten we die turbine een eigen icon geven
+// en als er iets met een turbine is dat ook tonen"), na PA46 / MSI 230/26 --
+// zie 'turbine-defect' in EVENT_REGELS (navtexLokaal.js). Een offshore
+// windturbine is een heel ander object dan een productieplatform, dus een
+// eigen icoon i.p.v. NAVTEX_PLATFORM_SVG hierboven.
+//
+// Bewuste afwijking van riglijst/platform-defect: daar wint het PER-PLATFORM
+// statusicoon (lamp/misthoorn) van het generieke icoon, hier NIET -- Lex wil
+// bij elke turbinestoring de turbine zien ("later kunnen we onderscheid
+// wellicht nog maken tussen wat er dan precies mis is"). Dat gebeurt vanzelf
+// doordat 'turbine-defect' bewust NIET in de rigStatus-lookup van
+// hazardIconHtml() staat; het precieze defect blijft in de titel/popup staan
+// ("Licht onbetrouwbaar/uit" vs "Misthoorn defect").
+//
+// Vorm: mast met drie wieken, plus de oranje navigatielamp halverwege de mast
+// (zelfde oranje stip als NAVTEX_PLATFORM_SVG hierboven) -- dat is nu juist
+// het ding dat in deze berichten stuk is.
+const NAVTEX_TURBINE_SVG = `
+  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <g fill="none" stroke="#f4f6fb" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 8.6 V20"/>
+      <path d="M8 20 H16"/>
+      <path d="M12 7.4 V2.2 M11 8 L6.6 10.6 M13 8 L17.4 10.6"/>
+    </g>
+    <circle cx="12" cy="7.5" r="1.15" fill="#f4f6fb"/>
+    <circle cx="12" cy="14.2" r="1.15" fill="#ff8a3d"/>
   </svg>
 `.trim();
 
@@ -4323,6 +4361,9 @@ const NAVTEX_EVENT_ICOON = {
   'boei-nieuw': NAVTEX_BOEI_NIEUW_SVG,
   foghorn: NAVTEX_MISTHOORN_SVG,
   'platform-defect': NAVTEX_PLATFORM_SVG,
+  // 2026-09-10, zie NAVTEX_TURBINE_SVG hierboven -- geldt voor ELKE turbine
+  // uit een turbinelijst, ook als de status wél herkend is.
+  'turbine-defect': NAVTEX_TURBINE_SVG,
 };
 function hazardIconHtml(s) {
   if (isLifeliner(s)) return LIFELINER_HELI_SVG;
@@ -4342,6 +4383,10 @@ function hazardIconHtml(s) {
     // is nooit tegelijk kardinaal EN waverider dus de volgorde t.o.v.
     // elkaar maakt niet uit.
     const waverider = s.detail?.eventType === 'boei-nieuw' && s.detail?.boeiSoort === 'waverider' ? NAVTEX_WAVERIDER_SVG : null;
+    // 2026-09-10: 'turbine-defect' staat hier BEWUST niet bij -- Lex wil bij
+    // elke turbinestoring het turbine-icoon zien i.p.v. het lamp-/misthoorn-
+    // icoon, dus die valt door naar NAVTEX_EVENT_ICOON[eventType] hieronder.
+    // Zie NAVTEX_TURBINE_SVG.
     const rigStatus = (s.detail?.eventType === 'riglijst' || s.detail?.eventType === 'platform-defect') ? NAVTEX_EVENT_ICOON[s.detail?.rigStatusType] : null;
     // 2026-08-26, op verzoek van Lex ("alle boeien die nu rood zijn worden
     // groen, wat waverider hiervoor ook had... alle boeien die geen eigen

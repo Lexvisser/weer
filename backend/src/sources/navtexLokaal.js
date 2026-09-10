@@ -1080,6 +1080,23 @@ const EVENT_REGELS = [
   // booreiland-derrick) -- zie classificeerRiglijstStatus()/de call-site
   // hieronder en NAVTEX_PLATFORM_SVG/NAVTEX_EVENT_ICOON in app.js.
   { type: 'platform-defect', label: 'Platform(s) met defect', re: /FOLLOWING\s+PLATFORMS?\b/i },
+  // 2026-09-10, op melding van Lex ("Dit is een vreemde toch? ... ik bedoel
+  // de verbonden lijnen"), na PA46 / MSI 230/26 ("THE FOLLOWING WIND
+  // TURBINES HAVE DEFECTS HOLLANDSE KUST NOORD 52-44.9N 004-12.2E HNF4
+  // UNLIT HOLLANDSE KUST ZUID 52-11.4N 004-00.9E HZR FOGHORN INOPERATIVE
+  // ..."): exact hetzelfde lek als MSI 214/26 destijds bij de platforms,
+  // maar dan met turbines. 'FOLLOWING PLATFORMS' matchte niet, er staan
+  // geen A./B.-lijsttekens in, dus viel het bericht door naar
+  // classificeerGeometrie() en werden de 5 turbineposities als EEN
+  // polygoon aan elkaar geknoopt -- de zigzag die Lex op de kaart zag.
+  // Bijkomend gevolg van hetzelfde lek: 'FOGHORN INOPERATIVE' van de ENE
+  // turbine (HZR) bepaalde via de foghorn-regel hieronder het eventtype van
+  // het HELE bericht, dus alle vijf zaten onder een misthoorn-marker
+  // terwijl er vier gewoon UNLIT waren. Eigen type (dus voor de
+  // licht/foghorn-regels hieronder, die dit bericht anders opslokken) dat
+  // net als riglijst/platform-defect via splitsRiglijst() naar losse
+  // puntsignalen gaat.
+  { type: 'turbine-defect', label: 'Windturbine(s) met defect', re: /FOLLOWING\s+WIND\s*TURBINES?\b/i },
   { type: 'boei-vermist', label: 'Boei vermist/beschadigd', re: /BUOY[^.]{0,20}\bMISSING\b|BUOY[^.]{0,25}\b(TOPMARK|DAMAGED?)\b/i },
   // 2026-08-24, op verzoek van Lex (NAV WARN 454, GERMAN BIGHT: "OFFSHORE
   // WIND FARM 'AMRUMBANK'... LIGHTING INOPERATIVE" viel nog in "overig") —
@@ -1232,6 +1249,51 @@ function classificeerGeometrie(body, coords, eventType) {
 // geval vóór de coördinaat (dit format), anders erna (HAEVA-format).
 const RIGLIJST_STATUSWOORD_REGEX = /^\s*(UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|FOGHORN|FOG\s+(?:HORN|SIGNAL)S?|DEFECTIVE|NOT\s+WORKING|OUT\s+OF\s+ORDER|SILENT)\b/i;
 
+// 2026-09-10, DERDE formaatvariant, na PA46 / MSI 230/26 (zie
+// 'turbine-defect' in EVENT_REGELS hierboven): naam NA de coördinaat, en de
+// status weer NA die naam ("52-44.9N 004-12.2E HNF4 UNLIT"). Dat is geen van
+// beide bestaande varianten: het HAEVA-format heeft de naam er ook achter
+// maar ZONDER status (de hele staart is dan de naam), en MSI 214/26 heeft
+// juist de naam ervoor. Zonder eigen tak werd de naam hier "HNF4 UNLIT
+// HOLLANDSE KUST ZUID" (alles tot de volgende coördinaat) en bleef de status
+// per turbine onbekend.
+//
+// Herkenning: haal het eerste woord na de eerste coördinaat weg (dat is dan
+// de naam) en kijk of dáár een statuswoord op volgt.
+//
+// Woorden waarmee een statuszin kan beginnen/doorlopen, zodat de statustekst
+// van elke turbine aan de voorkant weggeknipt kan worden en wat er overblijft
+// de sectiekop van de VOLGENDE turbine is ("... HNF4 UNLIT HOLLANDSE KUST
+// ZUID 52-11.4N ..." -> status "UNLIT", kop "HOLLANDSE KUST ZUID"). Bewust
+// een vaste woordenlijst i.p.v. iets slimmers: de bewoording in MSI-berichten
+// is kort en vast, en een onbekend woord levert hooguit een gemiste park-
+// naam op (null), nooit een verkeerde positie.
+const STATUS_VERVOLGWOORD_REGEX = /^(?:AND|OR|ALL|TEMPORARILY|LIGHTS?|LIGHTING|NAV\s*AIDS?|NAVAIDS?|AIS|RACON|UNLIT|EXTINGUISHED|UNRELIABLE|INOPERATIVE|FOGHORNS?|FOG|HORNS?|SIGNALS?|DEFECTIVE|NOT|WORKING|OUT|OF|ORDER|SILENT|BLACK\s*OUT|BLACK|OUT)\b/i;
+
+// Een sectiekop is de naam van het windpark/gebied waaronder de volgende
+// posities vallen ("HOLLANDSE KUST NOORD"). Alleen accepteren als het er ook
+// echt als kop uitziet: hooguit vijf woorden, geen leestekens/cijfergedoe,
+// en niet de afsluitende regel van het bericht ("CANCEL MSI 191/26").
+function parkKopUit(tekst) {
+  if (!tekst) return null;
+  const t = String(tekst).replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  if (/\b(CANCEL|CANCELLED|MSI|NAVAREA|NNNN|ZCZC)\b/i.test(t)) return null;
+  if (!/^[A-Z][A-Z '-]*$/i.test(t)) return null;
+  const woorden = t.split(' ');
+  if (woorden.length > 5) return null;
+  return t.slice(0, 40);
+}
+
+// Knipt de statuszin vooraan van `rest` af; geeft { statusTekst, staart }
+// terug, waarbij `staart` de eventuele sectiekop van de volgende positie is.
+function splitsStatusEnStaart(rest) {
+  const woorden = String(rest ?? '').trim().split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < woorden.length && STATUS_VERVOLGWOORD_REGEX.test(woorden[i])) i++;
+  return { statusTekst: woorden.slice(0, i).join(' '), staart: woorden.slice(i).join(' ') };
+}
+
 // Los, per-platform statuslabel (UNLIT/FOGHORN INOPERATIVE/NAV AIDS
 // UNRELIABLE/...) — bewust NIET via de EVENT_REGELS hierboven: die
 // vereisen een triggerwoord (LIGHT/NAV AIDS/BUOY) binnen 60 tekens van een
@@ -1270,9 +1332,52 @@ function splitsRiglijst(body) {
   const matches = [...body.matchAll(regex)];
   if (matches.length === 0) return [];
 
-  const naamStaatVoorCoordinaat = RIGLIJST_STATUSWOORD_REGEX.test(
-    body.slice(matches[0].index + matches[0][0].length)
-  );
+  const naEersteCoordinaat = body.slice(matches[0].index + matches[0][0].length);
+  const naamStaatVoorCoordinaat = RIGLIJST_STATUSWOORD_REGEX.test(naEersteCoordinaat);
+  // 2026-09-10, zie STATUS_VERVOLGWOORD_REGEX hierboven: naam NA de
+  // coördinaat MET status daar weer achter (PA46-format). Alleen bekeken als
+  // de naam niet vóór de coördinaat staat -- dan is het eerste woord erna de
+  // naam, en bepaalt het woord dáárna welke van de twee "naam erachter"-
+  // varianten het is.
+  const naamDanStatus = !naamStaatVoorCoordinaat
+    && RIGLIJST_STATUSWOORD_REGEX.test(naEersteCoordinaat.replace(/^\s*\S+/, ''));
+
+  if (naamDanStatus) {
+    // PA46-format: <coördinaat> <naam> <status...> [<sectiekop volgende>]
+    const entries = [];
+    // Kop vóór de eerste coördinaat: alles ná de inleidende frase
+    // ("... HAVE DEFECTS" / "...:") is de sectiekop van de eerste positie.
+    const kop = body.slice(0, matches[0].index);
+    const koprest = kop.match(/(?:DEFECTS?|DEFECTIVE|FOLLOWS|:)([\s\S]*)$/i);
+    let park = parkKopUit(koprest ? koprest[1] : null);
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const vanaf = match.index + match[0].length;
+      const tot = i + 1 < matches.length ? matches[i + 1].index : body.length;
+      const segment = body.slice(vanaf, tot).trim();
+      const woorden = segment.split(/\s+/).filter(Boolean);
+      const naam = woorden.length ? woorden[0].slice(0, 60) : null;
+      const { statusTekst, staart } = splitsStatusEnStaart(woorden.slice(1).join(' '));
+      const lat = (Number(match[1]) + Number(normaliseerMinuten(match[2])) / 60) * (match[3].toUpperCase() === 'S' ? -1 : 1);
+      const lon = (Number(match[4]) + Number(normaliseerMinuten(match[5])) / 60) * (match[6].toUpperCase() === 'W' ? -1 : 1);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        const status = classificeerRiglijstStatus(statusTekst);
+        entries.push({
+          naam: naam || null,
+          lat: +lat.toFixed(6),
+          lon: +lon.toFixed(6),
+          park: park ?? null,
+          ...(status ? { eventType: status.type, eventLabel: status.label } : {}),
+        });
+      }
+      // Wat na de statuszin overblijft is de sectiekop van de VOLGENDE
+      // positie; blijft die leeg (of ziet het er niet als kop uit), dan valt
+      // deze positie nog onder hetzelfde park als de vorige.
+      const volgendPark = parkKopUit(staart);
+      if (volgendPark) park = volgendPark;
+    }
+    return entries;
+  }
 
   if (!naamStaatVoorCoordinaat) {
     // Bestaande logica (HAEVA-format): naam NA de coördinaat, ongewijzigd.
@@ -2262,7 +2367,7 @@ async function fetchNavtexBand(env, band) {
 
     // Riglijst: los puntsignaal per gevonden platformpositie i.p.v. één
     // gebiedssignaal (zie splitsRiglijst() hierboven).
-    if (b.eventInfo.type === 'riglijst' || b.eventInfo.type === 'platform-defect') {
+    if (b.eventInfo.type === 'riglijst' || b.eventInfo.type === 'platform-defect' || b.eventInfo.type === 'turbine-defect') {
       const rigs = splitsRiglijst(b.body);
       if (rigs.length === 0) return []; // frase herkend maar geen enkele positie erin gevonden -- niks te plotten
       return rigs.map((rig, i) =>
@@ -2272,7 +2377,11 @@ async function fetchNavtexBand(env, band) {
           // Per-platform status (bv. "Misthoorn defect" i.p.v. het
           // generieke "Boorplatform(s)") als splitsRiglijst() die kon
           // classificeren, zie classificeerRiglijstStatus() hierboven.
-          titel: `NAVTEX - ${rig.eventLabel ?? b.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''} - ${stationNaam}`,
+          // 2026-09-10, op verzoek van Lex: bij een turbinelijst staat de
+          // windparknaam als sectiekop in de tekst ("HOLLANDSE KUST NOORD")
+          // -- die hoort achter de turbinenaam, anders zegt "HZD6" op zichzelf
+          // niets over wáár je zit. Alleen als splitsRiglijst() er een vond.
+          titel: `NAVTEX - ${rig.eventLabel ?? b.eventInfo.label}${rig.naam ? ` - ${rig.naam}` : ''}${rig.park ? ` (${rig.park})` : ''} - ${stationNaam}`,
           ernst: navtexErnst(b.body, b.typeLetter), // 2026-09-04
           lat: rig.lat,
           lon: rig.lon,
@@ -2288,6 +2397,8 @@ async function fetchNavtexBand(env, band) {
             // velden, zie hazardIconHtml() in app.js.
             rigStatusType: rig.eventType ?? null,
             rigStatusLabel: rig.eventLabel ?? null,
+            // 2026-09-10: windpark/sectiekop, zie de titel hierboven.
+            rigPark: rig.park ?? null,
           },
         })
       );

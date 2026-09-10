@@ -1452,6 +1452,9 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .popup-rig-naam { color: #ffb84d; }
 .popup-rig-naam-onbekend { font-style: italic; font-weight: 400; }
 .popup-rig-teller { font-weight: 400; color: #c99a5c; font-size: 10.5px; }
+/* 2026-09-10: windpark achter de turbinenaam (PA46 "HOLLANDSE KUST ZUID") --
+   iets gedempter dan de naam zelf, zodat de naam de blikvanger blijft. */
+.popup-rig-park { font-weight: 400; color: #c99a5c; font-size: 10.5px; }
 /* 2026-08-21-fix, op verzoek van Lex ("ik zie bij hurricane Lala nu het
    volledige bulletin IN PLAATS VAN de melding") — de vorige opruiming
    (2026-08-20, hierboven) haalde de 90px-afklemming helemaal weg vanuit de
