@@ -3915,18 +3915,27 @@ const NAVTEX_PLATFORM_SVG = `
 // hazardIconHtml() staat; het precieze defect blijft in de titel/popup staan
 // ("Licht onbetrouwbaar/uit" vs "Misthoorn defect").
 //
-// Vorm: mast met drie wieken, plus de oranje navigatielamp halverwege de mast
-// (zelfde oranje stip als NAVTEX_PLATFORM_SVG hierboven) -- dat is nu juist
-// het ding dat in deze berichten stuk is.
+// Vorm: mast met drie wieken, plus de navigatielamp halverwege de mast -- dat
+// is nu juist het ding dat in deze berichten stuk is.
+//
+// 2026-09-10, tweede ronde, op melding van Lex ("is vrijwel onzichtbaar, moet
+// iets prominenter"): de eerste versie was wit lijnwerk op 1,4 px, en dat
+// heeft op de donkere kaart te weinig massa -- vier varianten naast elkaar
+// gelegd (dikkere lijnen / gevulde wieken / amber / rode streep erdoor) en Lex
+// koos amber. Kleur is hier de echte winst, niet lijndikte: amber #ffc75a is
+// dezelfde kleurtaal als NAVTEX_MISTHOORN_SVG (die pakt om die reden goed op),
+// en de lamp is rood i.p.v. oranje omdat oranje-op-amber wegvalt. Lijnen
+// meteen ook van 1,4 naar 2,0 en de mastvoet iets smaller, zodat de vorm op
+// 22 px (zie .navtex-pin in styles.css) niet dichtloopt.
 const NAVTEX_TURBINE_SVG = `
   <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-    <g fill="none" stroke="#f4f6fb" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <g fill="none" stroke="#ffc75a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 8.6 V20"/>
-      <path d="M8 20 H16"/>
-      <path d="M12 7.4 V2.2 M11 8 L6.6 10.6 M13 8 L17.4 10.6"/>
+      <path d="M7.6 20 H16.4"/>
+      <path d="M12 7.2 V2 M10.9 8.2 L6.3 11 M13.1 8.2 L17.7 11"/>
     </g>
-    <circle cx="12" cy="7.5" r="1.15" fill="#f4f6fb"/>
-    <circle cx="12" cy="14.2" r="1.15" fill="#ff8a3d"/>
+    <circle cx="12" cy="7.9" r="1.5" fill="#ffc75a"/>
+    <circle cx="12" cy="14.4" r="1.8" fill="#ff5a3d"/>
   </svg>
 `.trim();
 
