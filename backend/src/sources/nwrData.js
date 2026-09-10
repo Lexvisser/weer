@@ -54,11 +54,26 @@ async function haalEens(url) {
   const klok = setTimeout(() => stop.abort(), AANROEP_MS);
   try {
     const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/geo+json' }, signal: stop.signal });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const err = new Error(`${res.status} ${res.statusText}`);
+      err.status = res.status;
+      throw err;
+    }
     return await res.json();
   } finally {
     clearTimeout(klok);
   }
+}
+
+// 2026-09-10, uit Lex' serverlog: veel waarneemstations uit de NWS-lijst hebben
+// helemaal geen metingen-endpoint en geven 404. Zo'n antwoord verandert niet
+// door het nog eens te vragen — herkansen kostte alleen maar seconden (drie
+// pogingen per dood station) en maakte het juist trager. Alleen opnieuw
+// proberen bij iets dat wél kan overwaaien: time-out, netwerkfout, 429, 5xx.
+function magOpnieuw(err) {
+  const st = err?.status;
+  if (st == null) return true; // time-out of netwerkfout
+  return st === 429 || st >= 500;
 }
 
 async function haal(url, ms) {
@@ -73,6 +88,7 @@ async function haal(url, ms) {
       return waarde;
     } catch (err) {
       laatste = err;
+      if (!magOpnieuw(err)) throw err; // 404 e.d.: definitief, niet nog eens vragen
       const reden = err?.name === 'AbortError' ? `geen antwoord binnen ${AANROEP_MS / 1000} s` : err.message;
       console.warn(`[weer] nwrData poging ${poging}/${POGINGEN} mislukt (${reden}): ${url}`);
       if (poging < POGINGEN) await new Promise((r) => setTimeout(r, 700 * poging));
@@ -323,10 +339,16 @@ export async function fetchNwrData(stationId) {
   // bij twee overlappende zenders ruim 150 — dan breken er verbindingen af en
   // komt er van geen van beide iets terug. Nu in blokjes van acht: een paar
   // seconden trager, maar het houdt stand.
+  const dood = new Set(); // stations zonder metingen-endpoint (404): één keer leren is genoeg
   const gemeten = await inBlokjes(lijst, 8, (s) => waarnemingVoor(s, station.lon).catch((err) => {
-    console.warn(`[weer] nwrData ${stationId}/${s.id}: ${err.message}`);
+    if (err?.status === 404) dood.add(s.id); else console.warn(`[weer] nwrData ${stationId}/${s.id}: ${err.message}`);
     return null;
   }));
+  if (dood.size) {
+    punt.stations = punt.stations.filter((s) => !dood.has(s.id));
+    puntenBewaar();
+    console.log(`[weer] nwrData ${stationId}: ${dood.size} station(s) zonder metingen uit de lijst gehaald (${[...dood].join(', ')}), ${punt.stations.length} over`);
+  }
   const waarnemingen = gemeten.filter(Boolean).filter((w) => w.tempC != null || w.wind);
 
   let watWater = [];
