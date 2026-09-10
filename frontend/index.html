@@ -83,6 +83,11 @@
       <span id="navtexVolgendeTekst"></span>
       <button type="button" id="navtexAutoKnop" title="Automatisch de ruwe-ontvangst-viewer openen zodra er tekst binnenkomt">AUTO UIT</button>
       <button type="button" id="navtexDxKnop" title="Bijzondere (verre) ontvangst van de afgelopen 24 uur tonen/verbergen">DX</button>
+      <!-- 2026-09-10, op verzoek van Lex ("het schema dat nu bij instellingen
+           staat moet verhuizen naar de NAVTEX-omgeving ... een link bij de
+           DX-knop"): opent #navtexSchemaOverlay (zendschema UTC + de
+           berichttype-letters). Zie openNavtexSchema() in app.js. -->
+      <button type="button" id="navtexSchemaKnop" title="Zendschema van de NAVTEX-stations en de berichttype-letters">📡</button>
     </div>
     <!-- 2026-08-28, op verzoek van Lex ("een lijstje met DX bijzonderheden...
          onder de melding voor de uitzendingen met een toon en verberg knop,
@@ -492,16 +497,11 @@
   </button>
   <div class="instellingen-lijst" id="meldingenStatus" style="display:none;"></div>
 
-  <!-- 2026-08-26, op verzoek van Lex ("kan ik dit schema niet ergens handig
-       in de app beschikbaar hebben") — naslag-overzicht van NAVTEX-stations
-       (zendschema UTC) + de A-Z berichttype-lettertabel. Niet altijd
-       zichtbaar maar wel op te roepen (ook op iOS): zelfde dicht-tot-je-
-       erop-tikt uitklap-idioom als #alarmSectieKnop hierboven, gevuld door
-       renderNavtexUitlegSectie() in app.js. -->
-  <button type="button" class="instellingen-sectie-knop" id="navtexUitlegKnop">
-    <span>📡 NAVTEX-stations &amp; berichttypes</span><span class="instellingen-sectie-pijl" id="navtexUitlegPijl">▸</span>
-  </button>
-  <div class="instellingen-lijst" id="navtexUitlegLijst" style="display:none;"></div>
+  <!-- 2026-08-26: hier stond het naslag-overzicht van NAVTEX-stations
+       (zendschema UTC) + de A-Z berichttype-lettertabel. 2026-09-10, op
+       verzoek van Lex, verhuisd naar de NAVTEX-omgeving zelf: het is nu
+       #navtexSchemaOverlay onderaan, op te roepen via het 📡-knopje naast DX
+       op de zeekaart én via "📡 Schema" in de balk van de Ontvangst-viewer. -->
 </div>
 
 <!-- 2026-08-20: verhuisd hierheen vanuit .map-wrap toen de "Aarde nu"-knop
@@ -572,6 +572,9 @@
 <div class="label-popup-overlay verborgen" id="navtexRuwOverlay">
   <div class="label-popup-balk">
     <span class="navtex-ruw-status" id="navtexRuwStatus">—</span>
+    <!-- 2026-09-10, op verzoek van Lex ("een link bij het transparante
+         ontvangst scherm"): naar het zendschema/berichttype-overzicht. -->
+    <button type="button" id="navtexRuwSchemaKnop" class="navtex-balk-knop">📡 Schema</button>
     <button id="navtexRuwSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
   </div>
   <!-- 2026-09-08, op verzoek van Lex ("de frequentie en de waterval, zoals je
@@ -593,6 +596,22 @@
     </div>
   </div>
   <div class="label-popup-inhoud navtex-ruw-inhoud" id="navtexRuwInhoud"><pre id="navtexRuwTekst"></pre></div>
+</div>
+
+<!-- 2026-09-10, op verzoek van Lex ("het schema dat nu bij instellingen staat
+     moet verhuizen naar de NAVTEX-omgeving"): het naslag-overzicht van de
+     NAVTEX-stations (zendschema UTC) + de A-Z berichttype-lettertabel, nu een
+     eigen venster in de NAVTEX-omgeving i.p.v. een sectie in Instellingen.
+     Twee ingangen: het 📡-knopje naast DX op de zeekaart en "📡 Schema" in de
+     balk van de Ontvangst-viewer. Gevuld door renderNavtexSchema() in app.js;
+     bewust vrijwel dekkend (i.t.t. de transparante Ontvangst-viewer) omdat een
+     tabel over een bewegende kaart heen niet te lezen is. -->
+<div class="label-popup-overlay verborgen" id="navtexSchemaOverlay">
+  <div class="label-popup-balk">
+    <span class="navtex-ruw-status">📡 NAVTEX-stations &amp; berichttypes</span>
+    <button id="navtexSchemaSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
+  </div>
+  <div class="label-popup-inhoud navtex-schema-inhoud" id="navtexSchemaInhoud"></div>
 </div>
 
 <nav class="bottom-nav" id="bottomNav">

@@ -81,9 +81,16 @@ const ALARM_INSTELLINGEN_LIJST_EL = document.getElementById('alarmInstellingenLi
 // rustige (niet-herhalende) alarmkanaal naast Pushover.
 const MELDINGEN_KNOP_EL = document.getElementById('meldingenKnop');
 const MELDINGEN_STATUS_EL = document.getElementById('meldingenStatus');
-const NAVTEX_UITLEG_KNOP_EL = document.getElementById('navtexUitlegKnop');
-const NAVTEX_UITLEG_PIJL_EL = document.getElementById('navtexUitlegPijl');
-const NAVTEX_UITLEG_LIJST_EL = document.getElementById('navtexUitlegLijst');
+// 2026-09-10: het NAVTEX-naslagoverzicht (zendschema UTC + berichttype-
+// letters) stond als uitklapsectie in Instellingen; op verzoek van Lex
+// verhuisd naar de NAVTEX-omgeving zelf — een eigen venster
+// (#navtexSchemaOverlay), op te roepen via het 📡-knopje naast DX op de
+// zeekaart en via "📡 Schema" in de balk van de Ontvangst-viewer.
+const NAVTEX_SCHEMA_OVERLAY_EL = document.getElementById('navtexSchemaOverlay');
+const NAVTEX_SCHEMA_INHOUD_EL = document.getElementById('navtexSchemaInhoud');
+const NAVTEX_SCHEMA_KNOP_EL = document.getElementById('navtexSchemaKnop');
+const NAVTEX_SCHEMA_SLUITEN_EL = document.getElementById('navtexSchemaSluiten');
+const NAVTEX_RUW_SCHEMA_KNOP_EL = document.getElementById('navtexRuwSchemaKnop');
 // 2026-08-27: ruwe-NAVTEX-ontvangst-viewer (tail -f van ~/navtex_berichten.txt
 // via /api/navtex-ruw) — zie openNavtexRuw() verderop.
 const NAVTEX_RUW_KNOP_EL = document.getElementById('toggleNavtexRuw');
@@ -1181,7 +1188,7 @@ async function laadNavtexStations() {
     const body = await fetch('/api/navtex-stations').then((r) => r.json());
     if (Array.isArray(body?.stations) && body.stations.length) {
       NAVTEX_STATIONS_DATA = body.stations;
-      renderNavtexUitlegSectie(); // ververst meteen als de sectie toevallig al openstond
+      renderNavtexSchema(); // ververst meteen als het schema-venster toevallig al openstond
       ververNavtexVolgende(); // 2026-08-27: het "volgende uitzending"-plaatje kan nu gevuld worden
     }
   } catch {
@@ -1501,23 +1508,21 @@ function renderNavtexDx() {
   NAVTEX_DX_PANEEL_EL.classList.remove('verborgen');
 }
 
-NAVTEX_DX_KNOP_EL?.addEventListener('click', () => {
-  navtexDxOpen = !navtexDxOpen;
+// 2026-09-10: losgeweekt uit de klik-handler, zodat het opruimen bij het
+// openen van de Ontvangst-viewer (zie ruimKaartVensterOp()) het DX-paneel op
+// precies dezelfde manier kan sluiten — inclusief het bewaren van de
+// voorkeur, zodat 'ie niet bij de eerstvolgende verversing terugkomt.
+function zetNavtexDx(open) {
+  navtexDxOpen = open;
   try {
     localStorage.setItem(NAVTEX_DX_KEY, navtexDxOpen ? 'aan' : 'uit');
   } catch (err) {
     console.warn('[weer] navtex-dx-voorkeur opslaan mislukt (blijft wel actief voor deze sessie):', err);
   }
   renderNavtexDx();
-});
+}
 
-// 2026-08-26: zelfde dicht-tot-je-erop-tikt uitklap-idioom (booleaanse vlag
-// + pijltje dat omdraait) als alarmSectieUitgeklapt hierboven — zie de
-// toelichting daar. Lex expliciet: "niet altijd zichtbaar maar wel op te
-// roepen (ook op iOS)", dus geen <details>-element (iOS-Safari-styling
-// daarvan is lastig consistent te krijgen met de rest van deze knoppen) maar
-// hetzelfde bestaande knop-mechanisme.
-let navtexUitlegSectieUitgeklapt = false;
+NAVTEX_DX_KNOP_EL?.addEventListener('click', () => zetNavtexDx(!navtexDxOpen));
 
 // ---- Ruwe NAVTEX-ontvangst-viewer (2026-08-27) ------------------------
 // Op verzoek van Lex ("ik heb een systemd naar tail -f
@@ -1630,8 +1635,48 @@ function bouwGemengdeOntvangstHtml(segmenten) {
   return html;
 }
 
+// 2026-09-10, op verzoek van Lex ("als ik bij Navtex kies voor de knop
+// Ontvangst, dan wil ik dat alle labels of andere venstertjes gesloten
+// worden — de transparantie wordt dan niet gestoord"): de Ontvangst-viewer is
+// halfdoorzichtig (#navtexRuwOverlay in styles.css), dus alles wat nog over
+// de kaart heen staat schijnt erdoorheen en maakt de decoder-tekst onrustig.
+// Daarom vlak voor het openen één keer opruimen. Bewust NIET meegenomen: de
+// permanente zeegebied-namen (bindTooltip permanent:true in
+// bouwZeeGebiedenLaag) — dat is de zeekaart zelf, precies wat de
+// transparantie moet laten zien.
+function ruimKaartVensterOp() {
+  // Kaart-popups (o.a. het label van een kaarticoon) en de losse tooltips.
+  try {
+    kaart?.closePopup();
+    kaart?.eachLayer((laag) => {
+      const tip = laag.getTooltip?.();
+      if (tip && !tip.options?.permanent) laag.closeTooltip?.();
+    });
+  } catch (err) {
+    console.warn('[weer] kaart-popups sluiten mislukt:', err);
+  }
+  // Schermvullende vensters die boven de viewer zouden blijven staan.
+  LABEL_POPUP_OVERLAY_EL?.classList.add('verborgen');
+  sluitSchipSheet(true);
+  sluitDwdKaart();
+  // Bewust NIET de alarm-popup (#alarmPopup): die wegklikken zonder dat je
+  // 'm gelezen hebt is erger dan een onrustige achtergrond, en
+  // sluitAlarmPopup() zou meteen het volgende alarm uit de wachtrij tonen.
+  // NWR: paneel dicht én de stream stoppen (keuze Lex) -- nwrStop() verbergt
+  // ook het spelerbalkje linksboven.
+  nwrPaneelSluit();
+  nwrStop();
+  KAART_ZOEK_EL?.classList.add('verborgen');
+  // Overige plaatjes op de kaart.
+  if (navtexDxOpen) zetNavtexDx(false);
+  zetVaarMenuOpen(false);
+  GRADEN_VAK_EL?.classList.add('verborgen');
+  FRONTEN_INFO_EL?.classList.add('verborgen');
+}
+
 function openNavtexRuw(doorAuto) {
   if (!NAVTEX_RUW_OVERLAY_EL) return;
+  ruimKaartVensterOp();
   navtexRuwGeopendDoorAuto = doorAuto === true;
   NAVTEX_RUW_OVERLAY_EL.classList.remove('verborgen');
   NAVTEX_RUW_TEKST_EL.textContent = 'Ophalen…';
@@ -2233,44 +2278,32 @@ SDR_AUDIO_KNOP_EL?.addEventListener('click', (ev) => {
 SDR_KOP_EL?.addEventListener('click', () => SDR_EL?.classList.toggle('ingeklapt'));
 window.addEventListener('resize', () => { if (sdrStream) sdrPanelen.forEach(sdrTeken); });
 
-function renderNavtexUitlegSectie() {
-  if (NAVTEX_UITLEG_PIJL_EL) NAVTEX_UITLEG_PIJL_EL.textContent = navtexUitlegSectieUitgeklapt ? '▾' : '▸';
-  if (!NAVTEX_UITLEG_LIJST_EL) return;
-  NAVTEX_UITLEG_LIJST_EL.style.display = navtexUitlegSectieUitgeklapt ? '' : 'none';
-  NAVTEX_UITLEG_LIJST_EL.innerHTML = '';
-  if (!navtexUitlegSectieUitgeklapt) return;
-
-  // 2026-08-27: knop naar de ruwe-ontvangst-viewer, ook hier (naast de
-  // 📻-knop in Zee-modus) — keuze van Lex: "beide".
-  const ruwRij = document.createElement('div');
-  ruwRij.className = 'instelling-item';
-  const ruwLabel = document.createElement('span');
-  ruwLabel.textContent = '📻 Ruwe ontvangst (live decoder-tekst)';
-  const ruwKnop = document.createElement('button');
-  ruwKnop.type = 'button';
-  ruwKnop.className = 'alarm-toggle';
-  ruwKnop.textContent = 'BEKIJK';
-  ruwKnop.addEventListener('click', openNavtexRuw);
-  ruwRij.appendChild(ruwLabel);
-  ruwRij.appendChild(ruwKnop);
-  NAVTEX_UITLEG_LIJST_EL.appendChild(ruwRij);
+// 2026-09-10: vult #navtexSchemaOverlay (voorheen de uitklapsectie
+// "📡 NAVTEX-stations & berichttypes" in Instellingen). De rijen hergebruiken
+// de .instelling-item-opmaak, die op de donkere overlay net zo goed leest.
+function renderNavtexSchema() {
+  if (!NAVTEX_SCHEMA_INHOUD_EL) return;
+  // Alleen werk doen als het venster ook echt openstaat -- laadNavtexStations()
+  // roept dit aan zodra de stationslijst binnen is.
+  if (NAVTEX_SCHEMA_OVERLAY_EL?.classList.contains('verborgen')) return;
+  NAVTEX_SCHEMA_INHOUD_EL.innerHTML = '';
 
   const uitleg = document.createElement('div');
   uitleg.className = 'instellingen-uitleg';
   uitleg.textContent = 'De tweede letter in de berichtcode (bv. de "A" in PA11) is het station, de rest het berichttype.';
-  NAVTEX_UITLEG_LIJST_EL.appendChild(uitleg);
+  NAVTEX_SCHEMA_INHOUD_EL.appendChild(uitleg);
 
   const stationsKop = document.createElement('div');
   stationsKop.className = 'instellingen-uitleg';
   stationsKop.textContent = 'Stations (zendschema UTC):';
-  NAVTEX_UITLEG_LIJST_EL.appendChild(stationsKop);
+  NAVTEX_SCHEMA_INHOUD_EL.appendChild(stationsKop);
 
   const stations = NAVTEX_STATIONS_DATA ?? [];
   if (!stations.length) {
     const leeg = document.createElement('div');
     leeg.className = 'instellingen-uitleg';
     leeg.textContent = '(nog aan het laden...)';
-    NAVTEX_UITLEG_LIJST_EL.appendChild(leeg);
+    NAVTEX_SCHEMA_INHOUD_EL.appendChild(leeg);
   }
   stations.forEach((station) => {
     const rij = document.createElement('div');
@@ -2283,13 +2316,13 @@ function renderNavtexUitlegSectie() {
     tijden.textContent = station.zendschema?.length ? station.zendschema.join(', ') : 'onbekend';
     rij.appendChild(label);
     rij.appendChild(tijden);
-    NAVTEX_UITLEG_LIJST_EL.appendChild(rij);
+    NAVTEX_SCHEMA_INHOUD_EL.appendChild(rij);
   });
 
   const typeKop = document.createElement('div');
   typeKop.className = 'instellingen-uitleg';
   typeKop.textContent = 'Berichttype (2e letter van de code):';
-  NAVTEX_UITLEG_LIJST_EL.appendChild(typeKop);
+  NAVTEX_SCHEMA_INHOUD_EL.appendChild(typeKop);
 
   NAVTEX_TYPE_NASLAG.forEach((regel) => {
     const rij = document.createElement('div');
@@ -2301,14 +2334,26 @@ function renderNavtexUitlegSectie() {
     omschrijving.textContent = regel.omschrijving;
     rij.appendChild(letter);
     rij.appendChild(omschrijving);
-    NAVTEX_UITLEG_LIJST_EL.appendChild(rij);
+    NAVTEX_SCHEMA_INHOUD_EL.appendChild(rij);
   });
 }
 
-NAVTEX_UITLEG_KNOP_EL?.addEventListener('click', () => {
-  navtexUitlegSectieUitgeklapt = !navtexUitlegSectieUitgeklapt;
-  renderNavtexUitlegSectie();
-});
+function openNavtexSchema() {
+  if (!NAVTEX_SCHEMA_OVERLAY_EL) return;
+  NAVTEX_SCHEMA_OVERLAY_EL.classList.remove('verborgen');
+  NAVTEX_SCHEMA_INHOUD_EL.scrollTop = 0;
+  renderNavtexSchema();
+}
+
+function sluitNavtexSchema() {
+  NAVTEX_SCHEMA_OVERLAY_EL?.classList.add('verborgen');
+}
+
+// Twee ingangen (keuze Lex): het 📡-knopje naast DX op de zeekaart en
+// "📡 Schema" in de balk van de transparante Ontvangst-viewer.
+NAVTEX_SCHEMA_KNOP_EL?.addEventListener('click', openNavtexSchema);
+NAVTEX_RUW_SCHEMA_KNOP_EL?.addEventListener('click', openNavtexSchema);
+NAVTEX_SCHEMA_SLUITEN_EL?.addEventListener('click', sluitNavtexSchema);
 
 function dopplerTileInfo(product, signal) {
   if (product === 'reflectiviteit') {
@@ -12403,7 +12448,8 @@ laadRadarstations();
 laadNavtexStations();
 setInterval(verversen, 20000);
 renderAlarmInstellingen(); // eenmalig — hangt alleen van localStorage af, niet van live signalen
-renderNavtexUitlegSectie(); // eenmalig -- staat standaard dicht, NAVTEX_STATIONS_DATA vult zich async
+// 2026-09-10: het schema-venster (#navtexSchemaOverlay) vult zichzelf bij het
+// openen (openNavtexSchema); geen eenmalige render meer nodig bij het opstarten.
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () =>

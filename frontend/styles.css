@@ -717,6 +717,18 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 #navtexRuwOverlay { background:rgba(3,10,5,0.55); }
 #navtexRuwOverlay .label-popup-balk { background:rgba(3,10,5,0.6); border-bottom-color:rgba(59,255,124,0.25); }
 .navtex-ruw-inhoud { background:rgba(3,10,5,0.45); }
+/* 2026-09-10: link-knopje in de balk van de Ontvangst-viewer (📡 Schema) —
+   fosforgroen zoals de rest van de NAVTEX-omgeving, niet het roze van de
+   sluitknop, zodat het als "verder kijken" leest en niet als "weg hier". */
+.navtex-balk-knop { flex:0 0 auto; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.03em; color:#3bff7c; background:rgba(59,255,124,0.12); border:1px solid rgba(59,255,124,0.45); border-radius:8px; padding:7px 10px; cursor:pointer; white-space:nowrap; }
+/* 2026-09-10: het verhuisde zendschema-/berichttype-overzicht
+   (#navtexSchemaOverlay). Zelfde groenzweem als de viewer, maar vrijwel
+   dekkend: een tabel over een bewegende kaart heen is niet te lezen. De
+   inhoud zelf hergebruikt de .instelling-item-rijen uit Instellingen, dus
+   hier alleen de eigen padding eraf halen zodat de rijen schermbreed zijn. */
+#navtexSchemaOverlay { background:rgba(3,10,5,0.94); }
+#navtexSchemaOverlay .label-popup-balk { background:rgba(3,10,5,0.85); border-bottom-color:rgba(59,255,124,0.25); }
+.navtex-schema-inhoud { padding:0 0 env(safe-area-inset-bottom, 0px); }
 /* 2026-08-28, op verzoek van Lex: kopregel per bericht in de viewer — de
    begintijd ervoor en een streep eronder, groter en feller dan de
    berichttekst (wat in het .txt-bestand zelf nooit had gekund). */
