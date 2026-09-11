@@ -42,6 +42,10 @@ DIENST = "navtex-airspy"
 
 DREMPEL_MIN = int(os.environ.get("NAVTEX_MELDER_DREMPEL_MIN", "150"))
 TESTMODUS = os.environ.get("NAVTEX_MELDER_TEST") == "1"
+# Aangeroepen door navtex-waakhond vlak vóór een herstart: stuur nu een
+# rapport, met het onderwerp dat de waakhond meegeeft (de reden van ingrijpen).
+FORCEER = os.environ.get("NAVTEX_MELDER_FORCEER") == "1"
+ONDERWERP_OVERRIDE = os.environ.get("NAVTEX_MELDER_ONDERWERP")
 
 
 # ---------------------------------------------------------------- hulpjes
@@ -289,14 +293,20 @@ def verstuur(onderwerp, tekst):
     env = lees_env(ENV_BESTAND)
     gebruiker = env.get("EMAIL_GEBRUIKER")
     wachtwoord = env.get("EMAIL_APP_WACHTWOORD")
-    ontvanger = env.get("EMAIL_ONTVANGER") or gebruiker
+    # Bewust NIET EMAIL_ONTVANGER (dat is het alarmadres van de app, iCloud op
+    # de telefoon): dit is een technisch rapport en gaat naar het Gmail-adres
+    # zelf, tenzij NAVTEX_MELDER_ONTVANGER in .env iets anders zegt.
+    ontvanger = env.get("NAVTEX_MELDER_ONTVANGER") or gebruiker
     if not gebruiker or not wachtwoord:
         print("navtex-melder: geen mailgegevens in .env — rapport alleen in het logboek",
               file=sys.stderr)
         return False
+    # Zelfde afzender als de app (email.js, afzenderAdres): plus-adressering
+    # zodat de mail op de iPhone onder dezelfde VIP-regel valt.
+    afzender = gebruiker.replace("@", "+weeralarm@", 1) if "@" in gebruiker else gebruiker
     bericht = EmailMessage()
     bericht["Subject"] = onderwerp
-    bericht["From"] = gebruiker
+    bericht["From"] = afzender
     bericht["To"] = ontvanger
     bericht.set_content(tekst)
     try:
@@ -341,12 +351,17 @@ def main():
 
     status = lees_status()
 
-    if TESTMODUS:
+    if TESTMODUS or FORCEER:
         tekst = maak_rapport(stil)
-        onderwerp = f"[weer] TEST — NAVTEX-melder ({duur(stil)} stil)"
-        bewaar("TESTRAPPORT\n" + tekst)
+        if FORCEER:
+            onderwerp = ONDERWERP_OVERRIDE or f"[weer] NAVTEX-waakhond grijpt in ({duur(stil)} stil)"
+            bewaar("OP VERZOEK VAN DE WAAKHOND\n" + tekst)
+        else:
+            onderwerp = f"[weer] TEST — NAVTEX-melder ({duur(stil)} stil)"
+            bewaar("TESTRAPPORT\n" + tekst)
         print("verstuurd" if verstuur(onderwerp, tekst) else "niet verstuurd")
-        print("\n" + tekst)
+        if TESTMODUS:
+            print("\n" + tekst)
         return 0
 
     if stil > DREMPEL_MIN * 60:

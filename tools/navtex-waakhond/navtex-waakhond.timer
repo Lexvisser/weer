@@ -1,0 +1,12 @@
+[Unit]
+Description=Controleert elke 5 minuten of de NAVTEX-decoder nog werkt
+
+[Timer]
+OnBootSec=15min
+OnActiveSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=navtex-waakhond.service
+
+[Install]
+WantedBy=timers.target

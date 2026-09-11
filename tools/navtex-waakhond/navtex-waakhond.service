@@ -1,0 +1,8 @@
+[Unit]
+Description=Waakhond voor navtex-airspy (herstart als de decoder is vastgelopen)
+Documentation=file:///usr/local/bin/navtex-waakhond.py
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/navtex-waakhond.py
+TimeoutStartSec=300

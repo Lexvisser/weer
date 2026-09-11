@@ -89,8 +89,11 @@ less ~/navtex-melder-rapporten.log
 ## Aannames
 
 - Mailen gaat via de Gmail-gegevens uit `~/weer-app/backend/.env`
-  (`EMAIL_GEBRUIKER`, `EMAIL_APP_WACHTWOORD`, `EMAIL_ONTVANGER`), rechtstreeks
-  over SMTP. De app wordt niet aangeraakt; wijzigt Lex daar het mailkanaal,
+  (`EMAIL_GEBRUIKER`, `EMAIL_APP_WACHTWOORD`), rechtstreeks
+  over SMTP, met dezelfde +weeralarm-afzender als de app. Ontvanger is het
+  Gmail-adres zelf (niet `EMAIL_ONTVANGER`, dat is het alarmadres op de
+  telefoon); anders instellen kan met `NAVTEX_MELDER_ONTVANGER` in `.env`.
+  De app wordt niet aangeraakt; wijzigt Lex daar het mailkanaal,
   dan moet dit script mee.
 - De dienst draait als `lex`; de unit ook, met `systemd-journal` als extra
   groep zodat de S/N-regels leesbaar zijn.
