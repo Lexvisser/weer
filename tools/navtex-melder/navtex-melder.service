@@ -1,0 +1,11 @@
+[Unit]
+Description=Melder voor NAVTEX-ontvangst (mailt bij uitblijvende berichten, grijpt niet in)
+Documentation=file:///usr/local/bin/navtex-melder.py
+
+[Service]
+Type=oneshot
+User=lex
+Group=lex
+SupplementaryGroups=systemd-journal
+ExecStart=/usr/local/bin/navtex-melder.py
+TimeoutStartSec=180

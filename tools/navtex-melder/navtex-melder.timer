@@ -1,0 +1,12 @@
+[Unit]
+Description=Controleert elk kwartier of de NAVTEX-ontvangst nog berichten oplevert
+
+[Timer]
+OnBootSec=20min
+OnActiveSec=15min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Unit=navtex-melder.service
+
+[Install]
+WantedBy=timers.target
