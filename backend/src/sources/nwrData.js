@@ -16,6 +16,8 @@
 //
 // Lex 10/09: geen straal en geen maximum — alle stations die /points voor deze
 // zender teruggeeft. Wél strikt één zender per keer: alleen die waar je op klikt.
+// Lex 11/09: de boeien lopen daarin mee — ze krijgen het bereik van de stations
+// van die zender, ruim bemeten (zie BOEI_FACTOR).
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -38,6 +40,16 @@ const BOEIEN_MS = 10 * 60 * 1000;
 // desgewenst met NWR_DATA_MAX_KM in .env.
 const MAX_KM = Number(process.env.NWR_DATA_MAX_KM) || 0; // 0 = geen grens
 const MAX_STATIONS = Number(process.env.NWR_DATA_MAX_STATIONS) || 0; // 0 = geen grens
+// 2026-09-11, op verzoek van Lex ("dat loopt niet gelijk op met de stations...
+// ik zie ze min of meer overal verschijnen afhankelijk van de zoomfactor"): de
+// boeien hoorden bij géén zender — het was alles binnen een doos om de VS, en
+// de kaart tekende daar alleen van wat toevallig in beeld stond. Nu krijgen ze
+// hetzelfde bereik als de waarneemstations van de aangeklikte zender: de
+// afstand tot het verste station dat meedoet, maal een marge. Richting water
+// mag die marge ruim zijn — op land liggen toch geen boeien, dus een grotere
+// straal kost daar niets en voorkomt dat we zeestations missen.
+const BOEI_FACTOR = Number(process.env.NWR_BOEI_FACTOR) || 2;
+const BOEI_MIN_KM = Number(process.env.NWR_BOEI_MIN_KM) || 250;
 // 2026-09-10, na Lex' vraag of die geschrapte stations wel écht dood zijn: een
 // 404 op /observations/latest betekent niet alleen "bestaat niet", maar ook
 // "heeft op dit moment geen recente meting". Een station dat een week uit de
@@ -369,21 +381,21 @@ export async function fetchNwrData(stationId) {
   }
   const waarnemingen = gemeten.filter(Boolean).filter((w) => w.tempC != null || w.wind);
 
-  // 2026-09-10, Lex: "alles rond USA mag getoond worden als dat niet te zwaar
-  // belast". Ophalen kost niets extra — NDBC levert alles in één bestand dat
-  // tien minuten gecachet blijft — dus geen straal meer rond de zendmast, maar
-  // een ruime doos om de Verenigde Staten (incl. Alaska, Hawaï en Puerto Rico).
-  // De belasting zit in het tekenen, en dat lost de app op door alleen te
-  // tekenen wat in beeld staat. Met NWR_DATA_MAX_KM aan geldt die straal wél,
-  // dan is inperken immers de bedoeling.
+  // 2026-09-11 (zie BOEI_FACTOR/BOEI_MIN_KM boven): boeien binnen hetzelfde
+  // bereik als de stations van déze zender, met marge. Ophalen kost niets extra
+  // — NDBC levert alles in één bestand dat tien minuten gecachet blijft — de
+  // winst zit in de kaart: wat je ziet hoort nu bij de zender waar je op klikte.
+  // Staat NWR_DATA_MAX_KM aan, dan geldt die straal (inperken is dan immers de
+  // bedoeling).
+  const stationsBereikKm = lijst.length ? lijst[lijst.length - 1].km : 0; // lijst is op afstand gesorteerd
+  const boeiStraalKm = MAX_KM > 0 ? MAX_KM : Math.max(stationsBereikKm * BOEI_FACTOR, BOEI_MIN_KM);
   let watWater = [];
   try {
-    const inVs = (b) => b.lat >= 14 && b.lat <= 73 && b.lon >= -180 && b.lon <= -59;
     const alle = await boeien();
-    watWater = (MAX_KM > 0
-      ? alle.filter((b) => afstandKm(station.lat, station.lon, b.lat, b.lon) <= MAX_KM)
-      : alle.filter(inVs)
-    ).map(boeiAlsWaarneming);
+    watWater = alle
+      .filter((b) => afstandKm(station.lat, station.lon, b.lat, b.lon) <= boeiStraalKm)
+      .map(boeiAlsWaarneming);
+    console.log(`[weer] nwrData ${stationId}: ${watWater.length} boei(en) binnen ${Math.round(boeiStraalKm)} km (stations tot ${Math.round(stationsBereikKm)} km)`);
   } catch (err) {
     console.warn(`[weer] nwrData ${stationId}: boeien mislukt: ${err.message}`);
   }
