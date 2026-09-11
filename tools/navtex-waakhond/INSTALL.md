@@ -23,9 +23,13 @@ gedecodeerd**. Per frequentie:
 
 - De demodulator logt elke 10 s `S/N 518 kHz: X dB, 490 kHz: Y dB`.
 - Zat de S/N minstens een minuut lang op 10 dB of hoger (er zond dus een
-  station), is dat meer dan 15 minuten geleden (de uitzending is voorbij en
-  had gedecodeerd moeten zijn), en is er sinds vóór die uitzending niets aan
-  het berichtenbestand toegevoegd — dan is de decoder vastgelopen.
+  station), is die uitzending al meer dan 15 minuten voorbij, en is er sinds
+  vóór het **begin** ervan niets aan het berichtenbestand toegevoegd — dan is
+  een hele uitzending ongedecodeerd voorbijgegaan en is de decoder vastgelopen.
+  Is er tijdens de uitzending nog iets geschreven, dan leeft de decoder: aan
+  het eind stuurt een station alleen nog fasering (sterk signaal, terecht
+  niets te decoderen). De eerste versie keek alleen naar het einde en gaf op
+  11 september 's avonds daardoor één onterechte herstart.
 - Vangnet voor als de S/N-regels ooit wegvallen: 150 minuten stilte op 518,
   geteld vanaf de laatste decodering of de laatste (her)start.
 
@@ -33,7 +37,8 @@ Op 11 september had dit rond 14:00 UTC ingegrepen, drie uur vóór de
 handmatige herstart.
 
 Beveiligingen tegen een lus: geen ingreep binnen 30 minuten na een start, en
-alleen uitzendingen ná de start tellen mee.
+alleen uitzendingen ná de start tellen mee. De timer heeft bewust geen
+`OnBootSec`: die vuurt bij inschakelen direct als de machine al dagen aan staat.
 
 Elke ingreep staat in het journaal onder de tag `navtex-waakhond`, mét reden.
 

@@ -14,9 +14,13 @@ GEDECODEERD. Daar kijkt deze waakhond naar, per frequentie:
 
   - De demodulator logt elke 10 s "S/N 518 kHz: X dB, 490 kHz: Y dB".
   - Zat de S/N minstens een minuut lang op >= 10 dB (er zond dus een station),
-    is dat meer dan 15 minuten geleden (de uitzending is voorbij en had
-    gedecodeerd moeten zijn), en is er sinds vóór die uitzending niets aan het
-    berichtenbestand toegevoegd -> de decoder is vastgelopen -> herstart.
+    is die uitzending al meer dan 15 minuten voorbij, en is er sinds vóór het
+    BEGIN ervan niets aan het berichtenbestand toegevoegd -> een hele
+    uitzending is ongedecodeerd voorbijgegaan -> de decoder is vastgelopen.
+    Is er tijdens de uitzending nog iets geschreven, dan leeft de decoder:
+    aan het eind stuurt een station alleen nog fasering (sterk signaal,
+    terecht niets te decoderen) — dat gaf op 11 september 's avonds een
+    onterechte herstart met de eerste, te scherpe regel.
   - Vangnet voor als de S/N-regels ooit wegvallen: 150 minuten stilte op 518.
 
 Vóór de herstart wordt de melder aangeroepen, zodat de momentopname van de
@@ -100,14 +104,28 @@ def sn_metingen(sinds_min):
 
 
 def laatste_uitzending(metingen, kolom, na_start):
-    """Meest recente moment waarop de S/N minstens STERK_MIN minuten (in een
-    venster van 10 min) op >= SN_DB zat, en dat ná de dienststart viel."""
+    """(begin, einde) van de meest recente uitzending: een cluster waarin de
+    S/N minstens STERK_MIN minuten (binnen 10 min) op >= SN_DB zat, geheel ná
+    de dienststart. Het BEGIN is wat telt (2026-09-11, avond): aan het eind
+    van een uitzending stuurt een station alleen nog fasering — sterk signaal,
+    terecht niets te decoderen. Alleen als er sinds vóór het begin niets meer
+    geschreven is, is een hele uitzending ongedecodeerd voorbijgegaan."""
     nodig = int(STERK_MIN * 6)          # metingen zijn elke 10 s
-    sterk = [t for t, *sn in metingen if sn[kolom] >= SN_DB and t > na_start]
-    sterk.sort(reverse=True)
-    for t in sterk:
-        if sum(1 for u in sterk if t - 600 <= u <= t) >= nodig:
-            return t
+    sterk = sorted(t for t, *sn in metingen if sn[kolom] >= SN_DB and t > na_start)
+    if len(sterk) < nodig:
+        return None
+    # loop van achteren naar voren; het laatste venster met genoeg metingen is de uitzending
+    for i in range(len(sterk) - 1, -1, -1):
+        einde = sterk[i]
+        cluster = [u for u in sterk if einde - 600 <= u <= einde]
+        if len(cluster) >= nodig:
+            # rek het begin op naar voren zolang de metingen aaneensluiten (gat < 2 min)
+            begin = cluster[0]
+            j = sterk.index(begin)
+            while j > 0 and begin - sterk[j - 1] < 120:
+                j -= 1
+                begin = sterk[j]
+            return begin, einde
     return None
 
 
@@ -127,9 +145,13 @@ def beoordeel():
         except OSError:
             continue
         uitz = laatste_uitzending(metingen, kolom, start) if metingen else None
-        if uitz and uitz > geschreven + 300 and nu - uitz > NA_MIN * 60:
-            redenen.append(f"{band}: station hoorbaar om {klok(uitz)} (S/N >= {SN_DB:.0f} dB), "
-                           f"laatste decodering {klok(geschreven)} — niets gedecodeerd sindsdien")
+        if uitz:
+            begin, einde = uitz
+            # hele uitzending voorbij (NA_MIN na het einde) en sinds vóór het
+            # begin ervan is er niets meer geschreven -> decoder vastgelopen
+            if geschreven < begin - 60 and nu - einde > NA_MIN * 60:
+                redenen.append(f"{band}: uitzending {klok(begin)}–{klok(einde)} (S/N >= {SN_DB:.0f} dB) "
+                               f"volledig ongedecodeerd, laatste decodering {klok(geschreven)}")
         # Vangnet telt vanaf de laatste decodering óf de laatste (her)start,
         # wat het meest recent is — anders herstart hij na een ingreep elke
         # REM_MIN opnieuw zolang er toevallig niets uitgezonden wordt.

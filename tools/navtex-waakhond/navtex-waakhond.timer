@@ -2,7 +2,9 @@
 Description=Controleert elke 5 minuten of de NAVTEX-decoder nog werkt
 
 [Timer]
-OnBootSec=15min
+# Bewust geen OnBootSec: die ligt na een paar dagen uptime in het verleden en
+# laat systemd de timer meteen bij het inschakelen vuren (2026-09-11: dat gaf
+# direct een onterechte herstart). OnActiveSec dekt de opstart ook al af.
 OnActiveSec=5min
 OnUnitActiveSec=5min
 AccuracySec=30s
