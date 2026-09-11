@@ -2278,6 +2278,131 @@ SDR_AUDIO_KNOP_EL?.addEventListener('click', (ev) => {
 SDR_KOP_EL?.addEventListener('click', () => SDR_EL?.classList.toggle('ingeklapt'));
 window.addEventListener('resize', () => { if (sdrStream) sdrPanelen.forEach(sdrTeken); });
 
+// ---- Live-markering in het schema (2026-09-11) ------------------------
+// Op verzoek van Lex: een groene stip bij het station dat NU aan de beurt is
+// en een donkergroene bij het station dat hierna komt. Per band, want 518 en
+// 490 worden gelijktijdig ontvangen en hebben dus elk hun eigen "nu" en
+// "hierna". Komt er op die band op dat moment ook echt iets binnen (het
+// berichtenbestand groeit), dan pulseert de groene stip en staat er
+// "· ontvangst" achter de tijden — een stille groene stip betekent dus:
+// station is volgens schema aan de beurt, maar wij horen niets.
+const NAVTEX_SLOT_MINUTEN = 10; // standaard NAVTEX-slotlengte (de letterformule zet de sloten 10 min uit elkaar)
+const NAVTEX_SCHEMA_STATUS_MS = 5 * 1000; // kale stat-poll zolang het venster openstaat
+const NAVTEX_SCHEMA_ACTIEF_MS = 60 * 1000; // zo lang na de laatste groei geldt een band als "zendt nu echt"
+const NAVTEX_SCHEMA_TIK_MS = 15 * 1000; // markeringen opnieuw doorrekenen (slotwissel, "ontvangst" laten verlopen)
+// stationId -> {khz, links, stip, vlag}; gevuld door renderNavtexSchema(), zodat
+// het verversen alleen classes/tekst aanraakt. Opnieuw opbouwen van de hele
+// lijst zou de scrollpositie elke 15 s naar boven gooien.
+const navtexSchemaRegels = new Map();
+const navtexSchemaBanden = new Map(); // khz -> {bytes, laatsteGroeiMs}
+let navtexSchemaTikTimer = null;
+let navtexSchemaStatusTimer = null;
+
+// 490-stations komen binnen met id 'B@490' (zie stationId in navtexLokaal.js);
+// frequentieKhz staat er sinds 2026-09-08 ook bij, de id-check is het vangnet.
+function navtexBandVanStation(station) {
+  return Number(station?.frequentieKhz) || (String(station?.id).includes('@490') ? 490 : 518);
+}
+
+// Per band: welk station zit nu in zijn slot, en welk station is hierna aan de
+// beurt. Een station dat NU zendt kan niet tegelijk "volgende" zijn: zijn
+// slotstart ligt in het verleden en telt dus pas weer voor morgen mee.
+function navtexSchemaMarkeringen(stations) {
+  const nu = new Date();
+  const nuMin = nu.getUTCHours() * 60 + nu.getUTCMinutes() + nu.getUTCSeconds() / 60;
+  const perBand = new Map();
+  for (const station of stations) {
+    if (!Array.isArray(station?.zendschema) || !station.zendschema.length) continue;
+    const khz = navtexBandVanStation(station);
+    let mark = perBand.get(khz);
+    if (!mark) {
+      mark = { actueelId: null, volgendeId: null, bezigMin: Infinity, wachtMin: Infinity };
+      perBand.set(khz, mark);
+    }
+    for (const t of station.zendschema) {
+      const [u, m] = String(t).split(':').map(Number);
+      if (!Number.isFinite(u) || !Number.isFinite(m)) continue;
+      const start = u * 60 + m;
+      let sinds = nuMin - start;
+      if (sinds < 0) sinds += 24 * 60;
+      if (sinds < NAVTEX_SLOT_MINUTEN && sinds < mark.bezigMin) {
+        mark.bezigMin = sinds;
+        mark.actueelId = station.id;
+      }
+      let over = start - nuMin;
+      if (over <= 0) over += 24 * 60;
+      if (over < mark.wachtMin) {
+        mark.wachtMin = over;
+        mark.volgendeId = station.id;
+      }
+    }
+  }
+  return perBand;
+}
+
+function werkNavtexSchemaMarkeringenBij() {
+  if (!navtexSchemaRegels.size) return;
+  const markeringen = navtexSchemaMarkeringen(NAVTEX_STATIONS_DATA ?? []);
+  const nu = Date.now();
+  for (const [id, regel] of navtexSchemaRegels) {
+    const mark = markeringen.get(regel.khz);
+    const isNu = mark?.actueelId === id;
+    const isVolgende = !isNu && mark?.volgendeId === id;
+    const band = navtexSchemaBanden.get(regel.khz);
+    const actief = Boolean(isNu && band?.laatsteGroeiMs && nu - band.laatsteGroeiMs < NAVTEX_SCHEMA_ACTIEF_MS);
+    regel.stip.className = `navtex-schema-stip ${isNu ? 'nu' : isVolgende ? 'volgende' : 'leeg'}${actief ? ' actief' : ''}`;
+    regel.links.classList.toggle('nu', isNu);
+    regel.links.classList.toggle('volgende', isVolgende);
+    regel.vlag.textContent = actief ? ' · ontvangst' : '';
+  }
+}
+
+// Groeit het berichtenbestand van deze band? /api/navtex-ruw-status geeft sinds
+// 2026-09-11 `banden` (518 én 490); de oude platte velden zijn de terugval voor
+// een server die nog niet bijgewerkt is (dan alleen 518).
+async function navtexSchemaStatusTik() {
+  try {
+    const res = await fetch('/api/navtex-ruw-status').then((r) => r.json());
+    const banden = res?.banden ?? { 518: { bestandsBytes: res?.bestandsBytes ?? 0, bijgewerkt: res?.bijgewerkt ?? null } };
+    for (const [sleutel, info] of Object.entries(banden)) {
+      const khz = Number(sleutel);
+      if (!Number.isFinite(khz)) continue;
+      const bytes = Number(info?.bestandsBytes ?? 0);
+      const vorig = navtexSchemaBanden.get(khz);
+      if (!vorig) {
+        // Eerste meting is de nulmeting: groei kunnen we nog niet zien. De mtime
+        // zegt wél of er zojuist geschreven is, anders wordt een lopende
+        // uitzending pas bij de tweede tik zichtbaar. Servertijd tegen
+        // browsertijd — het venster van een minuut vangt normale klokafwijking
+        // op, en bij een scheve klok mist de stip hooguit één tik.
+        const ms = info?.bijgewerkt ? Date.parse(info.bijgewerkt) : NaN;
+        const vers = Number.isFinite(ms) && Math.abs(Date.now() - ms) < NAVTEX_SCHEMA_ACTIEF_MS;
+        navtexSchemaBanden.set(khz, { bytes, laatsteGroeiMs: vers ? ms : 0 });
+        continue;
+      }
+      if (bytes > vorig.bytes) vorig.laatsteGroeiMs = Date.now();
+      vorig.bytes = bytes;
+    }
+  } catch {
+    // Stil falen — dan blijft de stip gewoon niet-pulserend staan.
+  }
+  werkNavtexSchemaMarkeringenBij();
+}
+
+function startNavtexSchemaTimers() {
+  navtexSchemaBanden.clear(); // opnieuw nulmeten bij elke opening
+  navtexSchemaStatusTik();
+  if (!navtexSchemaStatusTimer) navtexSchemaStatusTimer = setInterval(navtexSchemaStatusTik, NAVTEX_SCHEMA_STATUS_MS);
+  if (!navtexSchemaTikTimer) navtexSchemaTikTimer = setInterval(werkNavtexSchemaMarkeringenBij, NAVTEX_SCHEMA_TIK_MS);
+}
+
+function stopNavtexSchemaTimers() {
+  if (navtexSchemaStatusTimer) clearInterval(navtexSchemaStatusTimer);
+  if (navtexSchemaTikTimer) clearInterval(navtexSchemaTikTimer);
+  navtexSchemaStatusTimer = null;
+  navtexSchemaTikTimer = null;
+}
+
 // 2026-09-10: vult #navtexSchemaOverlay (voorheen de uitklapsectie
 // "📡 NAVTEX-stations & berichttypes" in Instellingen). De rijen hergebruiken
 // de .instelling-item-opmaak, die op de donkere overlay net zo goed leest.
@@ -2287,11 +2412,29 @@ function renderNavtexSchema() {
   // roept dit aan zodra de stationslijst binnen is.
   if (NAVTEX_SCHEMA_OVERLAY_EL?.classList.contains('verborgen')) return;
   NAVTEX_SCHEMA_INHOUD_EL.innerHTML = '';
+  navtexSchemaRegels.clear();
 
   const uitleg = document.createElement('div');
   uitleg.className = 'instellingen-uitleg navtex-schema-uitleg';
   uitleg.textContent = 'De eerste letter in de berichtcode (bv. de "P" in PA11) is het station, de tweede letter het berichttype, de twee cijfers het volgnummer.';
   NAVTEX_SCHEMA_INHOUD_EL.appendChild(uitleg);
+
+  // 2026-09-11: legenda bij de stippen, per band (518 en 490 lopen tegelijk).
+  const legenda = document.createElement('div');
+  legenda.className = 'instellingen-uitleg navtex-schema-uitleg navtex-schema-legenda';
+  [
+    ['nu', 'nu aan de beurt'],
+    ['nu actief', 'en er komt tekst binnen'],
+    ['volgende', 'hierna aan de beurt'],
+  ].forEach(([soort, tekst]) => {
+    const item = document.createElement('span');
+    const stip = document.createElement('i');
+    stip.className = `navtex-schema-stip ${soort}`;
+    item.appendChild(stip);
+    item.appendChild(document.createTextNode(tekst));
+    legenda.appendChild(item);
+  });
+  NAVTEX_SCHEMA_INHOUD_EL.appendChild(legenda);
 
   // 2026-09-10, op verzoek van Lex ("in kolommen ... de tijden in de kolom er
   // meteen naast, de berichttypen in een aparte kolom rechts daarnaast"):
@@ -2315,15 +2458,26 @@ function renderNavtexSchema() {
     kolommen.appendChild(blok);
     return tabel;
   };
-  const maakRegel = (tabel, links, rechts) => {
+  // `station` erbij (2026-09-11): dan krijgt de regel een stip vóór de naam en
+  // een plek achter de tijden voor "· ontvangst", en wordt hij geregistreerd
+  // in navtexSchemaRegels zodat het verversen hem kan bijwerken. Zonder
+  // station blijft het een gewone regel (berichttype-tabel).
+  const maakRegel = (tabel, links, rechts, station = null) => {
     const a = document.createElement('span');
     a.className = 'navtex-schema-links';
-    a.textContent = links;
+    const stip = document.createElement('i');
+    stip.className = 'navtex-schema-stip leeg'; // ook zonder markering: houdt de namen uitgelijnd
+    if (station) a.appendChild(stip);
+    a.appendChild(document.createTextNode(links));
     const b = document.createElement('span');
     b.className = 'navtex-schema-rechts';
-    b.textContent = rechts;
+    b.appendChild(document.createTextNode(rechts));
+    const vlag = document.createElement('span');
+    vlag.className = 'navtex-schema-vlag';
+    b.appendChild(vlag);
     tabel.appendChild(a);
     tabel.appendChild(b);
+    if (station) navtexSchemaRegels.set(station.id, { khz: navtexBandVanStation(station), links: a, stip, vlag });
   };
 
   const stationsTabel = maakBlok('Stations (zendschema UTC)');
@@ -2337,11 +2491,14 @@ function renderNavtexSchema() {
       stationsTabel,
       `${String(station.id).split('@')[0]}  ${station.naam}${station.land ? ` (${station.land})` : ''}`,
       station.zendschema?.length ? station.zendschema.join(', ') : 'onbekend',
+      station,
     );
   });
 
   const typeTabel = maakBlok('Berichttype (2e letter van de code)');
   NAVTEX_TYPE_NASLAG.forEach((regel) => maakRegel(typeTabel, regel.letters, regel.omschrijving));
+
+  werkNavtexSchemaMarkeringenBij(); // meteen de juiste stippen, niet pas bij de eerste tik
 }
 
 function openNavtexSchema() {
@@ -2349,10 +2506,13 @@ function openNavtexSchema() {
   NAVTEX_SCHEMA_OVERLAY_EL.classList.remove('verborgen');
   NAVTEX_SCHEMA_INHOUD_EL.scrollTop = 0;
   renderNavtexSchema();
+  startNavtexSchemaTimers(); // stippen live houden zolang het venster openstaat
 }
 
 function sluitNavtexSchema() {
   NAVTEX_SCHEMA_OVERLAY_EL?.classList.add('verborgen');
+  stopNavtexSchemaTimers();
+  navtexSchemaRegels.clear();
 }
 
 // Twee ingangen (keuze Lex): het 📡-knopje naast DX op de zeekaart en

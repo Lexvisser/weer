@@ -1918,11 +1918,26 @@ function registreerRuweBlokTijden(band, ruweTekst) {
 // in app.js), die elke ~10s alleen wil weten OF het bestand groeit. Een kale
 // stat() is daarvoor genoeg; de volledige tail wordt pas gelezen zodra de
 // viewer echt opent.
+// 2026-09-11: `banden` erbij (518 én 490, per frequentie bytes + mtime) voor
+// de live-markering in het schema-venster ("zendt dit station nu echt iets
+// uit?" = groeit het berichtenbestand van díé band). De platte velden
+// `bestandsBytes`/`bijgewerkt` blijven ongewijzigd het 518-bestand — daar
+// hangt de AUTO-schakelmonitor aan, die mag hier niets van merken.
 export function ruweOntvangstStatus() {
+  const banden = {};
+  for (const band of BANDEN) {
+    const pad = band.bestand();
+    if (!existsSync(pad)) {
+      banden[band.frequentieKhz] = { bestandsBytes: 0, bijgewerkt: null };
+      continue;
+    }
+    const st = statSync(pad);
+    banden[band.frequentieKhz] = { bestandsBytes: st.size, bijgewerkt: st.mtime.toISOString() };
+  }
   const bestand = process.env.NAVTEX_LOKAAL_BESTAND || STANDAARD_BESTAND;
-  if (!existsSync(bestand)) return { bestandsBytes: 0, bijgewerkt: null };
+  if (!existsSync(bestand)) return { bestandsBytes: 0, bijgewerkt: null, banden };
   const s = statSync(bestand);
-  return { bestandsBytes: s.size, bijgewerkt: s.mtime.toISOString() };
+  return { bestandsBytes: s.size, bijgewerkt: s.mtime.toISOString(), banden };
 }
 
 export function leesRuweOntvangst(maxBytes = 64 * 1024) {

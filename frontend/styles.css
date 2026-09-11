@@ -745,6 +745,25 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
   .navtex-schema-kolommen { grid-template-columns:minmax(0,1fr); }
   .navtex-schema-links { white-space:normal; font-size:11px; padding-right:8px; }
 }
+/* 2026-09-11, op verzoek van Lex: stip vóór de stationsnaam — fel groen als dat
+   station nu aan de beurt is (pulserend zodra er op die band ook echt tekst
+   binnenkomt), donkergroen voor het station dat hierna komt. Per band, dus er
+   staat één felgroene voor 518 en één voor 490. De lege stip staat er altijd,
+   zodat de namen uitgelijnd blijven als er niets te markeren valt. */
+.navtex-schema-stip { display:inline-block; flex:none; width:8px; height:8px; margin-right:8px; border-radius:50%; background:rgba(255,255,255,0.08); vertical-align:middle; }
+.navtex-schema-stip.nu { background:#3bff7c; box-shadow:0 0 6px rgba(59,255,124,0.75); }
+.navtex-schema-stip.volgende { background:#1c7a3f; box-shadow:0 0 4px rgba(28,122,63,0.55); }
+.navtex-schema-stip.nu.actief { animation:navtexSchemaPuls 1.1s ease-in-out infinite; }
+@keyframes navtexSchemaPuls {
+  0%,100% { transform:scale(1); box-shadow:0 0 6px rgba(59,255,124,0.75); }
+  50% { transform:scale(1.5); box-shadow:0 0 13px rgba(59,255,124,1); }
+}
+@media (prefers-reduced-motion:reduce) { .navtex-schema-stip.nu.actief { animation:none; } }
+.navtex-schema-links.nu { color:#3bff7c; }
+.navtex-schema-links.volgende { color:#8fd6a5; }
+.navtex-schema-vlag { color:#3bff7c; font-size:10px; letter-spacing:0.03em; white-space:nowrap; }
+.navtex-schema-legenda { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; }
+.navtex-schema-legenda span { display:inline-flex; align-items:center; }
 /* 2026-08-28, op verzoek van Lex: kopregel per bericht in de viewer — de
    begintijd ervoor en een streep eronder, groter en feller dan de
    berichttekst (wat in het .txt-bestand zelf nooit had gekund). */
