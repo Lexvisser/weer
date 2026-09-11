@@ -2290,7 +2290,7 @@ function renderNavtexSchema() {
 
   const uitleg = document.createElement('div');
   uitleg.className = 'instellingen-uitleg navtex-schema-uitleg';
-  uitleg.textContent = 'De tweede letter in de berichtcode (bv. de "A" in PA11) is het station, de rest het berichttype.';
+  uitleg.textContent = 'De eerste letter in de berichtcode (bv. de "P" in PA11) is het station, de tweede letter het berichttype, de twee cijfers het volgnummer.';
   NAVTEX_SCHEMA_INHOUD_EL.appendChild(uitleg);
 
   // 2026-09-10, op verzoek van Lex ("in kolommen ... de tijden in de kolom er
