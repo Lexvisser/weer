@@ -1,0 +1,12 @@
+[Unit]
+Description=Controleert elke 5 minuten of AIS-catcher nog berichten binnenhaalt
+
+[Timer]
+OnBootSec=10min
+OnActiveSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=ais-waakhond.service
+
+[Install]
+WantedBy=timers.target

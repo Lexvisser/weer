@@ -1,0 +1,7 @@
+[Unit]
+Description=Waakhond voor AIS-catcher (herstart bij uitblijvende AIS-berichten)
+Documentation=file:///usr/local/bin/ais-waakhond.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ais-waakhond.sh
