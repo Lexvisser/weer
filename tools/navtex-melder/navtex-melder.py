@@ -111,13 +111,32 @@ def deel_dienst():
     return "\n".join(r)
 
 
+def pids_van(patroon, comm):
+    """Pids waarvan de commandoregel `patroon` bevat ÉN de programmanaam `comm`
+    is. Zonder die tweede eis pikt pgrep -f ook de bash-wrapper van de
+    pijplijn op (die hele commandoregel bevat alle namen) — 2026-09-11 's
+    avonds stond die als "decoder" met +0 bytes in het rapport, misleidend."""
+    uit = []
+    for pid in draai(["pgrep", "-f", patroon]).split():
+        try:
+            with open(f"/proc/{pid}/comm") as f:
+                if f.read().strip().startswith(comm):
+                    uit.append(pid)
+        except Exception:
+            pass
+    return uit
+
+
+PROCESSEN = (("airspyhf_rx", "airspyhf_rx", "airspyhf_rx"),
+             ("demodulator", "navtex_usb_demod.py", "python3"),
+             ("decoder", "navtex_rx_from_file", "navtex_rx_from"))
+
+
 def deel_processen():
     """Bytetellers: leest de keten nog audio, en produceert de decoder iets?"""
     r = []
-    for naam, patroon in (("airspyhf_rx", "airspyhf_rx"),
-                          ("demodulator", "navtex_usb_demod.py"),
-                          ("decoder", "navtex_rx_from_file")):
-        pids = draai(["pgrep", "-f", patroon]).split()
+    for naam, patroon, comm in PROCESSEN:
+        pids = pids_van(patroon, comm)
         if not pids:
             r.append(f"  {naam:12s}: draait niet")
             continue
@@ -137,13 +156,12 @@ def deel_doorstroom():
     """Groeien de tellers nog? Onderscheidt 'geen audio' van 'audio maar niets herkend'."""
     def snap():
         uit = {}
-        for naam, patroon in (("demodulator", "navtex_usb_demod.py"),
-                              ("decoder", "navtex_rx_from_file")):
-            for pid in draai(["pgrep", "-f", patroon]).split()[:1]:
+        for naam, patroon, comm in PROCESSEN[1:]:
+            for pid in pids_van(patroon, comm)[:2]:
                 try:
                     with open(f"/proc/{pid}/io") as f:
                         io = dict(re.findall(r"^(\w+):\s*(\d+)$", f.read(), re.M))
-                    uit[naam] = (int(io.get("rchar", 0)), int(io.get("wchar", 0)))
+                    uit[f"{naam} {pid}"] = (int(io.get("rchar", 0)), int(io.get("wchar", 0)))
                 except Exception:
                     pass
         return uit
@@ -152,13 +170,13 @@ def deel_doorstroom():
     time.sleep(20)
     na = snap()
     r = []
-    for naam in ("demodulator", "decoder"):
-        if naam in voor and naam in na:
-            dr = na[naam][0] - voor[naam][0]
-            dw = na[naam][1] - voor[naam][1]
-            r.append(f"  {naam:12s}: +{dr:,} gelezen, +{dw:,} geschreven in 20 s")
-        else:
-            r.append(f"  {naam:12s}: niet gemeten")
+    for sleutel in voor:
+        if sleutel in na:
+            dr = na[sleutel][0] - voor[sleutel][0]
+            dw = na[sleutel][1] - voor[sleutel][1]
+            r.append(f"  {sleutel:20s}: +{dr:,} gelezen, +{dw:,} geschreven in 20 s")
+    if not r:
+        r.append("  (geen demodulator of decoder gevonden)")
     r.append("  (12 kHz 16-bit audio = ongeveer 480.000 bytes per 20 s)")
     return "\n".join(r)
 
@@ -266,11 +284,16 @@ def deel_hardware():
 
 # ------------------------------------------------------------------ rapport
 
-def maak_rapport(stil_518, hersteld=False):
+def maak_rapport(stil_518, hersteld=False, reden=None):
     nu = datetime.now().strftime("%A %d %B %Y, %H:%M")
-    kop = ("NAVTEX-ontvangst is weer op gang gekomen."
-           if hersteld else
-           f"NAVTEX-ontvangst ligt stil: al {duur(stil_518)} geen nieuw blok.")
+    if reden:
+        # aangeroepen door de waakhond: zíjn reden is de kop, de stilte is
+        # dan gewoon een feit — een half uur zonder blok is op zich niets
+        kop = f"De waakhond grijpt in. Reden: {reden}\nLaatste blok op 518: {duur(stil_518)} geleden."
+    elif hersteld:
+        kop = "NAVTEX-ontvangst is weer op gang gekomen."
+    else:
+        kop = f"NAVTEX-ontvangst ligt stil: al {duur(stil_518)} geen nieuw blok."
     blokken = [
         f"{kop}\n\nMomentopname van {nu} op lexdev-nw.",
         "BERICHTENBESTANDEN\n" + deel_bestanden(),
@@ -352,7 +375,8 @@ def main():
     status = lees_status()
 
     if TESTMODUS or FORCEER:
-        tekst = maak_rapport(stil)
+        reden = os.environ.get("NAVTEX_MELDER_REDEN") if FORCEER else None
+        tekst = maak_rapport(stil, reden=reden)
         if FORCEER:
             onderwerp = ONDERWERP_OVERRIDE or f"[weer] NAVTEX-waakhond grijpt in ({duur(stil)} stil)"
             bewaar("OP VERZOEK VAN DE WAAKHOND\n" + tekst)

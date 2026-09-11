@@ -22,19 +22,22 @@ De vingerafdruk van een vastgelopen decoder is: **signaal aanwezig, niets
 gedecodeerd**. Per frequentie:
 
 - De demodulator logt elke 10 s `S/N 518 kHz: X dB, 490 kHz: Y dB`.
-- Zat de S/N minstens een minuut lang op 10 dB of hoger (er zond dus een
-  station), is die uitzending al meer dan 15 minuten voorbij, en is er sinds
-  vóór het **begin** ervan niets aan het berichtenbestand toegevoegd — dan is
-  een hele uitzending ongedecodeerd voorbijgegaan en is de decoder vastgelopen.
-  Is er tijdens de uitzending nog iets geschreven, dan leeft de decoder: aan
-  het eind stuurt een station alleen nog fasering (sterk signaal, terecht
-  niets te decoderen). De eerste versie keek alleen naar het einde en gaf op
-  11 september 's avonds daardoor één onterechte herstart.
+- Een **uitzending** is minstens een minuut aaneengesloten S/N van 18 dB of
+  hoger. IJking van 11 september: alles wat decodeerde piekte op 25–34 dB
+  (Oostende 32 en 34, Den Helder 27, station V 29 en 30); rustige kwartieren
+  halen max 9–12; de twee "stations" die 's avonds een onterechte herstart
+  uitlokten zaten op gemiddeld 7,5 / max 12 dB. De eerste versie had de lat
+  op 10 dB en zag ruis aan voor een station.
+- Is zo'n uitzending al meer dan 15 minuten voorbij en is er sinds vóór het
+  **begin** ervan niets aan het berichtenbestand toegevoegd, dan is hij
+  volledig ongedecodeerd voorbijgegaan. Het begin telt: aan het eind stuurt
+  een station alleen nog fasering (sterk signaal, terecht niets te decoderen).
+- Pas bij **twee** van zulke uitzendingen achter elkaar grijpt hij in. Eén
+  sterk maar ongedecodeerd station kan 's avonds nog fading zijn; twee op rij
+  is een vastgelopen decoder. Op 11 september had dit rond 15:15 UTC
+  ingegrepen, anderhalf uur vóór de handmatige herstart.
 - Vangnet voor als de S/N-regels ooit wegvallen: 150 minuten stilte op 518,
   geteld vanaf de laatste decodering of de laatste (her)start.
-
-Op 11 september had dit rond 14:00 UTC ingegrepen, drie uur vóór de
-handmatige herstart.
 
 Beveiligingen tegen een lus: geen ingreep binnen 30 minuten na een start, en
 alleen uitzendingen ná de start tellen mee. De timer heeft bewust geen
@@ -73,7 +76,8 @@ sudo NAVTEX_WAAKHOND_DROOG=1 /usr/local/bin/navtex-waakhond.py
 Via een drop-in (`sudo systemctl edit navtex-waakhond.service`, sectie
 `[Service]`, regel `Environment=...`):
 
-- `NAVTEX_WAAKHOND_SN_DB` — drempel "station hoorbaar" (10)
+- `NAVTEX_WAAKHOND_SN_DB` — drempel "station hoorbaar" (18)
+- `NAVTEX_WAAKHOND_AANTAL` — zoveel ongedecodeerde uitzendingen op rij (2)
 - `NAVTEX_WAAKHOND_STERK_MIN` — zo lang moet de S/N erboven zitten (1)
 - `NAVTEX_WAAKHOND_NA_MIN` — wachttijd na de uitzending (15)
 - `NAVTEX_WAAKHOND_VANGNET_MIN` — absolute stilte op 518 (150)
