@@ -6,3 +6,5 @@ _fronten/
 node_modules/
 __pycache__/
 _to_delete/
+
+Claude outputs/
