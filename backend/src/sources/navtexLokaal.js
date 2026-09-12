@@ -1824,7 +1824,35 @@ function parseBlok(blok, stations = STATION_PER_ID, zelfIdentificatie = []) {
   const datum = ruweDatum && ruweDatum.getTime() <= Date.now() + TOEKOMST_MARGE_MS ? ruweDatum : null;
   const coords = verwijderUitschieters(coordinatenIn(body));
 
-  return { code, station, stationId, typeLetter, datum, body, weergaveTekst, coords }; // stationId sinds 2026-09-06, zie nietMeerHerhaald()
+  // 2026-09-12: doorgeven of `station` via de zelfnoeming kwam (Mondolfo e.d.)
+  // of via de kale letter — alleen het laatste is de aanname die nog getoetst
+  // moet worden aan het zendschema, zie ontvangsttijdPastBijSchema() en de
+  // toepassing ervan in fetchNavtexLokaal() hieronder.
+  return { code, station, stationId, typeLetter, datum, body, weergaveTekst, coords, viaZelfnoeming: Boolean(genoemd) }; // stationId sinds 2026-09-06, zie nietMeerHerhaald()
+}
+
+// 2026-09-12, op verzoek van Lex (FV12 op 490 kHz: een overduidelijk Ierse
+// Zee/VK-kustrapport zonder afzenderregel, waardoor de kale letter 'F'
+// terugviel op Split Radio — dat qua tijd totaal niet paste: 02:32 UTC ligt
+// ruim een uur van het dichtstbijzijnde Split-slot 00:50/04:50 vandaan).
+// Toetst een letter-toewijzing (geen zelfnoeming) aan het eigen zendschema
+// van dat station; cirkelvormige afstand i.v.m. de middernacht-overgang
+// (23:55 vs 00:05 moet "5 minuten" zijn, niet "1435"). Zonder zendschema
+// (zendschema: null, zie STATIONS hierboven) is er niets om aan te toetsen —
+// dan net als voorheen gewoon vertrouwen. Kan Corsen/Mondolfo (identiek
+// zendschema) niet uit elkaar houden — dat blijft de zelfnoeming, zie
+// ZELF_IDENTIFICATIE_490 hierboven.
+function ontvangsttijdPastBijSchema(zendschema, ontvangstTijdIso, margeMin = 15) {
+  if (!Array.isArray(zendschema) || !zendschema.length || !ontvangstTijdIso) return true;
+  const d = new Date(ontvangstTijdIso);
+  if (Number.isNaN(d.getTime())) return true;
+  const ontvangstMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return zendschema.some((slot) => {
+    const [u, m] = String(slot).split(':').map(Number);
+    if (!Number.isFinite(u) || !Number.isFinite(m)) return true; // onbekend formaat: niet blokkeren
+    const verschil = Math.abs(ontvangstMin - (u * 60 + m));
+    return Math.min(verschil, 1440 - verschil) <= margeMin;
+  });
 }
 
 // 2026-08-27, op verzoek van Lex ("ik heb een systemd naar tail -f
@@ -2220,6 +2248,16 @@ async function fetchNavtexBand(env, band) {
     .map((blok, i) => {
       const b = parseBlok(blok, band.stations, band.zelfId);
       if (b) b.ontvangstTijd = tijdPerOffset.get(ruweOffsets[i]) ?? null;
+      // 2026-09-12, zie ontvangsttijdPastBijSchema() hierboven: een
+      // letter-toewijzing (geen zelfnoeming) die niet in het zendschema van
+      // dat station past, laten vallen naar "onbekend" i.p.v. een station
+      // tonen dat er waarschijnlijk niet bij hoort — de bestaande
+      // "(onbevestigd)"-weergave (zie stationNaam hieronder) vangt dit dan
+      // gewoon op, precies zoals bij een compleet onherkende letter.
+      if (b?.station && !b.viaZelfnoeming && !ontvangsttijdPastBijSchema(b.station.zendschema, b.ontvangstTijd)) {
+        b.station = null;
+        b.stationId = null;
+      }
       return b;
     })
     .filter(Boolean);
