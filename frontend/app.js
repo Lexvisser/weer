@@ -2411,7 +2411,11 @@ function navtexSchemaTijdTekst(zendschema) {
 
 function renderNavtexSchemaTijdKnop() {
   if (!NAVTEX_SCHEMA_TIJD_KNOP_EL) return;
-  NAVTEX_SCHEMA_TIJD_KNOP_EL.textContent = navtexSchemaUtc ? 'NL tijd' : 'UTC';
+  // 2026-09-12, op verzoek van Lex: de knop toonde alleen het doel ("UTC"),
+  // wat oogde als de hùidige stand — nu expliciet "Schakel naar: X" zodat
+  // duidelijk is dat dit de actie is, niet de weergave (die staat in de kop
+  // erboven, zie navtex-schema-kop in styles.css).
+  NAVTEX_SCHEMA_TIJD_KNOP_EL.textContent = `Schakel naar: ${navtexSchemaUtc ? 'NL tijd' : 'UTC'}`;
 }
 
 function wisselNavtexSchemaTijd() {
