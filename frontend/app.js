@@ -558,7 +558,11 @@ const EMOJI_PER_CATEGORIE = {
   // Vormingsgebied (nog geen naam/storm) — bewust een ander icoon dan 🌀,
   // zodat je op de kaart meteen ziet dat dit nog géén actieve orkaan is.
   cycloonvorming: '➰',
-  onweer: '⚡',
+  // 2026-09-12, op verzoek van Lex: 'onweer' hier weggehaald -- geen enkele
+  // bron zet ooit categorie:'onweer' (alleen 'onweercomplex', zie
+  // backend/src/sources/blitzortung.js), dus dit kaartje was altijd dood: het
+  // toonde eeuwig "Geen actieve meldingen", verwarrend naast het wél levende
+  // Onweercomplex-kaartje ernaast.
   onweercomplex: '🌩️',
   tornado: '🌪',
   'tornado-watch': '🌪️',
@@ -617,7 +621,6 @@ const NAAM_PER_CATEGORIE = {
   aardbeving: 'Aardbeving',
   orkaan: 'Orkaan',
   cycloonvorming: 'Cycloonvorming',
-  onweer: 'Onweer',
   onweercomplex: 'Onweercomplex',
   // 2026-08-19: 'Tornado' was even hernoemd naar 'Tornado gemeld' op Lex'
   // voorstel, om het te onderscheiden van 'Tornado (bevestigd)' hieronder.
