@@ -609,6 +609,10 @@
 <div class="label-popup-overlay verborgen" id="navtexSchemaOverlay">
   <div class="label-popup-balk">
     <span class="navtex-ruw-status">📡 NAVTEX-stations &amp; berichttypes</span>
+    <!-- 2026-09-12, op verzoek van Lex ("standaard NL tijd, knop voor UTC"):
+         wisselt de tijden in de tabel tussen NL-tijd (standaard) en UTC. Zie
+         wisselNavtexSchemaTijd() in app.js. -->
+    <button type="button" id="navtexSchemaTijdKnop" class="navtex-balk-knop" title="Wissel tussen NL-tijd en UTC">UTC</button>
     <button id="navtexSchemaSluiten" class="label-popup-sluiten" aria-label="Sluiten">✕ Sluiten</button>
   </div>
   <div class="label-popup-inhoud navtex-schema-inhoud" id="navtexSchemaInhoud"></div>

@@ -91,6 +91,10 @@ const NAVTEX_SCHEMA_INHOUD_EL = document.getElementById('navtexSchemaInhoud');
 const NAVTEX_SCHEMA_KNOP_EL = document.getElementById('navtexSchemaKnop');
 const NAVTEX_SCHEMA_SLUITEN_EL = document.getElementById('navtexSchemaSluiten');
 const NAVTEX_RUW_SCHEMA_KNOP_EL = document.getElementById('navtexRuwSchemaKnop');
+// 2026-09-12, op verzoek van Lex ("standaard NL tijd, knop voor UTC"): de
+// tijden in het schema-venster staan standaard in NL-tijd, deze knop wisselt
+// naar UTC. Voorkeur per toestel bewaard (zelfde patroon als NAVTEX_AUTO_KEY).
+const NAVTEX_SCHEMA_TIJD_KNOP_EL = document.getElementById('navtexSchemaTijdKnop');
 // 2026-08-27: ruwe-NAVTEX-ontvangst-viewer (tail -f van ~/navtex_berichten.txt
 // via /api/navtex-ruw) — zie openNavtexRuw() verderop.
 const NAVTEX_RUW_KNOP_EL = document.getElementById('toggleNavtexRuw');
@@ -2301,6 +2305,57 @@ const navtexSchemaBanden = new Map(); // khz -> {bytes, laatsteGroeiMs}
 let navtexSchemaTikTimer = null;
 let navtexSchemaStatusTimer = null;
 
+// 2026-09-12: weergavevoorkeur van de getoonde zendschema-tijden (NL-tijd of
+// UTC) — puur weergave, de "nu zendt station X"-markeringen hierboven blijven
+// gewoon op UTC rekenen. Standaard NL-tijd; per toestel bewaard.
+const NAVTEX_SCHEMA_TIJD_KEY = 'weerNavtexSchemaUtc';
+let navtexSchemaUtc = false;
+try {
+  navtexSchemaUtc = localStorage.getItem(NAVTEX_SCHEMA_TIJD_KEY) === 'aan';
+} catch {
+  // privé-venster/geblokkeerde site-data — gewoon standaard NL-tijd
+}
+
+// Zet een zendschema (lijst "HH:MM" in UTC) om naar tekst in de gekozen
+// weergave. Europe/Amsterdam i.p.v. een handmatige +1/+2-som, zodat dit
+// vanzelf klopt ongeacht zomer-/wintertijd. Na omzetting alfabetisch
+// gesorteerd, want de UTC->NL-omzetting kan de volgorde van de lijst rond
+// middernacht verschuiven.
+function navtexSchemaTijdTekst(zendschema) {
+  if (!Array.isArray(zendschema) || !zendschema.length) return null;
+  if (navtexSchemaUtc) return zendschema.join(', ');
+  const nu = new Date();
+  const tijden = zendschema
+    .map((t) => {
+      const [u, m] = String(t).split(':').map(Number);
+      if (!Number.isFinite(u) || !Number.isFinite(m)) return null;
+      const d = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate(), u, m));
+      return d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Amsterdam' });
+    })
+    .filter(Boolean);
+  tijden.sort();
+  return tijden.join(', ');
+}
+
+function renderNavtexSchemaTijdKnop() {
+  if (!NAVTEX_SCHEMA_TIJD_KNOP_EL) return;
+  NAVTEX_SCHEMA_TIJD_KNOP_EL.textContent = navtexSchemaUtc ? 'NL tijd' : 'UTC';
+}
+
+function wisselNavtexSchemaTijd() {
+  navtexSchemaUtc = !navtexSchemaUtc;
+  try {
+    localStorage.setItem(NAVTEX_SCHEMA_TIJD_KEY, navtexSchemaUtc ? 'aan' : 'uit');
+  } catch {
+    // privé-venster/geblokkeerde site-data — voorkeur geldt dan alleen deze sessie
+  }
+  renderNavtexSchemaTijdKnop();
+  renderNavtexSchema();
+}
+
+NAVTEX_SCHEMA_TIJD_KNOP_EL?.addEventListener('click', wisselNavtexSchemaTijd);
+renderNavtexSchemaTijdKnop();
+
 // 490-stations komen binnen met id 'B@490' (zie stationId in navtexLokaal.js);
 // frequentieKhz staat er sinds 2026-09-08 ook bij, de id-check is het vangnet.
 function navtexBandVanStation(station) {
@@ -2483,7 +2538,7 @@ function renderNavtexSchema() {
     if (station) navtexSchemaRegels.set(station.id, { khz: navtexBandVanStation(station), links: a, stip, vlag });
   };
 
-  const stationsTabel = maakBlok('Stations (zendschema UTC)');
+  const stationsTabel = maakBlok(`Stations (zendschema ${navtexSchemaUtc ? 'UTC' : 'NL tijd'})`);
   const stations = NAVTEX_STATIONS_DATA ?? [];
   if (!stations.length) {
     maakRegel(stationsTabel, '(nog aan het laden...)', '');
@@ -2493,7 +2548,7 @@ function renderNavtexSchema() {
     maakRegel(
       stationsTabel,
       `${String(station.id).split('@')[0]}  ${station.naam}${station.land ? ` (${station.land})` : ''}`,
-      station.zendschema?.length ? station.zendschema.join(', ') : 'onbekend',
+      navtexSchemaTijdTekst(station.zendschema) ?? 'onbekend',
       station,
     );
   });
