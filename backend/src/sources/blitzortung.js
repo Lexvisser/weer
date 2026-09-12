@@ -337,6 +337,7 @@ export function startBlitzortungStream({ homeLat, homeLon, onUpdate, onError }) 
   }
   let hostIndex = 0;
   let backoffMs = 5000;
+  const VERBIND_TIMEOUT_MS = 20 * 1000; // hoe lang één verbindingspoging mag hangen voordat we 'm zelf afbreken
   let gestopt = false;
   let verbonden = false;
   let ws = null;
@@ -405,26 +406,60 @@ export function startBlitzortungStream({ homeLat, homeLon, onUpdate, onError }) 
     backoffMs = Math.min(backoffMs * 2, 2 * 60 * 1000);
   }
 
+  // 2026-09-12, na Lex' vraag waarom de kaart 3,5 uur grijs bleef: de
+  // verbinding sloot om 05:20 en kwam pas om 09:00 terug (met een NIEUW
+  // proces-ID -- dus dankzij een herstart van de hele app, niet dankzij deze
+  // herstel-logica). In de tussentijd geen enkele "nieuwe poging"/"kon niet
+  // verbinden"-logregel: een verbindingspoging die nooit open/close/error
+  // vuurt (bv. een vastgelopen TCP/TLS-handshake) werd hier voor onbepaalde
+  // tijd afgewacht, want een nieuwe poging werd alleen ingepland vanuit die
+  // events. Fix: elke poging krijgt nu zelf een deadline (VERBIND_TIMEOUT_MS)
+  // -- blijft ze zo lang hangen, dan breken we 'm zelf af en proberen opnieuw.
   function verbindOpnieuw() {
     if (gestopt) return;
     const host = WS_HOSTS[hostIndex];
+    let afgehandeld = false; // voorkomt dat timeout én een alsnog binnenkomende close() allebei een nieuwe poging inplannen
+    let verbindTimer = null;
+    const afhandelen = (fn) => {
+      if (afgehandeld) return;
+      afgehandeld = true;
+      clearTimeout(verbindTimer);
+      fn();
+    };
     try {
       ws = verbind(host, {
         onOpen: () => {
-          verbonden = true;
-          backoffMs = 5000;
-          log(`verbonden met ${host}`);
+          afhandelen(() => {
+            verbonden = true;
+            backoffMs = 5000;
+            log(`verbonden met ${host}`);
+          });
         },
         onRecord: verwerkRecord,
         onDecodeerfout: (err) => log(`kon bericht niet decoderen (${host}): ${err.message}`),
         onClose: () => {
-          log(`verbinding met ${host} gesloten, nieuwe poging over ${Math.round(backoffMs / 1000)}s`);
-          planHerverbinding();
+          afhandelen(() => {
+            log(`verbinding met ${host} gesloten, nieuwe poging over ${Math.round(backoffMs / 1000)}s`);
+            planHerverbinding();
+          });
         },
       });
+      verbindTimer = setTimeout(() => {
+        afhandelen(() => {
+          log(`verbinding met ${host} bleef hangen (geen open/close binnen ${VERBIND_TIMEOUT_MS / 1000}s), nieuwe poging over ${Math.round(backoffMs / 1000)}s`);
+          try {
+            ws.close();
+          } catch {
+            // negeren -- we gaan sowieso opnieuw proberen
+          }
+          planHerverbinding();
+        });
+      }, VERBIND_TIMEOUT_MS);
     } catch (err) {
-      log(`kon niet verbinden met ${host}: ${err.message}`);
-      planHerverbinding();
+      afhandelen(() => {
+        log(`kon niet verbinden met ${host}: ${err.message}`);
+        planHerverbinding();
+      });
     }
   }
 
