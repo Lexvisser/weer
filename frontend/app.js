@@ -1487,6 +1487,18 @@ function dxOntvangstTekst(ms) {
   return dagVan(d) === dagVan(new Date()) ? tijd : `gisteren ${tijd}`;
 }
 
+// 2026-09-12, op verzoek van Lex ("in plaats daarvan naar de locatie in de
+// tekstfile"): een DX-regel opent nu de Ontvangst-viewer en springt naar de
+// laatste ontvangst van dat station, i.p.v. de melding op de kaart te tonen
+// (centreerOpMelding). `r` is één regel uit dxLijst() hierboven — station en
+// laatst zijn er altijd, signaal.detail?.code niet per se (zie
+// navtexRuwNietGevondenLabelHtml voor dat geval).
+function springNaarNavtexOntvangst(r) {
+  navtexRuwSpringNaarCode = r.signaal?.detail?.code ?? null;
+  navtexRuwSpringFallback = { stationNaam: r.station?.naam ?? null, tijdMs: r.laatst ?? null };
+  openNavtexRuw();
+}
+
 function renderNavtexDx() {
   if (!NAVTEX_DX_PANEEL_EL) return;
   if (NAVTEX_DX_KNOP_EL) NAVTEX_DX_KNOP_EL.classList.toggle('aan', navtexDxOpen);
@@ -1508,7 +1520,7 @@ function renderNavtexDx() {
     NAVTEX_DX_PANEEL_EL.querySelectorAll('.dx-regel').forEach((knop) => {
       knop.addEventListener('click', () => {
         const r = lijst[Number(knop.dataset.dx)];
-        if (r?.signaal) centreerOpMelding(r.signaal);
+        if (r) springNaarNavtexOntvangst(r);
       });
     });
   }
@@ -1546,6 +1558,59 @@ NAVTEX_DX_KNOP_EL?.addEventListener('click', () => zetNavtexDx(!navtexDxOpen));
 const NAVTEX_RUW_VERVERS_MS = 10 * 1000;
 let navtexRuwTimer = null;
 
+// 2026-09-12, op verzoek van Lex ("vanuit de DX-lijst naar de plek in de
+// tekstfile springen i.p.v. de melding op de kaart"): staat een berichtcode
+// klaar, dan springt de eerstvolgende keer dat de Ontvangst-viewer tekst
+// binnenkrijgt (hierboven of via de live-stream) daarnaartoe — eenmalig, zie
+// pasNavtexRuwSprongToe() hieronder. navtexRuwSpringFallback (station + tijd
+// uit de DX-regel zelf, dus altijd beschikbaar) is wat er getoond wordt als
+// de code niet (meer) in het geladen stuk staat.
+let navtexRuwSpringNaarCode = null;
+let navtexRuwSpringFallback = null;
+
+// Laatste (dus meest recente) voorkomen van `code` in de al opgebouwde HTML
+// markeren, met woordgrenzen zodat "TA16" niet middenin "TA160" matcht. Geeft
+// null terug als de code niet in dit stuk van de tekst voorkomt.
+function navtexRuwMarkeerCode(html, code) {
+  const veilig = String(code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!veilig) return null;
+  const patroon = new RegExp(`(?<![A-Z0-9])${veilig}(?![A-Z0-9])`, 'g');
+  let laatste = null;
+  let m;
+  while ((m = patroon.exec(html))) laatste = m;
+  if (!laatste) return null;
+  const idx = laatste.index;
+  return `${html.slice(0, idx)}<mark class="ruw-navtex-markering" id="navtexRuwMarkering">${veilig}</mark>${html.slice(idx + veilig.length)}`;
+}
+
+// Amber label bovenaan i.p.v. de groene markering: gebruikt de DX-gegevens
+// zelf (station + laatste ontvangstmoment), dus dit lukt altijd, ook als het
+// bericht zelf niet meer in de geladen ~64 KB staat.
+function navtexRuwNietGevondenLabelHtml(fallback) {
+  const tijdTekst = Number.isFinite(fallback?.tijdMs)
+    ? new Date(fallback.tijdMs).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : null;
+  return `<span class="ruw-blok-kop ruw-blok-mismatch" id="navtexRuwMarkering">⚠ bericht van ${escapeHtml(fallback?.stationNaam ?? 'dit station')}`
+    + `${tijdTekst ? ` (ontvangen ${escapeHtml(tijdTekst)})` : ''} staat niet meer in dit geladen stuk — alleen de laatste ~64 KB per band wordt getoond</span>`;
+}
+
+function pasNavtexRuwSprongToe(html) {
+  if (!navtexRuwSpringNaarCode && !navtexRuwSpringFallback) return html;
+  const gemarkeerd = navtexRuwSpringNaarCode ? navtexRuwMarkeerCode(html, navtexRuwSpringNaarCode) : null;
+  return gemarkeerd ?? (navtexRuwSpringFallback ? navtexRuwNietGevondenLabelHtml(navtexRuwSpringFallback) + html : html);
+}
+
+// Na het zetten van de nieuwe innerHTML: als er een sprong klaarstond, er nu
+// naartoe scrollen (overschrijft bewust de "vastgepind onderaan"-scroll
+// hierboven) en de sprong wissen — eenmalig, een latere 10s-verversing mag
+// een handmatige scrollpositie niet meer verstoren.
+function rondNavtexRuwSprongAf() {
+  if (!navtexRuwSpringNaarCode && !navtexRuwSpringFallback) return;
+  document.getElementById('navtexRuwMarkering')?.scrollIntoView({ block: 'center' });
+  navtexRuwSpringNaarCode = null;
+  navtexRuwSpringFallback = null;
+}
+
 async function ververNavtexRuw() {
   try {
     // 2026-09-08 (Lex: "ik wil het sowieso tussen deze berichten in zien"):
@@ -1553,7 +1618,7 @@ async function ververNavtexRuw() {
     const res = await fetch('/api/navtex-ruw?gemengd=1').then((r) => r.json());
     if (Array.isArray(res.segmenten)) {
       const vastgepindG = navtexRuwVastgepind();
-      NAVTEX_RUW_TEKST_EL.innerHTML = res.segmenten.length ? bouwGemengdeOntvangstHtml(res.segmenten) : '(bestanden zijn nog leeg)';
+      NAVTEX_RUW_TEKST_EL.innerHTML = res.segmenten.length ? pasNavtexRuwSprongToe(bouwGemengdeOntvangstHtml(res.segmenten)) : '(bestanden zijn nog leeg)';
       navtexRuwBytes = res.bestandsBytes?.[518] ?? 0;
       navtexRuwBytes490 = res.bestandsBytes?.[490] ?? 0;
       navtexRuwLaatsteTeken = '';
@@ -1565,6 +1630,7 @@ async function ververNavtexRuw() {
         : '—';
       NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst${navtexRuwStream ? ' · live' : ''} · ${Math.round((navtexRuwBytes + navtexRuwBytes490) / 1024)} kB · laatste schrijf ${tijdG}`;
       if (vastgepindG) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
+      rondNavtexRuwSprongAf();
       return;
     }
     if (res.tekst == null) {
@@ -1586,7 +1652,7 @@ async function ververNavtexRuw() {
     // 2-minuten-pollcyclus, of ouder dan het register) krijgt alleen de
     // streep. Opbouw via escapeHtml per stuk — de ruwe tekst zelf blijft
     // altijd data, nooit HTML.
-    NAVTEX_RUW_TEKST_EL.innerHTML = bouwRuweOntvangstHtml(res.tekst || '(bestand is nog leeg)', res.blokken ?? []);
+    NAVTEX_RUW_TEKST_EL.innerHTML = pasNavtexRuwSprongToe(bouwRuweOntvangstHtml(res.tekst || '(bestand is nog leeg)', res.blokken ?? []));
     // 2026-09-08: de live-stream gaat precies hier verder (zie startNavtexRuwStream).
     navtexRuwBytes = res.bestandsBytes ?? 0;
     navtexRuwLaatsteTeken = (res.tekst || '').slice(-1);
@@ -1596,6 +1662,7 @@ async function ververNavtexRuw() {
       : '—';
     NAVTEX_RUW_STATUS_EL.textContent = `📻 Ruwe ontvangst${navtexRuwStream ? ' · live' : ''} · ${Math.round(res.bestandsBytes / 1024)} kB · laatste schrijf ${tijd}`;
     if (vastgepind) NAVTEX_RUW_INHOUD_EL.scrollTop = NAVTEX_RUW_INHOUD_EL.scrollHeight;
+    rondNavtexRuwSprongAf();
   } catch (err) {
     NAVTEX_RUW_STATUS_EL.textContent = '📻 Ruwe ontvangst · server niet bereikbaar';
     console.warn('[weer] navtex-ruw ophalen mislukt:', err);
@@ -1707,6 +1774,11 @@ function sluitNavtexRuw() {
     clearInterval(navtexRuwTimer);
     navtexRuwTimer = null;
   }
+  // 2026-09-12: een sprong die nog "in de wacht" stond (bv. omdat de server
+  // niet reageerde) mag niet blijven hangen tot een latere, ongerelateerde
+  // keer openen — zie springNaarNavtexOntvangst().
+  navtexRuwSpringNaarCode = null;
+  navtexRuwSpringFallback = null;
 }
 
 // ---- Live binnendruppelen (2026-09-08) ---------------------------------

@@ -796,6 +796,12 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .navtex-ruw-inhoud .ruw-blok-kop { display:block; margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid rgba(59,255,124,0.55); font-size:14px; font-weight:700; color:#8fffb4; letter-spacing:0.03em; text-shadow:0 0 6px rgba(59,255,124,0.6); }
 .navtex-ruw-inhoud pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.55), 0 0 9px rgba(59,255,124,0.22); }
 .navtex-ruw-status { font-family:'JetBrains Mono',monospace; font-size:11px; color:#3bff7c; text-shadow:0 0 4px rgba(59,255,124,0.45); align-self:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+/* 2026-09-12: sprong vanuit de DX-lijst naar de plek in de ruwe tekst (zie
+   springNaarNavtexOntvangst() in app.js) — groene markering op de gevonden
+   berichtcode zelf, of (code niet meer in de geladen ~64 KB) een amber label
+   dat uitlegt waarom niet. */
+.navtex-ruw-inhoud mark.ruw-navtex-markering { background:rgba(59,255,124,0.35); color:#eafff0; border-radius:3px; padding:0 2px; box-shadow:0 0 10px rgba(59,255,124,0.65); }
+.navtex-ruw-inhoud .ruw-blok-kop.ruw-blok-mismatch { color:#ffcf7a; border-bottom-color:rgba(255,176,32,0.55); text-shadow:0 0 6px rgba(255,176,32,0.5); }
 
 /* 2026-08-27, op verzoek van Lex: eerstvolgende NAVTEX-uitzending rechtsboven
    op de zeekaart, in hetzelfde fosfor-groen als de ruwe-ontvangst-viewer
