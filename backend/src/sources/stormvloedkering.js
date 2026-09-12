@@ -202,9 +202,14 @@ async function bepaalVroegeWaarschuwing() {
 const KERING_PATROON = /(maeslant|hartel|stormvloed)kering/i;
 const GESLOTEN_PATROON = /\b(gesloten|dicht|sluit|sluiting)\b/i;
 const NIET_KERING_PATROON = /\b(tunnel|rijstro(o|e)k|snelweg|brug|spoor|afrit|oprit)\b/i;
+// 2026-09-12: vooraankondigingen ("gepland", "verwachte", "wordt getest")
+// uitsluiten - anders telt een artikel over een nog aanstaande (proef)sluiting
+// al als bevestiging dat de kering dicht is (zag dit bij het Westlanders-
+// artikel van 11 sept over de proefsluiting van 12 sept).
+const AANKONDIGING_PATROON = /\b(gepland|verwacht(e)?|wordt getest)\b/i;
 function tekstBevestigtSluiting(tekst) {
   if (!tekst) return false;
-  return KERING_PATROON.test(tekst) && GESLOTEN_PATROON.test(tekst) && !NIET_KERING_PATROON.test(tekst);
+  return KERING_PATROON.test(tekst) && GESLOTEN_PATROON.test(tekst) && !NIET_KERING_PATROON.test(tekst) && !AANKONDIGING_PATROON.test(tekst);
 }
 async function zoekBevestiging(zoekterm) {
   const resultaten = await fetchSearxngNieuws(zoekterm, 5);
