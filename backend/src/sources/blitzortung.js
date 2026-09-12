@@ -413,53 +413,57 @@ export function startBlitzortungStream({ homeLat, homeLon, onUpdate, onError }) 
   // verbinden"-logregel: een verbindingspoging die nooit open/close/error
   // vuurt (bv. een vastgelopen TCP/TLS-handshake) werd hier voor onbepaalde
   // tijd afgewacht, want een nieuwe poging werd alleen ingepland vanuit die
-  // events. Fix: elke poging krijgt nu zelf een deadline (VERBIND_TIMEOUT_MS)
-  // -- blijft ze zo lang hangen, dan breken we 'm zelf af en proberen opnieuw.
+  // events. Fix: elke poging krijgt nu zelf een deadline (VERBIND_TIMEOUT_MS).
+  //
+  // 2026-09-12, correctie op diezelfde fix: de eerste versie gebruikte één
+  // gedeelde "afgehandeld"-vlag voor onOpen, onClose EN de timeout, met de
+  // bedoeling dat maar één van de drie een nieuwe poging zou inplannen. Fout
+  // gevolg: zodra onOpen ooit vuurde, zat die vlag vast op true, en werd een
+  // latere, echte onClose (verbinding valt alsnog weg) daardoor stilzwijgend
+  // genegeerd -- geen log, geen nieuwe poging, verbonden bleef voor altijd op
+  // true staan terwijl er 0 flitsen meer binnenkwamen. Nu: onOpen en onClose
+  // zijn weer onvoorwaardelijk (zoals voor deze fix), en de verbind()-helper
+  // garandeert dat 'error' altijd gevolgd wordt door 'close' -- dus onClose is
+  // de enige plek die een nieuwe poging plant. De timeout doet alleen nog een
+  // geforceerde ws.close() op een poging die nooit open ging; die close-actie
+  // triggert vanzelf de onClose hierboven, dus geen aparte planHerverbinding()
+  // meer nodig vanuit de timeout zelf.
   function verbindOpnieuw() {
     if (gestopt) return;
     const host = WS_HOSTS[hostIndex];
-    let afgehandeld = false; // voorkomt dat timeout én een alsnog binnenkomende close() allebei een nieuwe poging inplannen
+    let heeftGeopend = false;
     let verbindTimer = null;
-    const afhandelen = (fn) => {
-      if (afgehandeld) return;
-      afgehandeld = true;
-      clearTimeout(verbindTimer);
-      fn();
-    };
     try {
       ws = verbind(host, {
         onOpen: () => {
-          afhandelen(() => {
-            verbonden = true;
-            backoffMs = 5000;
-            log(`verbonden met ${host}`);
-          });
+          heeftGeopend = true;
+          clearTimeout(verbindTimer);
+          verbonden = true;
+          backoffMs = 5000;
+          log(`verbonden met ${host}`);
         },
         onRecord: verwerkRecord,
         onDecodeerfout: (err) => log(`kon bericht niet decoderen (${host}): ${err.message}`),
         onClose: () => {
-          afhandelen(() => {
-            log(`verbinding met ${host} gesloten, nieuwe poging over ${Math.round(backoffMs / 1000)}s`);
-            planHerverbinding();
-          });
+          clearTimeout(verbindTimer);
+          log(`verbinding met ${host} gesloten, nieuwe poging over ${Math.round(backoffMs / 1000)}s`);
+          planHerverbinding();
         },
       });
       verbindTimer = setTimeout(() => {
-        afhandelen(() => {
-          log(`verbinding met ${host} bleef hangen (geen open/close binnen ${VERBIND_TIMEOUT_MS / 1000}s), nieuwe poging over ${Math.round(backoffMs / 1000)}s`);
-          try {
-            ws.close();
-          } catch {
-            // negeren -- we gaan sowieso opnieuw proberen
-          }
+        if (heeftGeopend) return;
+        log(`verbinding met ${host} bleef hangen (geen open binnen ${VERBIND_TIMEOUT_MS / 1000}s), forceer afsluiten`);
+        try {
+          ws.close();
+        } catch {
+          // negeren -- als close() zelf al faalt vuurt er sowieso geen 'close'-event
+          // meer op deze ws, dus dan expliciet zelf de nieuwe poging inplannen
           planHerverbinding();
-        });
+        }
       }, VERBIND_TIMEOUT_MS);
     } catch (err) {
-      afhandelen(() => {
-        log(`kon niet verbinden met ${host}: ${err.message}`);
-        planHerverbinding();
-      });
+      log(`kon niet verbinden met ${host}: ${err.message}`);
+      planHerverbinding();
     }
   }
 
