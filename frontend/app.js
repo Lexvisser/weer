@@ -12329,7 +12329,12 @@ let audioCtx = null;
 // verlopen zijn of al 47 uur oud — vandaar hier volledig uitgesloten i.p.v.
 // een tijdgevoelige uitzondering te bouwen.
 function verwerkTornadoAlarm(signalen) {
-  const relevant = signalen.filter(magAlarmeren);
+  // 2026-09-12: onweercomplex loopt voortaan via de eigen afstandsgebaseerde
+  // verwerkOnweerAfstandAlarm() hieronder -- de id-verspring-rem die hier
+  // stond (complex-id verspringt doordat de positie op 0,5° wordt afgerond)
+  // was toch al geen betrouwbare maat voor "hoeveel dichterbij", vandaar
+  // hier expliciet uitgesloten om dubbel alarmeren te voorkomen.
+  const relevant = signalen.filter((s) => magAlarmeren(s) && s.categorie !== 'onweercomplex');
   const huidigeIds = new Set(relevant.map((s) => s.id));
   if (gezienAlarmIds === null) {
     gezienAlarmIds = huidigeIds;
@@ -12337,19 +12342,60 @@ function verwerkTornadoAlarm(signalen) {
   }
   for (const s of relevant) {
     if (gezienAlarmIds.has(s.id)) continue;
-    // 2026-09-04: de complex-id verspringt (positie afgerond op 0,5°) terwijl
-    // het onweer naar je toe trekt -- zonder deze rem zou elke stap opnieuw
-    // het volle alarm geven. Zelfde soort rem als HERHAAL_MS in onweerAlarm.js.
-    if (s.categorie === 'onweercomplex') {
-      if (Date.now() - laatsteOnweerAlarmMs < ONWEER_ALARM_HERHAAL_MS) continue;
-      laatsteOnweerAlarmMs = Date.now();
-    }
     triggerTornadoAlarm(s);
   }
   gezienAlarmIds = huidigeIds;
 }
-let laatsteOnweerAlarmMs = 0;
-const ONWEER_ALARM_HERHAAL_MS = 30 * 60 * 1000;
+
+// 2026-09-12, op verzoek van Lex ("dat moet na het alarm (all guns blazing)
+// wel doorgaan binnen de app. Elke 5 km"): het scherm/geluid-alarm voor een
+// NADEREND onweercomplex triggert voortaan op AFSTAND i.p.v. op tijd. Bij
+// elke nieuwe 5 km die het dichtstbijzijnde naderende complex dichterbij
+// komt (bv. 50 -> 45 -> 40 -> ... -> 0) gaat het schermalarm opnieuw af.
+// Het volle telefoon/mail/webpush-alarm ("all guns blazing") blijft
+// ongemoeid met zijn eigen 45-min-rem in backend/src/onweerAlarm.js -- dat
+// gebeurt dus nog steeds maar één keer per nadering; alleen de app zelf
+// blijft meemelden bij elke stap dichterbij.
+// 'Actief' (al boven je) hoort hier expliciet niet bij ("naderen is
+// genoeg", Lex 2026-09-12) en houdt de oude tijd-gebaseerde rem van 30 min.
+let laagsteOnweerAlarmAfstandKm = null; // laagste afstand (km) waar de app al voor heeft gealarmeerd; null = nog geen actieve nadering
+let onweerActiefGealarmeerd = false; // of het huidige 'actief'-complex al is gemeld
+let laatsteOnweerActiefAlarmMs = 0;
+const ONWEER_ACTIEF_ALARM_HERHAAL_MS = 30 * 60 * 1000;
+
+function verwerkOnweerAfstandAlarm(signalen) {
+  if (!alarmCategorieAan('onweer')) {
+    laagsteOnweerAlarmAfstandKm = null;
+    onweerActiefGealarmeerd = false;
+    return;
+  }
+  const kandidaten = signalen.filter(
+    (s) => s.categorie === 'onweercomplex' && !s.detail?.verlopen && Boolean(s.detail?.alarm),
+  );
+
+  const actief = kandidaten.find((s) => s.detail?.status === 'actief');
+  if (actief) {
+    if (!onweerActiefGealarmeerd || Date.now() - laatsteOnweerActiefAlarmMs >= ONWEER_ACTIEF_ALARM_HERHAAL_MS) {
+      onweerActiefGealarmeerd = true;
+      laatsteOnweerActiefAlarmMs = Date.now();
+      triggerTornadoAlarm(actief);
+    }
+  } else {
+    onweerActiefGealarmeerd = false;
+  }
+
+  const naderend = kandidaten.filter((s) => s.detail?.status === 'naderend' && typeof s.detail?.afstandKm === 'number');
+  if (naderend.length === 0) {
+    laagsteOnweerAlarmAfstandKm = null;
+    return;
+  }
+  const dichtstbij = naderend.reduce((a, b) => (a.detail.afstandKm <= b.detail.afstandKm ? a : b));
+  const drempel = Math.floor(dichtstbij.detail.afstandKm / 5) * 5; // 42 -> 40, 50 -> 50
+  if (laagsteOnweerAlarmAfstandKm === null || drempel < laagsteOnweerAlarmAfstandKm) {
+    laagsteOnweerAlarmAfstandKm = drempel;
+    triggerTornadoAlarm(dichtstbij);
+  }
+}
 // 2026-09-04: proefalarm vanuit de browserconsole (F12): testOnweerAlarm()
 // -- laat de bliksemflits + popup zien zonder te wachten op echt onweer.
 window.testOnweerAlarm = () =>
@@ -12618,6 +12664,7 @@ async function verversen() {
     vorigeSignalenVingerafdruk = vingerafdruk;
 
     verwerkTornadoAlarm(signalenRes.signalen);
+    verwerkOnweerAfstandAlarm(signalenRes.signalen);
     if (signalenGewijzigd) renderMap(signalenRes.signalen);
 
     if (pendingDeepLinkSignaalId) {
