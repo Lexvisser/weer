@@ -8,3 +8,10 @@ __pycache__/
 _to_delete/
 
 Claude outputs/
+
+# 2026-09-14: runtime-gegevens van de server (historie, lifeliner-staat,
+# mediaHistorie, de scheepsfotocache en de maandelijkse zeemarkeringen-export).
+# Wordt door de app zelf geschreven en door syncweer overgeslagen -- hoort dus
+# niet in git. Let op: backend/SRC/data blijft wel gewoon meegaan, daar staan
+# de gecommitte statische bestanden (zeemarkeringen, RWS-vaarwegmarkeringen).
+backend/data/
