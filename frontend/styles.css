@@ -1083,6 +1083,28 @@ button, button * { -webkit-user-select:none; user-select:none; -webkit-touch-cal
 .popup-schip-detailblok { padding:6px 10px; border:1px solid rgba(255,255,255,0.14); border-top:0; border-radius:0 0 6px 6px; font-size:10.5px; }
 .popup-schip-detailrij { display:flex; justify-content:space-between; gap:10px; padding:2px 0; color:#9199b5; }
 .popup-schip-detailrij span:last-child { color:#f4f6fb; font-family:'JetBrains Mono',monospace; }
+/* 14 sept 2026, op verzoek van Lex ("dat groter worden van die kaartjes vind ik
+   niks... semi transparant over de foto"): het Vessel-detailblok wordt door
+   werkVesselOverlayBij() (app.js) in een half-doorzichtig overlay-element
+   ÓVER de foto gezet zodra er een foto is, zodat het kaartje niet meer groeit
+   (en de kaart dus ook nooit hoeft te schuiven). Zonder foto blijft het blok
+   gewoon inline onder de knop (oude gedrag). De inset volgt de negatieve
+   marges van .popup-scheepsfoto per context (wit kaartje / telefoon-sheet /
+   schermvullend label), zodat het overlay exact de foto dekt. */
+.popup-schip-fotowrap { position:relative; }
+.popup-schip-fotooverlay { display:none; position:absolute; inset:0 -14px 8px -14px; box-sizing:border-box; padding:10px 16px; flex-direction:column; justify-content:center; overflow:hidden; background:rgba(12,16,26,0.66); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); color:#f4f6fb; }
+.popup-schip.vessel-open .popup-schip-fotooverlay { display:flex; }
+.popup-schip-fotooverlay .popup-schip-detailblok { border:0; padding:0; background:none; width:100%; }
+.popup-schip-fotooverlay .popup-schip-detailrij { color:rgba(255,255,255,0.72); padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.14); }
+.popup-schip-fotooverlay .popup-schip-detailrij:last-child { border-bottom:0; }
+.popup-schip-fotooverlay .popup-schip-detailrij span:last-child { color:#fff; }
+.popup-schip-wit .popup-schip-fotooverlay .popup-schip-detailrij { font-size:14px; }
+.schip-sheet-inhoud .popup-schip-fotooverlay { inset:0 -16px 10px -16px; padding:14px 20px; }
+.schip-sheet-inhoud .popup-schip-fotooverlay .popup-schip-detailrij { font-size:16px; padding:6px 0; }
+.label-popup-inhoud .popup-schip-fotooverlay { inset:-16px -16px 12px -16px; }
+/* Knop: met het blok over de foto is er niks meer "aan de knop vast", dus geen
+   open-onderrand meer; wel een duidelijke aan-stand. */
+.popup-schip.vessel-op-foto .popup-schip-details[open] > .popup-schip-knop-primair { border-radius:6px; margin-bottom:0; background:#155f9f; border-color:#155f9f; }
 .popup-schip-reis { margin:4px 0 2px; }
 .popup-schip-havens { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .popup-haven { display:inline-flex; align-items:center; gap:5px; font-size:1.25em; font-weight:600; color:#f4f6fb; min-width:0; }

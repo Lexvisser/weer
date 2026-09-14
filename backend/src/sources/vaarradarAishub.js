@@ -69,10 +69,18 @@ const VENSTER_MS = 60 * 60 * 1000; // was 15 * 60 * 1000; // iets ruimer dan vaa
 // vertraging (andere stations, netwerklatency) betekent dat "vers" hier sowieso wat rekkelijker is
 const BACKOFF_START_MS = 30 * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
-const BOX_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag meer zien") --
+const BOX_KM_STANDAARD = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag meer zien") --
 // samen opgetrokken met de /api/vaarradar-grens in server.js en VAARRADAR_STRAAL_KM in app.js;
 // deze moet minstens even groot zijn als die twee, anders wordt AISHub's eigen aanvulling al
 // hier afgekapt voordat de route/kaart er zelfs aan toekomen.
+// 14 sept 2026: van vaste constante naar instelbaar via AISHUB_BOX_KM in .env
+// (1-op-1 Baken se aanpak), omdat de straal-knop in de kaart nu tot 10.000 km
+// en "max" gaat. Niet gezet = deze 250 (dus exact het oude gedrag, ook de
+// terugdraai-optie: regel uit .env halen); 0 = wereldwijd (géén box meesturen,
+// zoals Baken al maanden draait met ~50.000 schepen). Let op MAX_AISHUB_SCHEPEN
+// hieronder: die cap (standaard 10.000) houdt de DICHTSTBIJZIJNDE schepen
+// over, dus bij een grote box bepaalt die feitelijk hoe ver je echt kijkt --
+// in Baken staat AISHUB_MAX_SCHEPEN daarom op 100000.
 
 // 2026-09-02, HARDE LES: een volle 250km-box in een druk gebied (Rotterdam-aanloop +
 // Noordzee/Kanaal) leverde 9261-10000+ schepen op -- dat werd bij ELKE /api/vaarradar-
@@ -109,9 +117,9 @@ const BOX_KM = 250; // 2026-09-02, op verzoek van Lex ("als het kan wil ik graag
 // Overschrijfbaar via AISHUB_MAX_SCHEPEN in .env.
 const MAX_AISHUB_SCHEPEN_STANDAARD = 10000;
 
-function bounding(homeLat, homeLon) {
-  const latMargin = BOX_KM / 111; // 1 breedtegraad ~ 111km, overal op aarde
-  const lonMargin = BOX_KM / (111 * Math.max(0.1, Math.cos((homeLat * Math.PI) / 180))); // lengtegraad krimpt met cos(breedtegraad)
+function bounding(homeLat, homeLon, boxKm) {
+  const latMargin = boxKm / 111; // 1 breedtegraad ~ 111km, overal op aarde
+  const lonMargin = boxKm / (111 * Math.max(0.1, Math.cos((homeLat * Math.PI) / 180))); // lengtegraad krimpt met cos(breedtegraad)
   return {
     latmin: homeLat - latMargin,
     latmax: homeLat + latMargin,
@@ -192,12 +200,22 @@ export function startVaarradarAishubFeed(env) {
   const dekkingKm = Number.isFinite(env.aishubLokaleDekkingKm) && env.aishubLokaleDekkingKm > 0 ? env.aishubLokaleDekkingKm : 0;
   const MAX_AISHUB_SCHEPEN =
     Number.isFinite(env.aishubMaxSchepen) && env.aishubMaxSchepen > 0 ? Math.floor(env.aishubMaxSchepen) : MAX_AISHUB_SCHEPEN_STANDAARD;
-  log(`max ${MAX_AISHUB_SCHEPEN} schepen bewaren, gap-filter ${dekkingKm > 0 ? dekkingKm + 'km' : 'uit'}, box ${BOX_KM}km.`);
-  const { latmin, latmax, lonmin, lonmax } = bounding(env.homeLat, env.homeLon);
+  // 14 sept 2026: box instelbaar (zie BOX_KM_STANDAARD hierboven). null/ongeldig
+  // = 250 (oude gedrag), 0 = wereldwijd = helemaal geen latmin/latmax/lonmin/
+  // lonmax meesturen (i.p.v. een 0-brede box), precies zoals Baken het doet.
+  const boxKm = env.aishubBoxKm === 0 ? 0
+    : Number.isFinite(env.aishubBoxKm) && env.aishubBoxKm > 0 ? env.aishubBoxKm
+    : BOX_KM_STANDAARD;
+  log(`max ${MAX_AISHUB_SCHEPEN} schepen bewaren, gap-filter ${dekkingKm > 0 ? dekkingKm + 'km' : 'uit'}, box ${boxKm > 0 ? boxKm + 'km' : 'wereldwijd'}.`);
+  let boxParams = '';
+  if (boxKm > 0) {
+    const { latmin, latmax, lonmin, lonmax } = bounding(env.homeLat, env.homeLon, boxKm);
+    boxParams = `&latmin=${latmin.toFixed(4)}&latmax=${latmax.toFixed(4)}&lonmin=${lonmin.toFixed(4)}&lonmax=${lonmax.toFixed(4)}`;
+  }
   const url =
     `https://data.aishub.net/ws.php?username=${encodeURIComponent(env.aishubUsername)}` +
     `&format=1&output=json&compress=0&interval=60` + // 2026-09-03: was 30, gelijk aan VENSTER_MS
-    `&latmin=${latmin.toFixed(4)}&latmax=${latmax.toFixed(4)}&lonmin=${lonmin.toFixed(4)}&lonmax=${lonmax.toFixed(4)}`;
+    boxParams;
 
   let gestopt = false;
   let backoffMs = 0;

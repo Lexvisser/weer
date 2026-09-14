@@ -1076,8 +1076,18 @@ function initMap() {
     inhoudEl.dataset.volledigSchermGekoppeld = '1';
     inhoudEl.addEventListener('click', (klikEvent) => {
       // echte links/foto's (a) én de open/dicht-knop van de community-
-      // miniaturenstrip (summary, 2026-09-02) ongemoeid laten
-      if (klikEvent.target.closest('a, summary')) return;
+      // miniaturenstrip (summary, 2026-09-02) ongemoeid laten.
+      // 14 sept 2026-fix (Lex: "klikken op Vessel geeft een freeze"): het
+      // vaarradar-kaartje heeft, anders dan een simpel weeralarm-label, een
+      // eigen interactieve knoppenrij (.popup-schip-knoppen: de Vessel-
+      // summary + de Class-A-badge, met een kleine gap ertussen). Een klik
+      // die net naast de summary-tekst valt (op die gap, of op de badge)
+      // werd niet door `closest('a, summary')` uitgesloten en trok de
+      // gebruiker dus alsnog het schermvullende overlay in -- geen echte
+      // hang, maar voelt zo (kaart/kaartje ineens weg, alleen A-/A+/Sluiten
+      // zichtbaar). Nu de hele knoppenrij uitgesloten, niet alleen de
+      // summary zelf.
+      if (klikEvent.target.closest('a, summary, .popup-schip-knoppen')) return;
       toonVolledigSchermPopup(inhoudEl.innerHTML);
     });
   });
@@ -6432,7 +6442,17 @@ const VLIEGRADAR_STRAAL_KM = 75;
 // (#vaarStraalKnop) om 'm in stappen van 25 op te hogen tot 250 "voor noodgevallen".
 // Servergrens (server.js, Math.min(250,...)) en BOX_KM (vaarradarAishub.js) blijven op
 // 250 staan -- die bepalen het PLAFOND, dit hier is wat de kaart daadwerkelijk opvraagt.
-const VAARRADAR_STRAAL_STAPPEN = [50, 75, 100, 125, 150, 175, 200, 225, 250];
+// 14 sept 2026, op verzoek van Lex ("de radius moet verder kunnen dan 250 km,
+// standaard 250, dan 1000, 2000, 5000, 10000, max; de opties kleiner dan 250
+// mogen vervallen"). Sinds stap 2b (WS + canvas, zie baken-status.md) is de
+// oude reden voor de kleine stappen (DOM-markers, trage kaart bij 250 km)
+// weg; Baken bewees dezelfde aanpak tot 250.000+ schepen. VAARRADAR_STRAAL_MAX
+// (= "max" op de knop) is de harde bovengrens van de WS-server
+// (Math.min(20000, ...) in wsVaarradar.js) -- in de praktijk wereldwijd.
+// Wat je bij >250 km ook echt TE ZIEN krijgt hangt af van AISHUB_BOX_KM en
+// AISHUB_MAX_SCHEPEN in backend/.env (zie vaarradarAishub.js).
+const VAARRADAR_STRAAL_MAX = 20000;
+const VAARRADAR_STRAAL_STAPPEN = [250, 1000, 2000, 5000, 10000, VAARRADAR_STRAAL_MAX];
 // 2026-09-02, op verzoek van Lex ("zoomen gaat niet lekker meer met een
 // range boven de 50... pas opbouwen na een vrij forse zoomfactor") -- na het
 // weghalen van clustering (zie vorige commit) worden bij een grote straal
@@ -6443,7 +6463,9 @@ const VAARRADAR_STRAAL_STAPPEN = [50, 75, 100, 125, 150, 175, 200, 225, 250];
 // 10 is een eerste inschatting (vergelijkbaar met VLIEGRADAR_ZOOM=8, maar
 // bewust hoger -- "vrij fors" was Lex' eigen woordkeuze); bijstellen als het
 // te laat/te vroeg aanvoelt.
-const VAAR_MIN_ZOOM_VOOR_SCHEPEN = 10;
+// 14 sept 2026: VERWIJDERD (const VAAR_MIN_ZOOM_VOOR_SCHEPEN = 10 stond hier)
+// -- zie tekenVaarSchepenCanvas(): met canvas + WS is de reden hierboven
+// vervallen, schepen worden nu op elk zoomniveau getekend.
 // Startbeeld bij het aanzetten van de vaarradar: de Maasmond (zie
 // toggleVaarradar()). Zoom 12 toont Hoek van Holland t/m de Maasvlakte en
 // een stuk Nieuwe Waterweg.
@@ -6454,12 +6476,12 @@ const VAAR_MIN_ZOOM_VOOR_SCHEPEN = 10;
 // vaste zoom, zodat het op telefoon én breed scherm hetzelfde gebied toont.
 const VAAR_STARTBOUNDS = [[51.70, 3.85], [52.05, 4.85]];
 const VAARRADAR_STRAAL_KEY = 'weerVaarradarStraalKm';
-let vaarradarStraalKm = 50;
+let vaarradarStraalKm = 250; // 14 sept 2026: was 50; een onthouden oude waarde (50..225) staat niet meer in de stappen en valt hier dus vanzelf op terug
 try {
   const opgeslagen = Number(localStorage.getItem(VAARRADAR_STRAAL_KEY));
   if (VAARRADAR_STRAAL_STAPPEN.includes(opgeslagen)) vaarradarStraalKm = opgeslagen;
 } catch (_) {
-  /* prive-modus, gewoon bij de standaard (50) blijven */
+  /* prive-modus, gewoon bij de standaard (250) blijven */
 }
 // 2026-08-21: eerst 15s -> 5s, en op Lex' vervolgverzoek ("kan het nog
 // sneller") -> 3s. De servercache in backend/src/sources/vliegradar.js is
@@ -6561,13 +6583,23 @@ function verbindVaarradarWs(lat, lon) {
     const url = `${protocol}//${location.host}/ws/vaarradar?lat=${lat}&lon=${lon}&straal=${vaarradarStraalKm}&zoom=${kaart.getZoom()}`;
     vaarWsOpzettelijkDicht = false;
     vaarCanvasWsPositie = { lat, lon };
+    // 14 sept 2026-fix (live gemeten bij snel doorklikken van de straal-knop):
+    // een nog openstaande vorige socket altijd eerst sluiten, en hieronder
+    // alleen berichten van DE huidige socket (vaarWs === ws) verwerken --
+    // anders bleven verouderde sockets (bijv. nog met straal=250) gewoon
+    // snapshots/delta's in vaarSchepenData pompen, waardoor "max" na snel
+    // doorklikken toch maar 250 km liet zien.
+    if (vaarWs && vaarWs.readyState <= WebSocket.OPEN) { vaarWsOpzettelijkDicht = true; vaarWs.close(); }
     const ws = new WebSocket(url);
     vaarWs = ws;
+    vaarWsOpzettelijkDicht = false;
     ws.addEventListener('open', () => {
+      if (vaarWs !== ws) { ws.close(); return; } // intussen al vervangen
       vaarWsBackoffMs = 1000;
       console.log('[vaarradar-ws] verbonden.');
     });
     ws.addEventListener('message', (ev) => {
+      if (vaarWs !== ws) { ws.close(); return; } // verouderde socket, negeren én opruimen
       let bericht;
       try {
         bericht = JSON.parse(ev.data);
@@ -6617,11 +6649,13 @@ function sluitVaarradarWs() {
 // wsVaarradar.js) -- dus gewoon opnieuw verbinden i.p.v. de oude proberen te
 // updaten. Positie opnieuw opvragen i.p.v. de vorige hergebruiken, voor het
 // geval je intussen echt verplaatst bent.
+let vaarWsHerverbindGeneratie = 0; // 14 sept 2026: alleen de LAATSTE herverbind-aanvraag mag nog verbinden (huidigePositie() is async; snel doorklikken gaf anders meerdere sockets tegelijk)
 function herverbindVaarradarWs() {
   if (!vaarradarActief) return;
   sluitVaarradarWs();
+  const generatie = ++vaarWsHerverbindGeneratie;
   huidigePositie().then(({ lat, lon }) => {
-    if (vaarradarActief) verbindVaarradarWs(lat, lon);
+    if (vaarradarActief && generatie === vaarWsHerverbindGeneratie) verbindVaarradarWs(lat, lon);
   });
 }
 // Let op: de bijbehorende kaart.on('zoomend', ...) voor deze WS staat NIET
@@ -6888,7 +6922,7 @@ function vaarZoekUitvoeren() {
     .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9))
     .slice(0, 8);
   if (!treffers.length) {
-    vaarZoekResultatenEl.innerHTML = `<div class="vaar-zoek-leeg">Geen schip gevonden binnen ${vaarradarStraalKm} km</div>`;
+    vaarZoekResultatenEl.innerHTML = `<div class="vaar-zoek-leeg">Geen schip gevonden ${vaarradarStraalKm >= VAARRADAR_STRAAL_MAX ? 'wereldwijd' : `binnen ${vaarradarStraalKm} km`}</div>`;
     return;
   }
   treffers.forEach(({ s, km }) => {
@@ -7350,7 +7384,7 @@ function wisselVaarStraal() {
 
 function zetVaarStraalKnopLabel() {
   const label = VAAR_STRAAL_KNOP_EL?.querySelector('.knop-tekst');
-  if (label) label.textContent = ` ${vaarradarStraalKm}km`;
+  if (label) label.textContent = vaarradarStraalKm >= VAARRADAR_STRAAL_MAX ? ' max' : ` ${vaarradarStraalKm}km`;
 }
 
 function wisselVaarAishubZichtbaar() {
@@ -7606,11 +7640,63 @@ async function haalEnToonScheepsfoto(mmsi) {
     scheepsfotoUrls.set(mmsi, data.url || null);
     const cache = vaarPopupCache.get(mmsi);
     if (!data.url || !cache) return;
-    cache.fotoEl.innerHTML = `<img class="popup-scheepsfoto" src="${escapeHtml(data.url)}" alt="" loading="lazy">`;
-    cache.fotoUrl = data.url;
+    zetScheepsfoto(cache, mmsi, data.url);
     if (vaarCanvasPopup && vaarCanvasActiefMmsi === mmsi && schipSheetMmsi !== mmsi) vaarCanvasPopup.update();
   } catch (err) {
     console.error('scheepsfoto ophalen mislukt', err);
+  }
+}
+
+// 14 sept 2026 (Lex: "freezes die wel weer oplossen", vooral als het kaartje
+// gedeeltelijk boven uit beeld raakt): de foto laadt asynchroon (loading=
+// "lazy"), dus op het moment van .update() hierboven is de uiteindelijke
+// hoogte van het kaartje nog niet bekend -- pas als de <img> echt geladen is
+// groeit het kaartje (naar boven, Leaflet-popups hangen aan hun punt) en dan
+// wil je 'm nog één keer netjes in beeld schuiven. Zie
+// schuifCanvasPopupInBeeld() voor waarom dat expliciet en eenmalig is.
+function koppelFotoInBeeld(cache, mmsi) {
+  const img = cache.fotoEl.querySelector('img');
+  if (img) img.addEventListener('load', () => schuifCanvasPopupInBeeld(mmsi), { once: true });
+}
+
+// Schuift het open canvas-kaartje EENMALIG in beeld (Leaflets eigen autopan),
+// en zet autoPan daarna meteen weer uit.
+//
+// Waarom niet gewoon autoPan aan laten staan (Leaflet-standaard): het kaartje
+// wordt elke WS-tick (~1x/s) bijgewerkt via setLatLng() + update(), en ALLEBEI
+// die aanroepen doen in Leaflet 1.9 zelf een _adjustPan(). Met autoPan aan
+// betekende dat: bij een varend schip (of een kaartje dat door de Vessel-
+// uitklap/foto net niet meer past) elke seconde een geanimeerde panBy(), die
+// bovendien de nog lopende pan-animatie hard afbreekt (_panAnim.stop()) --
+// en elke pan geeft weer een 'moveend' -> tekenVaarSchepenCanvas() -> update()
+// -> nog een _adjustPan(). Dat is precies het "haperen"/"even bevriezen" dat
+// Lex zag bij het wisselen tussen schepen en bij de Vessel-knop. MarineTraffic
+// doet het ook zo: alleen bij OPENEN centreren, daarna volgt het kaartje het
+// schip gewoon, ook als dat uit beeld vaart.
+//
+// Re-entrancy-guard (vaarPopupSchuifBezig), live gemeten op 14 sept 2026 nadat
+// de eerste versie hiervan nog steeds honderden autopans gaf: Leaflets
+// _adjustPan() roept eerst _panAnim.stop() aan als er nog een pan-animatie
+// loopt (bijv. die van de Vessel-uitklap, als daar vlak daarna de foto
+// laadt). Die stop() vuurt SYNCHROON 'moveend' -> tekenVaarSchepenCanvas()
+// -> setLatLng() -> nog een _adjustPan() (autoPan staat op dat moment nog aan,
+// we zitten nog binnen update()) -> nieuwe animatie -> die wordt door de
+// buitenste _adjustPan() weer gestopt -> weer 'moveend' -> ... Een steeds
+// diepere synchrone recursie met per niveau een volledige hertekening van
+// alle schepen (~3ms): honderden niveaus = seconden lang een geblokkeerde
+// pagina. Precies het "bevriezen dat vanzelf weer oplost". Met de guard slaat
+// tekenVaarSchepenCanvas() het popup-volgen over zolang deze functie bezig is.
+let vaarPopupSchuifBezig = false;
+function schuifCanvasPopupInBeeld(mmsi) {
+  if (!vaarCanvasPopup || vaarCanvasActiefMmsi !== mmsi || schipSheetMmsi === mmsi || !vaarCanvasPopup.isOpen()) return;
+  if (vaarPopupSchuifBezig) return;
+  vaarPopupSchuifBezig = true;
+  try {
+    vaarCanvasPopup.options.autoPan = true;
+    vaarCanvasPopup.update();
+  } finally {
+    vaarCanvasPopup.options.autoPan = false;
+    vaarPopupSchuifBezig = false;
   }
 }
 
@@ -7677,10 +7763,20 @@ function scheepsKaartHtml(s, statusTekst) {
     : '—';
   const diepgang = s.diepgangM != null ? `${s.diepgangM.toFixed(1)} m` : '—';
   const etaHtml = s.eta ? `<b>ETA:</b> ${etaTekst(s.eta)}` : '<b>ETA:</b> —';
+  // 14 sept 2026-fix (Lex: "dimensie van het schip" ontbrak op het kaartje --
+  // dit sloeg NIET op de ware-vorm-tekening op de kaart zelf (die werkt al),
+  // maar op deze regel in het "Vessel"-detailblok, die bij het overzetten
+  // vanuit Baken abusievelijk niet meegenomen was. Lengte = boeg+hek,
+  // breedte = bakboord+stuurboord, uit dezelfde `afmetingen`-data als de
+  // ware-grootte-vorm op de kaart.
+  const afmetingenTekst = s.afmetingen
+    ? `${s.afmetingen.boeg + s.afmetingen.hek} × ${s.afmetingen.bakboord + s.afmetingen.stuurboord} m`
+    : null;
   const detailRegels = [
     ['MMSI', s.mmsi],
     ['IMO', s.imo],
     ['Roepnaam', s.callsign],
+    ['Afmetingen', afmetingenTekst],
   ]
     .map(([label, waarde]) => `<div class="popup-schip-detailrij"><span>${label}</span><span>${waarde != null && waarde !== '' ? escapeHtml(String(waarde)) : '—'}</span></div>`)
     .join('');
@@ -7740,17 +7836,33 @@ function bouwVaarPopupContent(mmsi, kopHtml, basisHtml) {
     const kopEl = document.createElement('div');
     kopEl.className = 'popup-scheepskop';
     const fotoEl = document.createElement('div');
+    fotoEl.className = 'popup-schip-fotowrap';
+    // 14 sept 2026 (Lex: "dat groter worden van die kaartjes vind ik niks"):
+    // vast overlay-element in de fotowrap; werkVesselOverlayBij() verhuist het
+    // Vessel-detailblok hierin zodra er een foto is (zie styles.css,
+    // .popup-schip-fotooverlay), zodat het kaartje niet meer groeit.
+    const overlayEl = document.createElement('div');
+    overlayEl.className = 'popup-schip-fotooverlay';
+    fotoEl.appendChild(overlayEl);
     const tekstEl = document.createElement('div');
     wrapperEl.appendChild(kopEl);
     wrapperEl.appendChild(fotoEl);
     wrapperEl.appendChild(tekstEl);
-    cache = { wrapperEl, kopEl, fotoEl, tekstEl, fotoUrl: null };
+    cache = { wrapperEl, kopEl, fotoEl, overlayEl, tekstEl, fotoUrl: null };
     vaarPopupCache.set(mmsi, cache);
     const bestaandeUrl = scheepsfotoUrls.get(mmsi);
-    if (bestaandeUrl) {
-      fotoEl.innerHTML = `<img class="popup-scheepsfoto" src="${escapeHtml(bestaandeUrl)}" alt="" loading="lazy">`;
-      cache.fotoUrl = bestaandeUrl;
-    }
+    if (bestaandeUrl) zetScheepsfoto(cache, mmsi, bestaandeUrl);
+    // 14 sept 2026: na een klik op de Vessel-knop (<summary>) wordt het
+    // kaartje langer (detailblok klapt uit, naar boven) -- dan één keer in
+    // beeld schuiven. Gedelegeerd op de wrapper (die blijft bestaan), want
+    // tekstEl.innerHTML wordt elke tick herbouwd; en via click + setTimeout(0)
+    // i.p.v. het 'toggle'-event, omdat de herbouw zelf ook een toggle vuurt
+    // (open-stand terugzetten) en dat dus elke seconde zou pannen -- precies
+    // het gedrag dat schuifCanvasPopupInBeeld() juist weg moet houden.
+    wrapperEl.addEventListener('click', (ev) => {
+      if (!ev.target.closest('summary.popup-schip-knop-primair')) return;
+      setTimeout(() => schuifCanvasPopupInBeeld(mmsi), 0);
+    });
   }
   if (cache.kopEl.innerHTML !== kopHtml) cache.kopEl.innerHTML = kopHtml;
   // 2026-09-03: de "Scheepsdetails"-uitklap (native <details>, zie
@@ -7758,8 +7870,50 @@ function bouwVaarPopupContent(mmsi, kopHtml, basisHtml) {
   // schip -- open-stand onthouden en na de herbouw terugzetten.
   const detailsStondOpen = !!cache.tekstEl.querySelector('details.popup-schip-details[open]');
   cache.tekstEl.innerHTML = basisHtml;
-  if (detailsStondOpen) cache.tekstEl.querySelector('details.popup-schip-details')?.setAttribute('open', '');
+  const details = cache.tekstEl.querySelector('details.popup-schip-details');
+  if (details) {
+    if (detailsStondOpen) details.setAttribute('open', '');
+    // open/dicht-stand doorgeven aan de wrapper (CSS toont/verbergt daarop het
+    // foto-overlay); 'toggle' vuurt ook bij de programmatische heropening
+    // hierboven, en dat is hier prima (zet alleen een klasse, pant niks).
+    details.addEventListener('toggle', () => cache.wrapperEl.classList.toggle('vessel-open', details.open));
+  }
+  werkVesselOverlayBij(cache);
   return cache.wrapperEl;
+}
+
+// Zet (of vervangt) de scheepsfoto in de fotowrap, mét behoud van het
+// overlay-element (14 sept 2026). Voorheen fotoEl.innerHTML = <img>, maar dat
+// zou het overlay wissen.
+function zetScheepsfoto(cache, mmsi, url) {
+  cache.fotoEl.querySelector('img.popup-scheepsfoto')?.remove();
+  const img = document.createElement('img');
+  img.className = 'popup-scheepsfoto';
+  img.alt = '';
+  img.loading = 'lazy';
+  img.src = url;
+  cache.fotoEl.prepend(img);
+  cache.fotoUrl = url;
+  koppelFotoInBeeld(cache, mmsi);
+  werkVesselOverlayBij(cache);
+}
+
+// 14 sept 2026, op verzoek van Lex ("kaartje mag niet groeien"): het Vessel-
+// detailblok (MMSI/IMO/roepnaam/afmetingen) hoort ÓVER de foto, half-
+// doorzichtig, i.p.v. inline onder de knop. Het blok zelf komt uit de
+// per-tick herbouwde tekstEl (scheepsKaartHtml()), dus na elke herbouw
+// opnieuw verhuizen: is er een foto, dan het verse blok in het overlay
+// (vervangt het oude); is er geen foto, dan blijft het blok gewoon in de
+// <details> staan (kaartje groeit dan wél, er is niks om overheen te leggen).
+// De zichtbaarheid van het overlay loopt via de wrapper-klasse 'vessel-open'
+// (zie de toggle-listener in bouwVaarPopupContent()).
+function werkVesselOverlayBij(cache) {
+  const heeftFoto = !!cache.fotoEl.querySelector('img.popup-scheepsfoto');
+  const blok = cache.tekstEl.querySelector('.popup-schip-detailblok');
+  cache.wrapperEl.classList.toggle('vessel-op-foto', heeftFoto);
+  if (heeftFoto && blok) cache.overlayEl.replaceChildren(blok);
+  else if (!heeftFoto) cache.overlayEl.replaceChildren();
+  cache.wrapperEl.classList.toggle('vessel-open', !!cache.tekstEl.querySelector('details.popup-schip-details[open]'));
 }
 
 // Factored uit de oude tekenVaarSchepen()-lus (14 sept 2026, stap 2b): bouwt
@@ -7856,15 +8010,13 @@ function tekenVaarSchepenCanvas() {
   // state-declaraties, en de kaart.on('zoomstart'/'zoomend', ...) in
   // initMap()) -- anders "tilt" de laag zichtbaar op tijdens het zoomen.
   if (vaarCanvasZoomAnimatieBezig) return;
-  if (kaart.getZoom() < VAAR_MIN_ZOOM_VOOR_SCHEPEN) {
-    // Nog te ver uitgezoomd -- laag leeghouden i.p.v. duizenden onbruikbare
-    // stipjes te tekenen (zelfde UX-keuze als voorheen; bij canvas is de
-    // reken-/tekenkost zelf geen probleem meer, maar het oogt nog steeds
-    // rommelig ver uitgezoomd, vandaar de drempel toch behouden).
-    vaarCanvasLaag.teken([]);
-    werkVaarTellingBij();
-    return;
-  }
+  // 14 sept 2026, op verzoek van Lex ("het verdwijnen van de shipicons als ik
+  // uitzoom werkt nu tegen me... kan dat weg?" -- "JA"): de minimumzoom
+  // (VAAR_MIN_ZOOM_VOOR_SCHEPEN, hier voorheen een vroege return met een lege
+  // laag) is weg. Die stamde uit de DOM-marker-tijd (2 sept, duizenden losse
+  // markers ver uitgezoomd); met canvas + WS tekent Baken 250.000 stippen op
+  // elk zoomniveau soepel, en de server stuurt uitgezoomd al beknopte velden.
+  // Schepen dus op ELK zoomniveau tekenen, net als Baken/MarineTraffic.
   const toonWareVorm = kaart.getZoom() >= VAAR_ZOOM_SCHEEPSVORM;
   const beeldGrens = kaart.getBounds().pad(0.25); // 25% marge, zelfde als voorheen
   const schepen = [];
@@ -7896,7 +8048,9 @@ function tekenVaarSchepenCanvas() {
   // Het actieve (aangeklikte) kaartje volgt het schip mee -- zonder dit zou
   // een openstaand popup/sheet op zijn oude positie/tekst blijven hangen
   // zodra het schip beweegt of nieuwe data binnenkomt.
-  if (vaarCanvasActiefMmsi != null) {
+  // (niet tijdens een lopende schuifCanvasPopupInBeeld(): zie de uitleg bij
+  // vaarPopupSchuifBezig daar -- anders synchrone recursie via 'moveend'.)
+  if (vaarCanvasActiefMmsi != null && !vaarPopupSchuifBezig) {
     const actief = vaarSchepenData.get(vaarCanvasActiefMmsi);
     if (actief && vaarCanvasPopup) {
       vaarCanvasPopup.setLatLng([actief.lat, actief.lon]);
@@ -7951,7 +8105,22 @@ function openVaarCanvasPopup(mmsi, s) {
     // staan, dus dan blijft dit een no-op).
     if (schipSheetMmsi === mmsi) sluitSchipSheet(false);
   });
-  vaarCanvasPopup.openOn(kaart);
+  // Opent MET autopan (Leaflet-standaard): één keer netjes in beeld. Onder
+  // dezelfde re-entrancy-guard als schuifCanvasPopupInBeeld(): bij snel
+  // wisselen tussen schepen loopt de pan-animatie van het VORIGE kaartje vaak
+  // nog, en Leaflets _adjustPan() stopt die eerst (synchroon 'moveend' ->
+  // tekenVaarSchepenCanvas() -> setLatLng() -> weer _adjustPan() -> ...).
+  vaarPopupSchuifBezig = true;
+  try {
+    vaarCanvasPopup.openOn(kaart);
+  } finally {
+    // 14 sept 2026: daarna autoPan uit -- de periodieke setLatLng()/update()
+    // per WS-tick mag NIET elke seconde opnieuw pannen. Zie de uitleg bij
+    // schuifCanvasPopupInBeeld() hierboven; dat is voortaan de enige plek die
+    // (eenmalig) nog pant, bij de Vessel-uitklap en bij een geladen foto.
+    vaarCanvasPopup.options.autoPan = false;
+    vaarPopupSchuifBezig = false;
+  }
   // 2026-09-01: foto pas opzoeken zodra deze popup daadwerkelijk opent, nooit
   // vooraf voor alle zichtbare schepen (zie scheepsfoto.js/server.js).
   // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.

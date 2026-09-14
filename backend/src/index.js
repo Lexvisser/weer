@@ -52,6 +52,11 @@ const env = {
   aishubUsername: (process.env.AISHUB_USERNAME ?? '').trim(),
   aishubLokaleDekkingKm: Number(process.env.AISHUB_LOKALE_DEKKING_KM) || 0,
   aishubMaxSchepen: Number(process.env.AISHUB_MAX_SCHEPEN) || 0, // 0 = standaard uit vaarradarAishub.js
+  // 14 sept 2026, op verzoek van Lex (zoekstraal tot 10.000 km / "max"):
+  // grootte van de box die bij AISHub wordt opgevraagd, 1-op-1 het Baken-
+  // patroon. Niet gezet (of ongeldig) = de vertrouwde 250 km van voorheen;
+  // 0 = expliciet wereldwijd (geen box meesturen). Zie vaarradarAishub.js.
+  aishubBoxKm: process.env.AISHUB_BOX_KM === undefined || process.env.AISHUB_BOX_KM.trim() === '' ? null : Number(process.env.AISHUB_BOX_KM),
   // 2026-08-22, op verzoek van Lex — Web Push (zie sources/webpush.js) als
   // eigen, niet-storend PWA-alarmkanaal naast Pushover. De publieke sleutel
   // is (per ontwerp van VAPID) niet geheim — mag gewoon naar de frontend via
