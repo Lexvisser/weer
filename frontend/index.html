@@ -260,6 +260,14 @@
            OpenSeaMap-"Boeien"-knop in het vaarmenu (die is de zeeteken-
            tegellaag, geen eigen data). Zie toggleRwsBoeien() in app.js. -->
       <button id="toggleRwsBoeien" class="satelliet-toggle" title="RWS-vaarwegmarkeringen (boeien en vaste bakens/lichten, landelijk, uit PDOK) tonen/verbergen">🛟<span class="knop-tekst"> RWS-boeien</span></button>
+      <!-- 2026-09-14, op verzoek van Lex ("Je zou nog een keuze kunnen maken
+           verlichte boeien"): subknop bij de boeienlaag, zelfde opzet als de
+           KNMI/RWS/NAVTEX-knopjes onder Stations -- alleen zichtbaar zolang de
+           boeienlaag aanstaat. Aan = alleen de 3.947 verlichte objecten,
+           uit = alle 18.499. Zie wisselRwsBoeienVerlicht() in app.js. -->
+      <span id="rwsBoeienSub" class="stations-sub verborgen">
+        <button id="rwsBoeienVerlichtToggle" class="satelliet-toggle stations-subknop" title="Alleen verlichte boeien en bakens tonen (lichtkarakter bekend)">Verlicht</button>
+      </span>
       <!-- 2026-09-14, tweede knop op hetzelfde verzoek ("Ook de optie om
            alleen deze objecten te tonen zonder schepen en andere meldingen en
            icons"): verbergt in één klik alle andere lagen (schepen, hazard-

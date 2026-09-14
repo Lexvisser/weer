@@ -1079,6 +1079,8 @@ function initMap() {
   if (TOGGLE_STATIONS_EL) TOGGLE_STATIONS_EL.addEventListener('click', toggleStations); // 2026-09-07, weerstations-laag
   if (TOGGLE_RWS_BOEIEN_EL) TOGGLE_RWS_BOEIEN_EL.addEventListener('click', toggleRwsBoeien); // 2026-09-14, RWS-vaarwegmarkeringen (boeien/bakens)
   if (TOGGLE_ALLEEN_BOEIEN_EL) TOGGLE_ALLEEN_BOEIEN_EL.addEventListener('click', toggleAlleenBoeien);
+  if (RWS_BOEIEN_VERLICHT_EL) RWS_BOEIEN_VERLICHT_EL.addEventListener('click', wisselRwsBoeienVerlicht); // 2026-09-14, alleen verlichte boeien
+  rwsBoeienSubKnopBijwerken();
   if (TOGGLE_NWR_EL) TOGGLE_NWR_EL.addEventListener('click', toggleNwr); // 2026-09-09, NOAA Weather Radio-laag
   nwrDataTimerStart(); // 2026-09-10: NWS-data is de enige kaartbron, dus altijd verversen
   document.getElementById('nwrStopKnop')?.addEventListener('click', nwrStop);
@@ -9496,6 +9498,15 @@ function tekenStations({ stations, meetpunten, kustrapporten = [] }) {
 const TOGGLE_RWS_BOEIEN_EL = document.getElementById('toggleRwsBoeien');
 const TOGGLE_ALLEEN_BOEIEN_EL = document.getElementById('toggleAlleenBoeien');
 const RWS_BOEIEN_KEY = 'weerRwsBoeienLaag';
+// 2026-09-14, op verzoek van Lex ("Je zou nog een keuze kunnen maken verlichte
+// boeien"): subknop die de laag terugbrengt tot alleen wat licht voert --
+// 3.947 van de 18.499. Bewust twee standen (alles / alleen verlicht) en geen
+// derde voor "alleen onverlicht"; daar zag Lex net zo min nut in als ik.
+const RWS_BOEIEN_SUB_EL = document.getElementById('rwsBoeienSub');
+const RWS_BOEIEN_VERLICHT_EL = document.getElementById('rwsBoeienVerlichtToggle');
+const RWS_BOEIEN_VERLICHT_KEY = 'weerRwsBoeienAlleenVerlicht';
+let rwsBoeienAlleenVerlicht = false;
+try { rwsBoeienAlleenVerlicht = localStorage.getItem(RWS_BOEIEN_VERLICHT_KEY) === 'aan'; } catch (_) { /* privé-modus */ }
 let rwsBoeienActief = false;
 let rwsBoeienLaag = null; // VaarCanvasLaag-instantie, los van die van de schepen
 let rwsBoeienData = null; // eenmaal opgehaalde lijst, blijft in het geheugen zolang de pagina leeft
@@ -9558,9 +9569,27 @@ function rwsBoeienPopupHtml(m) {
 
 function tekenRwsBoeien() {
   if (!rwsBoeienActief || !kaart || !rwsBoeienData || !rwsBoeienLaag) return;
-  // De index in rwsBoeienData is de sleutel voor de hit-test (`id`); de laag
-  // kent verder niets van boeien af behalve wat er in `boei` zit.
-  rwsBoeienLaag.teken(rwsBoeienData.map((m, i) => ({ id: i, lat: m.lat, lon: m.lon, vorm: 'boei', boei: m })));
+  // De index in rwsBoeienData is de sleutel voor de hit-test (`id`). Let op de
+  // volgorde: eerst nummeren, dan pas filteren -- andersom zouden de id's bij
+  // "alleen verlicht" opschuiven en wees de hover/popup het verkeerde object aan.
+  rwsBoeienLaag.teken(rwsBoeienData
+    .map((m, i) => ({ id: i, lat: m.lat, lon: m.lon, vorm: 'boei', boei: m }))
+    .filter((it) => !rwsBoeienAlleenVerlicht || it.boei.lichtkarakter));
+}
+
+function rwsBoeienSubKnopBijwerken() {
+  RWS_BOEIEN_SUB_EL?.classList.toggle('verborgen', !rwsBoeienActief);
+  RWS_BOEIEN_VERLICHT_EL?.classList.toggle('actief', rwsBoeienAlleenVerlicht);
+}
+
+function wisselRwsBoeienVerlicht() {
+  rwsBoeienAlleenVerlicht = !rwsBoeienAlleenVerlicht;
+  try { localStorage.setItem(RWS_BOEIEN_VERLICHT_KEY, rwsBoeienAlleenVerlicht ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
+  rwsBoeienSubKnopBijwerken();
+  // Een object dat zojuist weggefilterd is mag geen tooltip/popup laten staan.
+  verbergRwsBoeienTooltip();
+  if (rwsBoeienPopup && kaart) kaart.closePopup(rwsBoeienPopup);
+  tekenRwsBoeien();
 }
 
 function verbergRwsBoeienTooltip() {
@@ -9573,6 +9602,7 @@ async function toggleRwsBoeien() {
   rwsBoeienActief = !rwsBoeienActief;
   TOGGLE_RWS_BOEIEN_EL?.classList.toggle('actief', rwsBoeienActief);
   try { localStorage.setItem(RWS_BOEIEN_KEY, rwsBoeienActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
+  rwsBoeienSubKnopBijwerken();
   if (!rwsBoeienActief) {
     verbergRwsBoeienTooltip();
     if (rwsBoeienPopup && kaart) kaart.closePopup(rwsBoeienPopup);
