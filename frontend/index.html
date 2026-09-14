@@ -264,9 +264,16 @@
            verlichte boeien"): subknop bij de boeienlaag, zelfde opzet als de
            KNMI/RWS/NAVTEX-knopjes onder Stations -- alleen zichtbaar zolang de
            boeienlaag aanstaat. Aan = alleen de 3.947 verlichte objecten,
-           uit = alle 18.499. Zie wisselRwsBoeienVerlicht() in app.js. -->
+           uit = alle 18.499. Zie wisselRwsBoeienVerlicht() in app.js.
+           2026-09-14, na Lex' opmerking dat de drie verschijningsvormen
+           (doorgestreept / opgelicht / kleurloos) vreemd oogden: deze knop
+           erft NIET de doorstreping van de Stations-subknoppen. Daar betekent
+           doorgestreept "dit deel is verborgen", maar hier betekent uit juist
+           "toon alles" -- dan leest een doorgestreepte "Verlicht" als het
+           tegenovergestelde van wat er gebeurt. Vandaar het duidelijker label
+           en een eigen amber accent, zie .boeien-subknop in styles.css. -->
       <span id="rwsBoeienSub" class="stations-sub verborgen">
-        <button id="rwsBoeienVerlichtToggle" class="satelliet-toggle stations-subknop" title="Alleen verlichte boeien en bakens tonen (lichtkarakter bekend)">Verlicht</button>
+        <button id="rwsBoeienVerlichtToggle" class="satelliet-toggle stations-subknop boeien-subknop" title="Alleen boeien en bakens met een licht tonen; uit = alle 18.499 objecten">Alleen verlicht</button>
       </span>
       <!-- 2026-09-14, tweede knop op hetzelfde verzoek ("Ook de optie om
            alleen deze objecten te tonen zonder schepen en andere meldingen en

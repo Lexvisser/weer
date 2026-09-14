@@ -2251,6 +2251,16 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .station-vak.is-navtex .station-bron, .station-vak.is-navtex .station-bft { color:#3bff7c; }
 .radar-controls .stations-subknop.actief { background:rgba(5,6,10,0.78); }
 .radar-controls .stations-subknop:not(.actief) { opacity:0.4; text-decoration:line-through; }
+/* 2026-09-14, op Lex' opmerking ("doorgestreept verlicht of leeg vind ik wat
+   vreemd"): de Verlicht-knop bij de RWS-boeienlaag hoort NIET bij bovenstaande
+   doorstreep-logica. Bij de Stations-subknoppen betekent doorgestreept "dit
+   deel is verborgen"; bij deze knop betekent uit juist "toon alles", dus een
+   doorgestreepte "Verlicht" zou het omgekeerde suggereren van wat er gebeurt.
+   Eigen amber accent (de kleur van licht) i.p.v. het kleurloze wit dat hij
+   kreeg omdat hij geen data-deel heeft. */
+.radar-controls .boeien-subknop { border-color:rgba(244,194,43,0.75); color:#f4c22b; }
+.radar-controls .boeien-subknop:not(.actief) { text-decoration:none; opacity:0.55; }
+.radar-controls .boeien-subknop.actief { background:#f4c22b; color:#05060a; opacity:1; }
 /* Zeemarkering (lichtkarakter/misthoorn/racon, OpenSeaMap) onder de naam in
    de Stations-popup, in het blauw (2026-09-07, Lex). */
 .station-zeemarkering { font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#3ec6ff; margin-top:2px; }
