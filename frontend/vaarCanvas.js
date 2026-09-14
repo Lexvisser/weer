@@ -13,6 +13,32 @@
 // data is). Net als Leaflet's eigen renderers tekenen we iets groter dan het
 // zichtbare beeld (padding) zodat een klein beetje pannen niet meteen een
 // lege rand toont voordat moveend afgaat.
+// 2026-09-14, op verzoek van Lex ("We hebben vandaag dus een methode
+// ontwikkeld waarmee veel objecten probleemloos tegelijk getoond kunnen
+// worden. Daar wil ik ook gebruik van maken met deze objecten"): de
+// RWS-vaarwegmarkeringen (18.499 boeien en vaste bakens) gebruiken deze
+// zelfde laag, als TWEEDE instantie naast de schepenlaag -- daarmee verviel
+// de markercluster-omweg die er eerst voor de boeien in zat. Alles wat
+// hieronder met 'boei' te maken heeft is puur toegevoegd; aan de
+// schepenkant is geen regel veranderd.
+//
+// Kleurnamen zoals RWS ze levert ("Rood", "Zwart/geel/zwart", "Rood/wit
+// repeterend"). Onbekend = grijs.
+const BOEI_KLEUREN = {
+  rood: '#d93025', groen: '#1e8e3e', geel: '#f4c22b', wit: '#f8f8f6',
+  zwart: '#1c1c1c', grijs: '#9aa0a6', blauw: '#1a73e8', oranje: '#e8710a',
+};
+
+function boeiKleurLijst(kleurTekst) {
+  if (!kleurTekst) return ['#9aa0a6'];
+  const lijst = String(kleurTekst)
+    .replace(/repeterend/gi, '')
+    .split('/')
+    .map((d) => BOEI_KLEUREN[d.trim().toLowerCase()])
+    .filter(Boolean);
+  return lijst.length ? lijst : ['#9aa0a6'];
+}
+
 const VaarCanvasLaag = L.Layer.extend({
   options: {
     pane: 'overlayPane',
@@ -239,6 +265,8 @@ const VaarCanvasLaag = L.Layer.extend({
         hitR = this._tekenVorm(ctx, lp.x, lp.y, s.afmetingen, s.headingGraden, this._pixelsPerMeter(s.lat, zoom));
       } else if (s.vorm === 'pijl' && typeof s.koersGraden === 'number') {
         hitR = this._tekenPijl(ctx, lp.x, lp.y, s.schaal ?? 1, s.koersGraden);
+      } else if (s.vorm === 'boei' && s.boei) {
+        hitR = this._tekenBoei(ctx, lp.x, lp.y, s.boei, zoom);
       } else {
         const straalPx = s.straalPx ?? 4;
         ctx.beginPath();
@@ -246,9 +274,13 @@ const VaarCanvasLaag = L.Layer.extend({
         ctx.fill();
         hitR = straalPx + 3; // iets ruimer dan de zichtbare stip, anders is een stip nauwelijks te raken
       }
-      if (s.mmsi != null) {
-        const item = { mmsi: s.mmsi, x: lp.x, y: lp.y, hitR };
-        this._posities.set(s.mmsi, item);
+      // 2026-09-14: `id` als alternatief voor `mmsi`, zodat deze laag ook
+      // voor niet-schepen (de RWS-boeien) te gebruiken is zonder dat de
+      // schepenkant iets merkt -- die levert gewoon `mmsi` en geen `id`.
+      const sleutel = s.id ?? s.mmsi;
+      if (sleutel != null) {
+        const item = { mmsi: sleutel, x: lp.x, y: lp.y, hitR };
+        this._posities.set(sleutel, item);
         const cx = Math.floor(lp.x / g);
         const cy = Math.floor(lp.y / g);
         const key = `${cx},${cy}`;
@@ -319,6 +351,181 @@ const VaarCanvasLaag = L.Layer.extend({
     ctx.fill();
     ctx.restore();
     return Math.hypot(halfBreedte, halfLengte);
+  },
+
+  // 2026-09-14: RWS-vaarwegmarkering in zeekaartvorm. Drie detailniveaus,
+  // puur op zoom -- er wordt NIETS weggelaten of geclusterd (uitdrukkelijke
+  // keuze van Lex), alleen minder detail als je ver uitgezoomd bent, anders
+  // wordt het bij 18.499 objecten een soep van stippen.
+  //   < 9  : stipje in de hoofdkleur
+  //   9-10 : silhouet (stomp/spits/bol/spar/baken) met kleurbanden
+  //   >= 11: idem + lichtvlek
+  //   >= 12: idem + topteken (kardinale kegels e.d.)
+  _tekenBoei(ctx, x, y, b, zoom) {
+    const kleuren = boeiKleurLijst(b.kleur);
+    if (zoom < 9) {
+      ctx.fillStyle = kleuren[0];
+      ctx.beginPath();
+      ctx.arc(x, y, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      return 4;
+    }
+    const lichtAan = zoom >= 11;
+    const toptekenAan = zoom >= 12;
+    const h = toptekenAan ? 12 : 8;
+    const vorm = (b.vorm || '').toLowerCase();
+    const functie = (b.functie || '').toLowerCase();
+    let w = h * 0.7;
+
+    // Het silhouet. Als losse functie omdat we hem twee keer nodig hebben:
+    // eerst om de kleurbanden binnen te clippen, daarna om te omlijnen.
+    const pad = () => {
+      ctx.beginPath();
+      if (!b.drijvend) {
+        if (functie.includes('krib')) {
+          w = h * 0.5; // kribbaken: klein vierkantje, er staan er honderden langs de rivieren
+          ctx.rect(x - w / 2, y - w / 2, w, w);
+        } else {
+          w = h * 0.8; // vast baken/licht: driehoek
+          ctx.moveTo(x, y - h / 2);
+          ctx.lineTo(x + w / 2, y + h / 2);
+          ctx.lineTo(x - w / 2, y + h / 2);
+          ctx.closePath();
+        }
+      } else if (vorm === 'spits') {
+        w = h * 0.8; // kegelboei (stuurboord)
+        ctx.moveTo(x, y - h / 2);
+        ctx.lineTo(x + w / 2, y + h / 2);
+        ctx.lineTo(x - w / 2, y + h / 2);
+        ctx.closePath();
+      } else if (vorm === 'bol') {
+        w = h * 0.85; // bolboei (veilig vaarwater)
+        ctx.arc(x, y, w / 2, 0, Math.PI * 2);
+      } else if (vorm === 'spar' || vorm === 'paal') {
+        w = h * 0.3; // sparboei: dun paaltje, veruit de grootste groep
+        ctx.rect(x - w / 2, y - h / 2, w, h);
+      } else if (vorm === 'pilaar') {
+        w = h * 0.45;
+        ctx.rect(x - w / 2, y - h / 2, w, h);
+      } else {
+        w = h * 0.7; // stomp (bakboord), ton, afwijkend
+        ctx.rect(x - w / 2, y - h / 2, w, h);
+      }
+    };
+
+    pad();
+    ctx.save();
+    ctx.clip();
+    if (kleuren.length > 1 && b.kleurpatroon) {
+      // Echte banden i.p.v. alleen de eerste kleur: zo is een kardinaal
+      // (zwart/geel/zwart) of een veilig-vaarwaterboei (rood/wit) te zien.
+      const horizontaal = /horiz/i.test(b.kleurpatroon);
+      const n = kleuren.length;
+      for (let i = 0; i < n; i++) {
+        ctx.fillStyle = kleuren[i];
+        if (horizontaal) ctx.fillRect(x - w, y - h / 2 + (h / n) * i, w * 2, h / n + 0.5);
+        else ctx.fillRect(x - w / 2 + (w / n) * i, y - h, w / n + 0.5, h * 2);
+      }
+    } else {
+      ctx.fillStyle = kleuren[0];
+      ctx.fillRect(x - w, y - h, w * 2, h * 2);
+    }
+    ctx.restore();
+    // Omlijning: zonder dit zijn de 6.160 witte en de gele objecten
+    // onzichtbaar op een lichte ondergrond.
+    pad();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.stroke();
+
+    if (toptekenAan && b.topteken) this._tekenTopteken(ctx, x, y - h / 2 - 1.5, b);
+    if (lichtAan && b.lichtkarakter) {
+      // Lichtvlek rechtsboven, in de werkelijke lichtkleur; magenta als de
+      // kleur onbekend is (dat is ook de kleur die de zeekaart gebruikt).
+      const lk = b.lichtkleur ? boeiKleurLijst(b.lichtkleur)[0] : '#ff2fd0';
+      const lx = x + w / 2 + 2;
+      const ly = y - h / 2 + 1.5;
+      ctx.save();
+      ctx.fillStyle = lk;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(lx, ly, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(lx, ly, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+      ctx.restore();
+    }
+    return Math.max(w, h) / 2 + 4;
+  },
+
+  // Topteken boven de boei. De kardinale tekens zijn het hele punt: twee
+  // kegels met de punten omhoog = noord, omlaag = zuid, van elkaar af =
+  // oost, naar elkaar toe = west.
+  _tekenTopteken(ctx, x, yBasis, b) {
+    const t = (b.topteken || '').toLowerCase();
+    const kl = boeiKleurLijst(b.toptekenKleur)[0];
+    // Bewust klein gehouden: bij een sparboei (breedte ~3,5 px) werd een
+    // topteken van 4 px een dikke zwarte pijl die het silhouet overstemde.
+    const s = 3.2;
+    ctx.save();
+    ctx.fillStyle = kl;
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.lineWidth = 0.5;
+    const kegel = (cy, omhoog) => {
+      ctx.beginPath();
+      if (omhoog) {
+        ctx.moveTo(x, cy - s / 2);
+        ctx.lineTo(x + s / 2, cy + s / 2);
+        ctx.lineTo(x - s / 2, cy + s / 2);
+      } else {
+        ctx.moveTo(x, cy + s / 2);
+        ctx.lineTo(x + s / 2, cy - s / 2);
+        ctx.lineTo(x - s / 2, cy - s / 2);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    };
+    const bolletje = (cy) => {
+      ctx.beginPath();
+      ctx.arc(x, cy, s * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    };
+    const onder = yBasis - s * 0.45;
+    const boven = yBasis - s * 1.35;
+    if (/2 kegels/.test(t)) {
+      if (/naar boven/.test(t)) { kegel(onder, true); kegel(boven, true); } // noord
+      else if (/naar beneden/.test(t)) { kegel(onder, false); kegel(boven, false); } // zuid
+      else if (/van elkaar/.test(t)) { kegel(onder, false); kegel(boven, true); } // oost
+      else { kegel(onder, true); kegel(boven, false); } // west (punten naar elkaar)
+    } else if (/kegel boven bol/.test(t)) {
+      bolletje(onder); kegel(boven, true);
+    } else if (/kegel/.test(t)) {
+      kegel(onder, !/naar beneden/.test(t));
+    } else if (/cilinder/.test(t)) {
+      ctx.beginPath();
+      ctx.rect(x - s / 2, onder - s / 2, s, s);
+      ctx.fill();
+      ctx.stroke();
+    } else if (/bol/.test(t)) {
+      bolletje(onder);
+    } else if (/kruis/.test(t)) {
+      ctx.beginPath();
+      ctx.moveTo(x - s / 2, onder - s / 2);
+      ctx.lineTo(x + s / 2, onder + s / 2);
+      ctx.moveTo(x + s / 2, onder - s / 2);
+      ctx.lineTo(x - s / 2, onder + s / 2);
+      ctx.strokeStyle = kl;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+    ctx.restore();
   },
 
   // Ware-grootte scheepsvorm (fase 3): een vijfhoek (rechthoek met spitse

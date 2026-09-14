@@ -916,6 +916,53 @@ function initMap() {
     if (!s) return;
     openVaarCanvasPopup(mmsi, s);
   });
+  // 2026-09-14: zelfde hit-test-opzet voor de RWS-boeienlaag (tweede
+  // canvas-instantie). Schepen hebben voorrang: staat de cursor op een schip,
+  // dan laten we die laag zijn werk doen en doen wij niets.
+  const boeiOnderCursor = (containerPoint) => {
+    if (!rwsBoeienActief || !rwsBoeienLaag) return null;
+    if (vaarradarActief && vaarCanvasLaag?.zoekSchipOpContainerPunt(containerPoint) != null) return null;
+    return rwsBoeienLaag.zoekSchipOpContainerPunt(containerPoint);
+  };
+  kaart.on('mousemove', (e) => {
+    if (!rwsBoeienActief || !rwsBoeienLaag) return;
+    const id = boeiOnderCursor(e.containerPoint);
+    if (id != null) kaart.getContainer().style.cursor = 'pointer';
+    if (id === rwsBoeienHoverId) {
+      if (id != null) {
+        rwsBoeienTooltipEl.style.left = `${e.containerPoint.x}px`;
+        rwsBoeienTooltipEl.style.top = `${e.containerPoint.y - 14}px`;
+      }
+      return;
+    }
+    rwsBoeienHoverId = id;
+    rwsBoeienLaag.zetHover(id);
+    const m = id != null ? rwsBoeienData?.[id] : null;
+    if (!m) {
+      rwsBoeienTooltipEl.classList.add('verborgen');
+      return;
+    }
+    rwsBoeienTooltipEl.innerHTML = rwsBoeienTooltipHtml(m);
+    rwsBoeienTooltipEl.style.left = `${e.containerPoint.x}px`;
+    rwsBoeienTooltipEl.style.top = `${e.containerPoint.y - 14}px`;
+    rwsBoeienTooltipEl.classList.remove('verborgen');
+  });
+  kaart.on('mouseout', () => { if (rwsBoeienActief) verbergRwsBoeienTooltip(); });
+  kaart.on('click', (e) => {
+    if (!rwsBoeienActief || !rwsBoeienLaag) return;
+    const id = boeiOnderCursor(e.containerPoint);
+    const m = id != null ? rwsBoeienData?.[id] : null;
+    if (!m) {
+      if (rwsBoeienPopup) kaart.closePopup(rwsBoeienPopup);
+      return;
+    }
+    rwsBoeienLaag.zetActief(id);
+    rwsBoeienPopup = L.popup({ maxWidth: 280 })
+      .setLatLng([m.lat, m.lon])
+      .setContent(rwsBoeienPopupHtml(m))
+      .openOn(kaart);
+    rwsBoeienPopup.on('remove', () => rwsBoeienLaag?.zetActief(null));
+  });
   // 2026-08-30, op verzoek van Lex ("in welk gridvak de cursor is"): vak
   // onder de muis oplichten + uitlezen. Op touch geen hover, dus daar telt
   // een tik op de kaart als 'cursor'. Zie toonGradenVak().
@@ -9436,64 +9483,79 @@ function tekenStations({ stations, meetpunten, kustrapporten = [] }) {
 // stippen te koppelen was; die bleken in de eigen ontvangst vrijwel nooit
 // aanwezig, vandaar deze losstaande laag.
 //
-// Landelijk maar ~18.500 objecten: net als de NWR-zenderlijst in één keer
-// opgehaald zodra de laag aangaat (geen straal/bbox-herhaling nodig, het
-// bestand verandert hooguit 1x/maand) en aan de klantzijde geclusterd met
-// Leaflet.markercluster (al geladen, zie index.html) zodat het bij uitzoomen
-// gewoon een paar bolletjes-met-getal blijft i.p.v. 18.500 losse pinnen.
+// Landelijk maar ~18.500 objecten: in één keer opgehaald zodra de laag aangaat
+// (het bestand verandert hooguit 1x/maand, dus geen straal/bbox-herhaling
+// nodig) en getekend op een TWEEDE instantie van de canvas-laag uit
+// vaarCanvas.js -- 14 sept 2026, op verzoek van Lex: "We hebben vandaag dus een
+// methode ontwikkeld waarmee veel objecten probleemloos tegelijk getoond kunnen
+// worden. Daar wil ik ook gebruik van maken met deze objecten. Dan kunnen ze
+// ook allemaal tegelijk getoond worden en is die truc met verzamelingen
+// overbodig." De eerste versie gebruikte Leaflet.markercluster; dat is hiermee
+// vervallen. Alle 18.499 staan nu altijd allemaal op de kaart; alleen het
+// detailniveau van het symbool hangt van de zoom af (zie _tekenBoei()).
 const TOGGLE_RWS_BOEIEN_EL = document.getElementById('toggleRwsBoeien');
 const TOGGLE_ALLEEN_BOEIEN_EL = document.getElementById('toggleAlleenBoeien');
 const RWS_BOEIEN_KEY = 'weerRwsBoeienLaag';
 let rwsBoeienActief = false;
-let rwsBoeienLaag = null; // L.markerClusterGroup
+let rwsBoeienLaag = null; // VaarCanvasLaag-instantie, los van die van de schepen
 let rwsBoeienData = null; // eenmaal opgehaalde lijst, blijft in het geheugen zolang de pagina leeft
 let rwsBoeienLaadBezig = false;
+let rwsBoeienHoverId = null;
+let rwsBoeienPopup = null;
+// Eigen tooltip-element (zelfde vormgeving als die van de schepen, maar een
+// eigen div zodat de twee lagen elkaars tooltip nooit kunnen laten hangen).
+const rwsBoeienTooltipEl = document.createElement('div');
+rwsBoeienTooltipEl.className = 'vaar-canvas-tooltip verborgen';
+document.body.appendChild(rwsBoeienTooltipEl);
 
-const RWS_BOEIEN_KLEUR = {
-  Rood: '#e03131', Groen: '#2e7d32', Geel: '#ffca28', Wit: '#eeeeee',
-  Zwart: '#222222', Blauw: '#1971c2', Oranje: '#f76707',
-};
+// IALA-categorie zoals RWS die meegeeft (1 t/m 4). Alleen voor de popup.
+const RWS_IALA = { 1: 'lateraal', 2: 'kardinaal', 3: 'bijzonder', 4: 'overig' };
 
-function rwsBoeienKleurCode(kleurTekst) {
-  if (!kleurTekst) return '#9aa0a6'; // onbekend -- grijs
-  const eerste = kleurTekst.split(/[;,/]/)[0]?.trim();
-  return RWS_BOEIEN_KLEUR[eerste] ?? '#9aa0a6';
+function rwsBoeienLichtTekst(m) {
+  if (!m.lichtkarakter) return null;
+  // Zeekaartnotatie: karakter, groep, kleurletter, periode -- bv. "Fl(3)G.10s".
+  const kleurLetter = { Wit: 'W', Rood: 'R', Groen: 'G', Geel: 'Y', Blauw: 'Bu' }[m.lichtkleur] ?? '';
+  const groep = m.lichtgroep && m.lichtgroep !== '(1)' ? m.lichtgroep : '';
+  const periode = m.lichtperiode ? `.${m.lichtperiode}s` : '';
+  return `${m.lichtkarakter}${groep}${kleurLetter}${periode}`;
 }
 
-function rwsBoeienIconHtml(m) {
-  const kleur = rwsBoeienKleurCode(m.kleur);
-  const licht = m.lichtkarakter ? '<span class="rws-boei-licht"></span>' : '';
-  // Boeien (drijvend): rond stipje. Vaste bakens/lichten: driehoekje --
-  // zelfde onderscheid als op een zeekaart tussen een boei en een vast object.
-  return m.drijvend
-    ? `<div class="rws-boei-pin is-drijvend" style="background:${kleur}">${licht}</div>`
-    : `<div class="rws-boei-pin is-vast" style="border-bottom-color:${kleur}">${licht}</div>`;
+function rwsBoeienTitel(m) {
+  return m.naam && m.naam !== '' ? m.naam : (m.drijvend ? 'Boei' : 'Baken');
+}
+
+function rwsBoeienTooltipHtml(m) {
+  const licht = rwsBoeienLichtTekst(m);
+  return `<div><strong>${escapeHtml(rwsBoeienTitel(m))}</strong></div>${licht ? `<div>${escapeHtml(licht)}</div>` : ''}`;
 }
 
 function rwsBoeienPopupHtml(m) {
   const regels = [];
-  const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}:</span> <span class="station-stat-waarde">${waarde}</span></div>`); };
-  r('Soort', m.drijvend ? 'boei (drijvend)' : 'vast baken/licht');
-  r('Kleur', m.kleur);
+  const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}:</span> <span class="station-stat-waarde">${escapeHtml(String(waarde))}</span></div>`); };
+  r('Soort', m.drijvend ? 'boei (drijvend)' : (m.functie ?? 'vast baken/licht'));
+  r('Kleur', m.kleurpatroon ? `${m.kleur} (${m.kleurpatroon.toLowerCase()})` : m.kleur);
   r('Vorm', m.vorm);
+  r('Topteken', m.topteken ? `${m.topteken}${m.toptekenKleur ? `, ${m.toptekenKleur.toLowerCase()}` : ''}` : null);
+  r('Licht', rwsBoeienLichtTekst(m));
+  r('Racon', m.racon);
+  r('Hoogte', m.hoogteM != null ? `${m.hoogteM} m` : null);
+  r('IALA', m.iala ? (RWS_IALA[m.iala] ?? m.iala) : null);
   r('Type', m.type);
-  if (m.lichtkarakter) r('Lichtkarakter', `${m.lichtkarakter}${m.lichtgroep ? ` ${m.lichtgroep}` : ''}${m.lichtperiode ? `.${m.lichtperiode}s` : ''}`);
   r('Vaarwater', m.vaarwater);
-  const titel = m.naam && m.naam !== '' ? m.naam : (m.drijvend ? 'Boei' : 'Baken');
-  return `<div class="popup-titel">🛟 ${escapeHtml(titel)}</div><div class="popup-stats">${regels.join('')}</div><div class="popup-sub">Rijkswaterstaat (PDOK)</div>`;
+  return `<div class="popup-titel">🛟 ${escapeHtml(rwsBoeienTitel(m))}</div><div class="popup-stats">${regels.join('')}</div><div class="popup-sub">Rijkswaterstaat (PDOK)</div>`;
 }
 
 function tekenRwsBoeien() {
-  if (!rwsBoeienActief || !kaart || !rwsBoeienData) return;
-  if (!rwsBoeienLaag) {
-    rwsBoeienLaag = L.markerClusterGroup({ maxClusterRadius: 50, disableClusteringAtZoom: 14, spiderfyOnMaxZoom: false });
-    kaart.addLayer(rwsBoeienLaag);
-  }
-  rwsBoeienLaag.clearLayers();
-  const markers = rwsBoeienData.map((m) => L.marker([m.lat, m.lon], {
-    icon: L.divIcon({ className: '', html: rwsBoeienIconHtml(m), iconSize: [14, 14], iconAnchor: [7, 7] }),
-  }).bindPopup(() => rwsBoeienPopupHtml(m), { maxWidth: 260 }));
-  rwsBoeienLaag.addLayers(markers);
+  if (!rwsBoeienActief || !kaart || !rwsBoeienData || !rwsBoeienLaag) return;
+  // De index in rwsBoeienData is de sleutel voor de hit-test (`id`); de laag
+  // kent verder niets van boeien af behalve wat er in `boei` zit.
+  rwsBoeienLaag.teken(rwsBoeienData.map((m, i) => ({ id: i, lat: m.lat, lon: m.lon, vorm: 'boei', boei: m })));
+}
+
+function verbergRwsBoeienTooltip() {
+  rwsBoeienHoverId = null;
+  rwsBoeienLaag?.zetHover(null);
+  rwsBoeienTooltipEl.classList.add('verborgen');
 }
 
 async function toggleRwsBoeien() {
@@ -9501,9 +9563,17 @@ async function toggleRwsBoeien() {
   TOGGLE_RWS_BOEIEN_EL?.classList.toggle('actief', rwsBoeienActief);
   try { localStorage.setItem(RWS_BOEIEN_KEY, rwsBoeienActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
   if (!rwsBoeienActief) {
+    verbergRwsBoeienTooltip();
+    if (rwsBoeienPopup && kaart) kaart.closePopup(rwsBoeienPopup);
+    rwsBoeienPopup = null;
     if (rwsBoeienLaag && kaart) kaart.removeLayer(rwsBoeienLaag);
     rwsBoeienLaag = null;
     return;
+  }
+  if (!kaart) return;
+  if (!rwsBoeienLaag) {
+    rwsBoeienLaag = nieuweVaarCanvasLaag();
+    kaart.addLayer(rwsBoeienLaag);
   }
   if (rwsBoeienData) {
     tekenRwsBoeien();
@@ -9535,12 +9605,14 @@ async function toggleRwsBoeien() {
 let alleenBoeienActief = false;
 let alleenBoeienOpgeslagenLagen = null;
 
-function toggleAlleenBoeien() {
+async function toggleAlleenBoeien() {
   alleenBoeienActief = !alleenBoeienActief;
   TOGGLE_ALLEEN_BOEIEN_EL?.classList.toggle('actief', alleenBoeienActief);
   if (!kaart) return;
   if (alleenBoeienActief) {
-    if (!rwsBoeienActief) toggleRwsBoeien(); // zonder boeienlaag zelf is deze knop zinloos
+    // await: anders bestaat de boeienlaag nog niet als we hieronder
+    // inventariseren welke lagen er weg moeten, en zou hij zichzelf verbergen.
+    if (!rwsBoeienActief) await toggleRwsBoeien(); // zonder boeienlaag zelf is deze knop zinloos
     alleenBoeienOpgeslagenLagen = [];
     kaart.eachLayer((laag) => {
       if (laag === rwsBoeienLaag) return;
