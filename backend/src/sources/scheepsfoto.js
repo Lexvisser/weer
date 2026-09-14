@@ -39,6 +39,20 @@
 // KORTER gecached dan gevonden foto's, voor het geval een schip later alsnog
 // een foto krijgt in de bron-database.
 
+// 2026-09-14, op verzoek van Lex ("Ja prima idee!"): de cache hieronder stond
+// alleen in het geheugen, dus elke herstart (en dus elke `syncweer`) begon
+// weer blanco -- en dan moet elk aangeklikt schip opnieuw opgezocht worden,
+// precies wanneer de bron traag is. Nu ook op schijf, zelfde soort
+// runtime-bestand als de zeemarkeringen (backend/data/, buiten git).
+import { readFileSync, mkdirSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CACHE_BESTAND = join(__dirname, '..', '..', 'data', 'scheepsfotos.json');
+const OPSLAG_VERTRAGING_MS = 30 * 1000; // niet bij elke klik schrijven; hooguit 1x per 30s
+
 const FOTO_CACHE_MS = 7 * 24 * 60 * 60 * 1000; // gevonden foto: 7 dagen
 const GEEN_FOTO_CACHE_MS = 6 * 60 * 60 * 1000; // pagina geladen maar geen foto: 6 uur, dan nog eens proberen
 // 2026-09-14, op melding van Lex ("ik zie ook nog geen foto's"): een MISLUKTE
@@ -68,6 +82,52 @@ function nogGeldig(entry) {
   if (!entry) return false;
   const maxLeeftijdMs = entry.url ? FOTO_CACHE_MS : (entry.mislukt ? MISLUKT_CACHE_MS : GEEN_FOTO_CACHE_MS);
   return Date.now() - entry.tijdMs < maxLeeftijdMs;
+}
+
+// ---- schijf ----------------------------------------------------------------
+let geladenVanSchijf = false;
+
+function laadVanSchijf() {
+  if (geladenVanSchijf) return;
+  geladenVanSchijf = true;
+  try {
+    const ruw = JSON.parse(readFileSync(CACHE_BESTAND, 'utf-8'));
+    let overgenomen = 0;
+    let verlopen = 0;
+    for (const [mmsi, entry] of Object.entries(ruw.fotos ?? {})) {
+      if (!entry || typeof entry.tijdMs !== 'number') continue;
+      if (!nogGeldig(entry)) { verlopen += 1; continue; } // verlopen: niet overnemen
+      cache.set(mmsi, entry);
+      overgenomen += 1;
+    }
+    console.log(`[weer] scheepsfoto: ${overgenomen} foto's uit de opslag geladen${verlopen ? ` (${verlopen} verlopen)` : ''}`);
+  } catch {
+    /* geen bestand (eerste start) of onleesbaar -- gewoon leeg beginnen */
+  }
+}
+
+let opslaanTimer = null;
+
+// Uitgesteld wegschrijven: een druk klikmoment levert zo één schrijfactie op
+// i.p.v. tientallen. Mislukte opzoekingen gaan bewust NIET mee -- die leven
+// maar een minuut, en een time-out van gisteren zegt niets over vandaag.
+function planOpslaan() {
+  if (opslaanTimer) return;
+  opslaanTimer = setTimeout(async () => {
+    opslaanTimer = null;
+    try {
+      const fotos = {};
+      for (const [mmsi, entry] of cache) {
+        if (entry.mislukt || !nogGeldig(entry)) continue; // meteen opschonen
+        fotos[mmsi] = entry;
+      }
+      mkdirSync(dirname(CACHE_BESTAND), { recursive: true });
+      await writeFile(CACHE_BESTAND, JSON.stringify({ bijgewerkt: new Date().toISOString(), fotos }));
+    } catch (err) {
+      console.warn(`[weer] scheepsfoto: opslaan mislukt: ${err?.message ?? err}`);
+    }
+  }, OPSLAG_VERTRAGING_MS);
+  opslaanTimer.unref?.(); // mag het afsluiten van de dienst niet tegenhouden
 }
 
 async function zoekFotoOp(mmsi) {
@@ -102,6 +162,7 @@ async function zoekFotoOp(mmsi) {
 export async function haalScheepsfotoOp(mmsiRuw) {
   const mmsi = String(mmsiRuw ?? '').trim();
   if (!/^\d{5,9}$/.test(mmsi)) return null; // geen geldig MMSI-patroon, niet eens proberen
+  laadVanSchijf();
 
   const bestaand = cache.get(mmsi);
   if (nogGeldig(bestaand)) return bestaand.url;
@@ -118,6 +179,7 @@ export async function haalScheepsfotoOp(mmsiRuw) {
       cache.set(mmsi, { url: null, tijdMs: Date.now(), mislukt: true });
     } else {
       cache.set(mmsi, { url: resultaat.url, tijdMs: Date.now() });
+      planOpslaan(); // ook "geen foto" bewaren: dat scheelt herhaald opzoeken
     }
     inVlucht.delete(mmsi);
     return resultaat.url ?? null;

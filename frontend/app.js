@@ -7731,14 +7731,16 @@ function vlagHtml(landcode) {
 // worden zijn layout te herberekenen (nieuwe foto = andere hoogte), en dat
 // slaan we over zolang de sheet het element heeft (zelfde reden als altijd:
 // dat element leeft daar al live, .update() zou 'm net terugtrekken).
-async function haalEnToonScheepsfoto(mmsi) {
+async function haalEnToonScheepsfoto(mmsi, imo) {
   if (scheepsfotoUrls.has(mmsi)) return; // al opgezocht (met of zonder resultaat)
   try {
-    const data = await fetch(`/api/scheepsfoto?mmsi=${mmsi}`).then((r) => r.json());
-    scheepsfotoUrls.set(mmsi, data.url || null);
+    // 2026-09-14: imo erbij, want de tweede bron (Wikimedia Commons) zoekt
+    // daarop -- zie de cascade in backend/src/sources/scheepsfoto.js.
+    const data = await fetch(`/api/scheepsfoto?mmsi=${mmsi}${imo ? `&imo=${imo}` : ''}`).then((r) => r.json());
+    scheepsfotoUrls.set(mmsi, data.url ? data : null);
     const cache = vaarPopupCache.get(mmsi);
     if (!data.url || !cache) return;
-    zetScheepsfoto(cache, mmsi, data.url);
+    zetScheepsfoto(cache, mmsi, data);
     if (vaarCanvasPopup && vaarCanvasActiefMmsi === mmsi && schipSheetMmsi !== mmsi) vaarCanvasPopup.update();
   } catch (err) {
     console.error('scheepsfoto ophalen mislukt', err);
@@ -7951,8 +7953,8 @@ function bouwVaarPopupContent(mmsi, kopHtml, basisHtml) {
     wrapperEl.appendChild(tekstEl);
     cache = { wrapperEl, kopEl, fotoEl, overlayEl, tekstEl, fotoUrl: null };
     vaarPopupCache.set(mmsi, cache);
-    const bestaandeUrl = scheepsfotoUrls.get(mmsi);
-    if (bestaandeUrl) zetScheepsfoto(cache, mmsi, bestaandeUrl);
+    const bestaande = scheepsfotoUrls.get(mmsi);
+    if (bestaande?.url) zetScheepsfoto(cache, mmsi, bestaande);
     // 14 sept 2026: na een klik op de Vessel-knop (<summary>) wordt het
     // kaartje langer (detailblok klapt uit, naar boven) -- dan één keer in
     // beeld schuiven. Gedelegeerd op de wrapper (die blijft bestaan), want
@@ -7986,8 +7988,15 @@ function bouwVaarPopupContent(mmsi, kopHtml, basisHtml) {
 // Zet (of vervangt) de scheepsfoto in de fotowrap, mét behoud van het
 // overlay-element (14 sept 2026). Voorheen fotoEl.innerHTML = <img>, maar dat
 // zou het overlay wissen.
-function zetScheepsfoto(cache, mmsi, url) {
+function zetScheepsfoto(cache, mmsi, foto) {
+  // 2026-09-14: `foto` is sinds de bron-cascade een object
+  // ({url, bron, auteur, licentie, pagina}) i.p.v. een kale URL -- een
+  // Commons-foto staat onder een CC-licentie en die verplicht tot
+  // naamsvermelding, dus die zetten we onder het plaatje.
+  const url = typeof foto === 'string' ? foto : foto?.url;
+  if (!url) return;
   cache.fotoEl.querySelector('img.popup-scheepsfoto')?.remove();
+  cache.fotoEl.querySelector('.popup-foto-bron')?.remove();
   const img = document.createElement('img');
   img.className = 'popup-scheepsfoto';
   img.alt = '';
@@ -8005,6 +8014,17 @@ function zetScheepsfoto(cache, mmsi, url) {
   img.src = url;
   cache.fotoEl.prepend(img);
   cache.fotoUrl = url;
+  const auteur = typeof foto === 'object' ? foto?.auteur : null;
+  const licentie = typeof foto === 'object' ? foto?.licentie : null;
+  if (auteur || licentie) {
+    const bronEl = document.createElement('div');
+    bronEl.className = 'popup-foto-bron';
+    const tekst = [auteur, licentie].filter(Boolean).join(' · ');
+    bronEl.innerHTML = foto.pagina
+      ? `<a href="${escapeAttr(foto.pagina)}" target="_blank" rel="noopener">${escapeHtml(tekst)}</a>`
+      : escapeHtml(tekst);
+    cache.fotoEl.appendChild(bronEl);
+  }
   koppelFotoInBeeld(cache, mmsi);
   werkVesselOverlayBij(cache);
 }
@@ -8233,7 +8253,7 @@ function openVaarCanvasPopup(mmsi, s) {
   // 2026-09-01: foto pas opzoeken zodra deze popup daadwerkelijk opent, nooit
   // vooraf voor alle zichtbare schepen (zie scheepsfoto.js/server.js).
   // haalEnToonScheepsfoto() slaat zelf over als de url al bekend is.
-  haalEnToonScheepsfoto(mmsi);
+  haalEnToonScheepsfoto(mmsi, s.imo);
   // 2026-09-03: op een smal scherm (telefoon) meteen schermvullend, zie
   // toonSchipSheet() -- de Leaflet-popup blijft daaronder "open" (canvasPopup
   // bestaat en vaarCanvasActiefMmsi blijft gezet), zo blijft de verversing
