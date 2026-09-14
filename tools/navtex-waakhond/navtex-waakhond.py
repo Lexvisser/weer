@@ -21,13 +21,29 @@ GEDECODEERD. Daar kijkt deze waakhond naar, per frequentie:
     BEGIN ervan niets aan het berichtenbestand toegevoegd, dan is hij volledig
     ongedecodeerd voorbijgegaan. (Het begin telt: aan het eind stuurt een
     station alleen nog fasering — sterk signaal, terecht niets te decoderen.)
-  - Pas bij TWEE van zulke uitzendingen achter elkaar grijpt hij in. Eén sterk
-    maar ongedecodeerd station kan 's avonds nog fading zijn; twee op rij is
-    een vastgelopen decoder. Op 11 september had dit rond 15:15 UTC
-    ingegrepen, anderhalf uur vóór de handmatige herstart.
-  - Vangnet voor als de S/N-regels ooit wegvallen: 150 minuten stilte op 518.
+  - Pas bij TWEE van zulke uitzendingen achter elkaar is dit een vermoeden.
+    Eén sterk maar ongedecodeerd station kan 's avonds nog fading zijn; twee
+    op rij wijst op een vastgelopen decoder.
+  - Vangnet voor als de S/N-regels ooit wegvallen: 150 minuten stilte op 518
+    — dat herstart altijd, ongeacht onderstaande check.
 
-Vóór de herstart wordt de melder aangeroepen, zodat de momentopname van de
+Sinds 14 september 2026: het S/N-vermoeden hierboven is GEEN bewijs. Diezelfde
+dag sloeg het aan terwijl de decoder gewoon doorlas (de doorstroom in het
+mailrapport liet normale bytes/20s zien) — het signaal was alleen te zwak of
+vervormd om te decoderen, en herstarten had daar niets aan veranderd (erger
+nog: een herstart middenin een uitzending had die juist kunnen doen missen).
+Daarom checkt de waakhond nu, vóór hij op het S/N-vermoeden afgaat, of de
+decoder ECHT niets meer leest (rchar in /proc/<pid>/io twintig seconden stil
+— hetzelfde soort meting als de doorstroom-sectie in de melder-mail):
+  - wél bevestigd stilstaand lezen  -> vastgelopen proces, herstart zoals altijd.
+  - decoder leest gewoon door       -> geen herstart, wel één keer een mail
+    ("vermoedelijk signaalprobleem") zodat je het niet mist.
+  - decoderproces niet eens gevonden -> minstens zo erg als een hang, gewoon
+    herstarten.
+Het vangnet (absolute stilte) doet deze check niet: dat is expliciet de
+achtervang voor als de S/N-redenering zelf een keer niet werkt.
+
+Vóór een herstart wordt de melder aangeroepen, zodat de momentopname van de
 vastgelopen toestand in je mail zit — dat bewijs is na de herstart weg.
 
 Na een (her)start wacht hij 30 minuten, en alleen uitzendingen ná de start
@@ -40,9 +56,10 @@ Instellingen via de omgeving (standaardwaarden tussen haakjes):
   NAVTEX_WAAKHOND_NA_MIN       wachttijd na de uitzending, minuten (15)
   NAVTEX_WAAKHOND_VANGNET_MIN  absolute stilte op 518, minuten (150)
   NAVTEX_WAAKHOND_REM_MIN      geen ingreep zo lang na een start, minuten (30)
-  NAVTEX_WAAKHOND_DROOG=1      wel beoordelen en loggen, niet herstarten
+  NAVTEX_WAAKHOND_DROOG=1      wel beoordelen en loggen, niet herstarten/mailen
 """
 
+import json
 import os
 import re
 import subprocess
@@ -55,6 +72,7 @@ HOME = "/home/lex"
 BESTANDEN = {"518": f"{HOME}/navtex_berichten.txt",
              "490": f"{HOME}/navtex_berichten_490.txt"}
 MELDER = "/usr/local/bin/navtex-melder.py"
+STATUS = f"{HOME}/.navtex-waakhond-status.json"
 
 SN_DB = float(os.environ.get("NAVTEX_WAAKHOND_SN_DB", "18"))
 STERK_MIN = float(os.environ.get("NAVTEX_WAAKHOND_STERK_MIN", "1"))
@@ -83,6 +101,22 @@ def klok(ts):
     return datetime.fromtimestamp(ts).strftime("%H:%M")
 
 
+def lees_status():
+    try:
+        with open(STATUS) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def schrijf_status(d):
+    try:
+        with open(STATUS, "w") as f:
+            json.dump(d, f)
+    except Exception as e:
+        print(f"navtex-waakhond: kon status niet opslaan: {e}", file=sys.stderr)
+
+
 def dienst_start():
     """Starttijd van de dienst als unix-tijd, via de monotone klok (betrouwbaar)."""
     if draai(["systemctl", "is-active", DIENST]).strip() != "active":
@@ -95,6 +129,67 @@ def dienst_start():
         return time.time() - (uptime - mono_s)
     except Exception:
         return None
+
+
+def pids_van(patroon, comm):
+    """Pids waarvan de commandoregel `patroon` bevat ÉN de programmanaam `comm`
+    is (zelfde aanpak als in navtex-melder.py: zonder die tweede eis pikt
+    pgrep -f ook de bash-wrapper van de pijplijn op)."""
+    uit = []
+    for pid in draai(["pgrep", "-f", patroon]).split():
+        try:
+            with open(f"/proc/{pid}/comm") as f:
+                if f.read().strip().startswith(comm):
+                    uit.append(pid)
+        except Exception:
+            pass
+    return uit
+
+
+def ppid(pid):
+    try:
+        with open(f"/proc/{pid}/status") as f:
+            m = re.search(r"^PPid:\s*(\d+)", f.read(), re.M)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def decoder_pid(band):
+    """PID van de navtex_rx_from_file-decoder voor deze band. Beide decoders
+    hebben een identieke commandoregel en naam; het verschil is de ouder: de
+    490-tak is een --extra-kindproces van de demodulator zelf
+    (navtex_usb_demod.py), de 518-tak hangt in de shell-pijplijn van de
+    service (zie ExecStart in navtex-airspy.service). Dat onderscheid
+    gebruiken we om de twee identieke processen uit elkaar te houden."""
+    demod = pids_van("navtex_usb_demod.py", "python3")
+    demod_pid_ = demod[0] if demod else None
+    for pid in pids_van("navtex_rx_from_file", "navtex_rx_from"):
+        kind_van_demod = demod_pid_ is not None and ppid(pid) == demod_pid_
+        if (band == "490") == kind_van_demod:
+            return pid
+    return None
+
+
+def decoder_hangt(pid):
+    """True als deze decoder in twintig seconden geen byte audio heeft
+    gelezen: het harde bewijs van een vastgelopen proces, in plaats van het
+    S/N-vermoeden hierboven (dat sloeg op 14 september ook aan bij een
+    decoder die gewoon doorlas maar niets bruikbaars ontving)."""
+    def rchar():
+        try:
+            with open(f"/proc/{pid}/io") as f:
+                m = re.search(r"^rchar:\s*(\d+)", f.read(), re.M)
+            return int(m.group(1)) if m else None
+        except Exception:
+            return None
+
+    voor = rchar()
+    if voor is None:
+        return False  # proces net verdwenen of onleesbaar — geen extra bewijs
+    time.sleep(20)
+    na = rchar()
+    return na is not None and na <= voor
 
 
 def sn_metingen(sinds_min):
@@ -133,15 +228,20 @@ def uitzendingen(metingen, kolom, na_start):
 
 
 def beoordeel():
+    """Geeft (herstart_redenen, meld_alleen_redenen, info) terug.
+    - herstart_redenen: bevestigde hangs + het vangnet — hierop wordt herstart.
+    - meld_alleen_redenen: S/N-vermoeden zonder bevestigde hang — alleen mailen.
+    - info: reden waarom er niets te beoordelen viel (dienst niet actief, rem)."""
     nu = time.time()
     start = dienst_start()
     if start is None:
-        return None, "dienst niet actief — niets te doen"
+        return [], [], "dienst niet actief — niets te doen"
     if nu - start < REM_MIN * 60:
-        return None, f"dienst pas {int((nu - start) / 60)} min geleden gestart — rem"
+        return [], [], f"dienst pas {int((nu - start) / 60)} min geleden gestart — rem"
 
     metingen = sn_metingen(VANGNET_MIN + 30)
-    redenen = []
+    herstart_redenen = []
+    meld_alleen = []
     for kolom, (band, pad) in enumerate(BESTANDEN.items()):
         try:
             geschreven = os.path.getmtime(pad)
@@ -149,51 +249,86 @@ def beoordeel():
             continue
         # Uitzendingen die helemaal voorbij zijn (NA_MIN na het einde) en
         # waarvóór de laatste decodering al lag: volledig ongedecodeerd.
-        # Pas bij AANTAL van zulke uitzendingen achter elkaar grijpen we in —
-        # één sterk maar ongedecodeerd station kan 's avonds nog fading zijn
-        # (2026-09-11, 21:40: gem 7,5 dB, max 12 — geen station, ruis met
-        # uitschieters; vandaar ook de lat op 18 dB i.p.v. 10).
+        # Pas bij AANTAL van zulke uitzendingen achter elkaar is dit een
+        # vermoeden — één sterk maar ongedecodeerd station kan 's avonds nog
+        # fading zijn (2026-09-11, 21:40: gem 7,5 dB, max 12 — geen station,
+        # ruis met uitschieters; vandaar ook de lat op 18 dB i.p.v. 10).
         gemist = [(b, e) for b, e in (uitzendingen(metingen, kolom, start) if metingen else [])
                   if geschreven < b - 60 and nu - e > NA_MIN * 60]
         if len(gemist) >= AANTAL:
             lijst = ", ".join(f"{klok(b)}–{klok(e)}" for b, e in gemist[-AANTAL:])
-            redenen.append(f"{band}: {len(gemist)} uitzendingen (S/N >= {SN_DB:.0f} dB) volledig "
-                           f"ongedecodeerd: {lijst}; laatste decodering {klok(geschreven)}")
+            reden = (f"{band}: {len(gemist)} uitzendingen (S/N >= {SN_DB:.0f} dB) volledig "
+                     f"ongedecodeerd: {lijst}; laatste decodering {klok(geschreven)}")
+            pid = decoder_pid(band)
+            if pid is None:
+                herstart_redenen.append(reden + " — decoderproces niet gevonden, dus voor de zekerheid herstart")
+            elif decoder_hangt(pid):
+                herstart_redenen.append(reden + " — bevestigd: decoder leest geen byte meer")
+            else:
+                meld_alleen.append(reden + " — decoder leest gewoon door, vermoedelijk signaalprobleem, geen herstart")
         # Vangnet telt vanaf de laatste decodering óf de laatste (her)start,
         # wat het meest recent is — anders herstart hij na een ingreep elke
-        # REM_MIN opnieuw zolang er toevallig niets uitgezonden wordt.
+        # REM_MIN opnieuw zolang er toevallig niets uitgezonden wordt. Dit is
+        # de achtervang voor als de S/N-redenering zelf een keer niet werkt,
+        # dus die doet bewust geen hang-check: gewoon herstarten.
         stil_sinds = max(geschreven, start)
         if band == "518" and nu - stil_sinds > VANGNET_MIN * 60:
-            redenen.append(f"518: {int((nu - stil_sinds) / 60)} min helemaal niets (vangnet)")
+            herstart_redenen.append(f"518: {int((nu - stil_sinds) / 60)} min helemaal niets (vangnet)")
 
     if not metingen:
         print("navtex-waakhond: geen S/N-regels in het journaal gevonden — alleen het vangnet werkt",
               file=sys.stderr)
-    return (redenen or None), None
+    return herstart_redenen, meld_alleen, None
 
 
-def main():
-    redenen, info = beoordeel()
-    if not redenen:
-        if info:
-            print(f"navtex-waakhond: {info}")
-        return 0
-
-    reden = "; ".join(redenen)
-    if DROOG:
-        log(f"DROOG — zou herstarten: {reden}")
-        return 0
-
-    log(f"decoder vastgelopen: {reden} — momentopname wordt gemaild, daarna herstart")
+def stuur_melding(reden, herstart, onderwerp):
     env = dict(os.environ, NAVTEX_MELDER_FORCEER="1",
                NAVTEX_MELDER_REDEN=reden,
-               NAVTEX_MELDER_ONDERWERP=f"[weer] NAVTEX-waakhond herstart — {redenen[0]}")
+               NAVTEX_MELDER_HERSTART="1" if herstart else "0",
+               NAVTEX_MELDER_ONDERWERP=onderwerp)
     try:
         subprocess.run(["runuser", "-u", "lex", "--", MELDER], env=env, timeout=170)
     except Exception as e:
-        log(f"melder mislukt ({e}), herstart gaat door")
-    subprocess.run(["systemctl", "restart", DIENST])
-    log("herstart uitgevoerd")
+        log(f"melder mislukt ({e})")
+
+
+def main():
+    herstart_redenen, meld_alleen, info = beoordeel()
+
+    if not herstart_redenen and not meld_alleen:
+        if info:
+            print(f"navtex-waakhond: {info}")
+        elif lees_status().get("gemeld"):
+            schrijf_status({})  # episode voorbij: er is weer gedecodeerd
+        return 0
+
+    if herstart_redenen:
+        reden = "; ".join(herstart_redenen)
+        if DROOG:
+            log(f"DROOG — zou herstarten: {reden}")
+            return 0
+        log(f"decoder vastgelopen: {reden} — momentopname wordt gemaild, daarna herstart")
+        stuur_melding(reden, herstart=True,
+                      onderwerp=f"[weer] NAVTEX-waakhond herstart — {herstart_redenen[0]}")
+        subprocess.run(["systemctl", "restart", DIENST])
+        log("herstart uitgevoerd")
+        schrijf_status({})
+        return 0
+
+    # Alleen een S/N-vermoeden, geen bevestigde hang: niet herstarten, maar
+    # wel één keer mailen per episode (anders elke 5 min dezelfde mail zolang
+    # de zwakke ontvangst aanhoudt).
+    reden = "; ".join(meld_alleen)
+    if lees_status().get("gemeld") == reden:
+        print(f"navtex-waakhond: al gemeld, geen nieuwe mail: {reden}")
+        return 0
+    if DROOG:
+        log(f"DROOG — zou (zonder herstart) melden: {reden}")
+        return 0
+    log(f"vermoedelijk signaalprobleem, geen hang bevestigd, geen herstart: {reden}")
+    stuur_melding(reden, herstart=False,
+                  onderwerp=f"[weer] NAVTEX-melding (geen herstart) — {meld_alleen[0]}")
+    schrijf_status({"gemeld": reden})
     return 0
 
 

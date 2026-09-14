@@ -85,6 +85,12 @@ less ~/navtex-melder-rapporten.log
   Aanpassen via een drop-in: `sudo systemctl edit navtex-melder.service` en
   daarin `[Service]` + `Environment=NAVTEX_MELDER_DREMPEL_MIN=120`.
 - `NAVTEX_MELDER_TEST=1` — stuur nu een rapport.
+- `NAVTEX_MELDER_FORCEER`, `NAVTEX_MELDER_REDEN`, `NAVTEX_MELDER_HERSTART`,
+  `NAVTEX_MELDER_ONDERWERP` — worden door **navtex-waakhond** gezet, niet
+  handmatig nodig. `HERSTART=1` laat de mail zeggen dat de waakhond herstart
+  (of net heeft herstart); `HERSTART=0` (14 sept 2026, S/N-vermoeden zonder
+  bevestigde hang) laat 'm zeggen dat er juist NIET is ingegrepen — zie
+  navtex-waakhond/INSTALL.md.
 
 ## Aannames
 

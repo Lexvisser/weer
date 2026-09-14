@@ -12,11 +12,18 @@ overschrijding van de drempel stuurt hij één mail met een momentopname van
 alles wat je nodig hebt om de oorzaak te achterhalen — juist het bewijs dat
 achteraf niet meer te reconstrueren is, zoals het spectrum van dat moment.
 
-Bewust géén herstart: Lex wil eerst zien wat er aan de hand is.
+Bewust géén herstart op eigen initiatief: Lex wil eerst zien wat er aan de
+hand is. navtex-waakhond roept deze melder wél aan vlak vóór (of in plaats
+van) een eigen herstart — zie NAVTEX_MELDER_HERSTART hieronder, die bepaalt
+of de mail "de waakhond herstart" of "de waakhond grijpt NIET in" zegt.
 
 Instellingen via de omgeving (of gewoon de standaardwaarden):
   NAVTEX_MELDER_DREMPEL_MIN   stilte in minuten voordat er gemeld wordt (150)
   NAVTEX_MELDER_TEST=1        stuur nu een rapport, ongeacht de stilte
+  NAVTEX_MELDER_FORCEER=1     (door navtex-waakhond) stuur nu een rapport
+  NAVTEX_MELDER_REDEN         (door navtex-waakhond) reden voor het rapport
+  NAVTEX_MELDER_HERSTART      (door navtex-waakhond) "1" = herstart volgt/is
+                              net gebeurd, "0" = geen herstart, puur melding (1)
 """
 
 import json
@@ -42,10 +49,17 @@ DIENST = "navtex-airspy"
 
 DREMPEL_MIN = int(os.environ.get("NAVTEX_MELDER_DREMPEL_MIN", "150"))
 TESTMODUS = os.environ.get("NAVTEX_MELDER_TEST") == "1"
-# Aangeroepen door navtex-waakhond vlak vóór een herstart: stuur nu een
-# rapport, met het onderwerp dat de waakhond meegeeft (de reden van ingrijpen).
+# Aangeroepen door navtex-waakhond, met het onderwerp dat die meegeeft (de
+# reden van ingrijpen of van alleen-melden).
 FORCEER = os.environ.get("NAVTEX_MELDER_FORCEER") == "1"
 ONDERWERP_OVERRIDE = os.environ.get("NAVTEX_MELDER_ONDERWERP")
+# 2026-09-14: de waakhond herstart niet meer zomaar op een S/N-vermoeden — pas
+# als ook bevestigd is dat de decoder geen byte meer leest (of helemaal weg
+# is). Zonder die bevestiging roept hij deze melder nog wel aan (zodat je het
+# niet mist), maar met HERSTART=0: dan volgt er geen restart, en moet de mail
+# dat ook zo zeggen i.p.v. de vaste "grijpt niet in, doe het zelf"-tekst die
+# hierbeneden anders óók verscheen vlak vóór een restart die al liep.
+HERSTART = os.environ.get("NAVTEX_MELDER_HERSTART", "1") == "1"
 
 
 # ---------------------------------------------------------------- hulpjes
@@ -284,16 +298,29 @@ def deel_hardware():
 
 # ------------------------------------------------------------------ rapport
 
-def maak_rapport(stil_518, hersteld=False, reden=None):
+def maak_rapport(stil_518, hersteld=False, reden=None, herstart=None):
     nu = datetime.now().strftime("%A %d %B %Y, %H:%M")
-    if reden:
-        # aangeroepen door de waakhond: zíjn reden is de kop, de stilte is
-        # dan gewoon een feit — een half uur zonder blok is op zich niets
-        kop = f"De waakhond grijpt in. Reden: {reden}\nLaatste blok op 518: {duur(stil_518)} geleden."
+    if reden and herstart:
+        # de waakhond herstart hierna meteen (of heeft dat al gedaan) — zíjn
+        # reden is de kop, de stilte is dan gewoon een feit
+        kop = (f"De waakhond grijpt in en herstart de dienst. Reden: {reden}\n"
+               f"Laatste blok op 518: {duur(stil_518)} geleden.")
+    elif reden:
+        # S/N-vermoeden, maar geen bevestigde hang: de waakhond herstart NIET,
+        # dit is puur een melding zodat je het niet mist
+        kop = (f"De waakhond ziet mogelijk een probleem, maar grijpt NIET in "
+               f"(geen bevestigde hang). Reden: {reden}\n"
+               f"Laatste blok op 518: {duur(stil_518)} geleden.")
     elif hersteld:
         kop = "NAVTEX-ontvangst is weer op gang gekomen."
     else:
         kop = f"NAVTEX-ontvangst ligt stil: al {duur(stil_518)} geen nieuw blok."
+    if reden and herstart:
+        voet = ("Deze herstart is zojuist door de waakhond uitgevoerd:\n"
+                "  systemctl restart navtex-airspy")
+    else:
+        voet = ("Deze melder grijpt niet in. Herstarten doe je zelf met:\n"
+                "  sudo systemctl restart navtex-airspy")
     blokken = [
         f"{kop}\n\nMomentopname van {nu} op lexdev-nw.",
         "BERICHTENBESTANDEN\n" + deel_bestanden(),
@@ -306,8 +333,7 @@ def maak_rapport(stil_518, hersteld=False, reden=None):
         + deel_spectrum(AUDIO_490, "490 kHz"),
         "NORMALE STILTES TER VERGELIJKING\n" + deel_gaten(),
         "HARDWARE\n" + deel_hardware(),
-        "Deze melder grijpt niet in. Herstarten doe je zelf met:\n"
-        "  sudo systemctl restart navtex-airspy",
+        voet,
     ]
     return "\n\n".join(blokken)
 
@@ -376,9 +402,9 @@ def main():
 
     if TESTMODUS or FORCEER:
         reden = os.environ.get("NAVTEX_MELDER_REDEN") if FORCEER else None
-        tekst = maak_rapport(stil, reden=reden)
+        tekst = maak_rapport(stil, reden=reden, herstart=HERSTART if FORCEER else None)
         if FORCEER:
-            onderwerp = ONDERWERP_OVERRIDE or f"[weer] NAVTEX-waakhond grijpt in ({duur(stil)} stil)"
+            onderwerp = ONDERWERP_OVERRIDE or f"[weer] NAVTEX-waakhond ({duur(stil)} stil)"
             bewaar("OP VERZOEK VAN DE WAAKHOND\n" + tekst)
         else:
             onderwerp = f"[weer] TEST — NAVTEX-melder ({duur(stil)} stil)"

@@ -7353,14 +7353,14 @@ function zetVaarKleurKnopLabel() {
 }
 
 // 2026-09-01, op verzoek van Lex (AISHub als aanvulling naast eigen
-// ontvangst, zie sources/vaarradarAishub.js) -- twee dingen om lokaal
-// ontvangen schepen te onderscheiden van AISHub-aanvulling: (a) een
-// aan/uit-knop (#vaarAishubToggle) om AISHub-schepen helemaal te verbergen,
-// (b) ongeacht die knop krijgen AISHub-only schepen altijd een lagere
-// dekkingsgraad (opacity) dan lokaal ontvangen schepen -- zie
-// AISHUB_OPACITEIT in bouwVaarIcon() hieronder. Bewust GEEN aparte kleur:
-// kleur is al druk bezet met betekenis (kleurVoorSchip() hierboven, drie
-// modi). Standaard AAN (zelfde localStorage-patroon als VAARKLEUR_KEY).
+// ontvangst, zie sources/vaarradarAishub.js) -- een aan/uit-knop
+// (#vaarAishubToggle) om AISHub-schepen helemaal te verbergen. Bewust GEEN
+// aparte kleur om lokaal van AISHub te onderscheiden: kleur is al druk bezet
+// met betekenis (kleurVoorSchip() hierboven, drie modi). Standaard AAN
+// (zelfde localStorage-patroon als VAARKLEUR_KEY).
+// Tot 14 sept 2026 kregen AISHub-only schepen ook altijd een lagere
+// dekkingsgraad (AISHUB_OPACITEIT in bouwVaarIcon() hieronder) -- op verzoek
+// van Lex weer teruggezet naar vol dekkend, de knop is het enige onderscheid.
 // 14 sept 2026, op verzoek van Lex ("ik wil ook mijn eigen ontvanger als een
 // optie, dus Lokaal, AISHub, GFW"): van één AISHub-vlag (aishubZichtbaar,
 // localStorage 'weerVaarAishubZichtbaar') naar één object per bron, 1-op-1
@@ -7403,7 +7403,7 @@ function vaarBronZichtbaar(s) {
 VAAR_LOKAAL_KNOP_EL?.classList.toggle('actief', zichtbaarPerBron.lokaal);
 VAAR_AISHUB_KNOP_EL?.classList.toggle('actief', zichtbaarPerBron.aishub);
 VAAR_GFW_KNOP_EL?.classList.toggle('actief', zichtbaarPerBron.gfw);
-const AISHUB_OPACITEIT = 0.55; // vol dekkend voor lokaal, duidelijk getemperd voor AISHub-only
+const AISHUB_OPACITEIT = 1; // 14 sept 2026: getemperd geweest voor AISHub-only, op verzoek van Lex weer vol dekkend
 
 function wisselVaarStraal() {
   const huidigeIndex = VAARRADAR_STRAAL_STAPPEN.indexOf(vaarradarStraalKm);
@@ -8072,9 +8072,8 @@ function tekenVaarSchepenCanvas() {
     // Scheepstype-filterpaneel, zie bouwVaarTypeFilterPaneel() hierboven.
     if (schipVerborgenDoorFilter(s)) continue;
     const kleur = kleurVoorSchip(s);
-    // Ongeacht de AISHub-knop krijgen AISHub-only schepen altijd een lagere
-    // dekkingsgraad dan lokaal ontvangen schepen (zie AISHUB_OPACITEIT
-    // hierboven), vermenigvuldigd met de leeftijds-vervaging.
+    // AISHUB_OPACITEIT staat sinds 14 sept 2026 op 1 (zie hierboven) -- alleen
+    // de leeftijds-vervaging bepaalt nu nog de dekkingsgraad, ongeacht bron.
     const alpha = vaarVervaging(s.tijdMs, s.bron) * (s.bron === 'aishub' ? AISHUB_OPACITEIT : 1);
     // navigatiehulpmiddelen (boeien/bakens) bewegen per definitie nooit --
     // altijd als stip tekenen, nooit als ware-vorm-polygon of pijl (die

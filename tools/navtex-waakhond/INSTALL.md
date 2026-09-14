@@ -37,7 +37,30 @@ gedecodeerd**. Per frequentie:
   is een vastgelopen decoder. Op 11 september had dit rond 15:15 UTC
   ingegrepen, anderhalf uur vóór de handmatige herstart.
 - Vangnet voor als de S/N-regels ooit wegvallen: 150 minuten stilte op 518,
-  geteld vanaf de laatste decodering of de laatste (her)start.
+  geteld vanaf de laatste decodering of de laatste (her)start. Dit herstart
+  altijd, zonder onderstaande hang-check — het is expliciet de achtervang
+  voor als de S/N-redenering zelf een keer niet werkt.
+
+### Sinds 14 september 2026: het S/N-vermoeden is geen bewijs
+
+Die dag sloeg de S/N-regel aan terwijl de decoder gewoon doorlas (normale
+bytes/20s in het mailrapport) — het signaal was alleen te zwak/vervormd om te
+decoderen, geen vastgelopen proces. Herstarten had daar niets aan gedaan, en
+had zelfs een goed te ontvangen volgende beurt kunnen laten missen.
+
+Daarom checkt de waakhond, vóórdat hij op het S/N-vermoeden herstart, of de
+decoder ook écht niets meer leest: `rchar` in `/proc/<pid>/io`, twintig
+seconden stil (dezelfde meting als de DOORSTROOM-sectie in de melder-mail).
+De twee decoderprocessen (518 en 490) zijn identiek van naam en commandoregel;
+ze worden uit elkaar gehouden via hun ouderproces (490 is een kindproces van
+de demodulator zelf, 518 hangt in de shell-pijplijn van de service).
+
+- Bevestigd stilstaand lezen → vastgelopen proces, herstart zoals voorheen.
+- Decoder leest gewoon door → **geen herstart**, wel één keer een mail
+  ("vermoedelijk signaalprobleem, geen herstart") zodat je het niet mist. Pas
+  weer een nieuwe mail zodra de reden verandert of er weer gedecodeerd is.
+- Decoderproces niet eens gevonden → minstens zo erg als een hang, gewoon
+  herstarten.
 
 Beveiligingen tegen een lus: geen ingreep binnen 30 minuten na een start, en
 alleen uitzendingen ná de start tellen mee. De timer heeft bewust geen
