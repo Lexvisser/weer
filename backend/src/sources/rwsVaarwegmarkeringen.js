@@ -77,8 +77,14 @@ export function vaarwegmarkeringenLeeftijdMs() {
 // is optioneel, voor eventueel later filteren; zonder bbox komt alles terug.
 export function fetchVaarwegmarkeringen({ west, zuid, oost, noord } = {}) {
   if (!markeringen) laadVaarwegmarkeringen();
+  // Let op: URLSearchParams.get() geeft null terug voor een ontbrekende
+  // parameter, en Number(null) is 0 -- niet NaN. Zonder deze expliciete
+  // "is er überhaupt iets meegegeven"-check zou een ontbrekende bbox dus
+  // stilletjes als bbox (0,0,0,0) gelezen worden, en alles wegfilteren
+  // (bug gevonden 2026-09-14: de RWS-boeienlaag toonde daardoor 0 boeien).
+  const opgegeven = [west, zuid, oost, noord].every((v) => v != null && v !== '');
   const w = Number(west), z = Number(zuid), o = Number(oost), n = Number(noord);
-  const heeftBbox = [w, z, o, n].every(Number.isFinite);
+  const heeftBbox = opgegeven && [w, z, o, n].every(Number.isFinite);
   const lijst = heeftBbox ? markeringen.filter((m) => m.lat >= z && m.lat <= n && m.lon >= w && m.lon <= o) : markeringen;
   return { markeringen: lijst, bestand: bestandInfo };
 }
