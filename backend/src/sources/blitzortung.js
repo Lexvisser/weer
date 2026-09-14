@@ -85,6 +85,18 @@ function decodeBericht(ruw) {
   return JSON.parse(decompress(ruw));
 }
 
+// Vertaalt een close-event naar een leesbare reden voor de logregel.
+function beschrijfSluiting(info) {
+  if (!info) return 'reden onbekend';
+  const delen = [];
+  if (info.code != null) {
+    delen.push(`code ${info.code}${info.code === 1006 ? ' = abrupt weggevallen, geen close-frame' : ''}`);
+  }
+  if (info.reden) delen.push(`reden "${info.reden}"`);
+  if (info.fout) delen.push(`fout: ${info.fout}`);
+  return delen.length ? delen.join(', ') : 'reden onbekend';
+}
+
 // ---- Eén WebSocket-verbinding opzetten -------------------------------------
 function verbind(host, { onOpen, onRecord, onClose, onDecodeerfout }) {
   const ws = new WebSocket(`wss://${host}/`);
@@ -99,8 +111,20 @@ function verbind(host, { onOpen, onRecord, onClose, onDecodeerfout }) {
       onDecodeerfout(err);
     }
   });
-  ws.addEventListener('close', onClose);
-  ws.addEventListener('error', () => {}); // 'close' volgt hier altijd op, daar herstellen we
+  // 2026-09-14, op Lex' vraag "krijgen we een weigering of zo?": de oude
+  // logregel zei alleen DAT de verbinding sloot, nooit waarom -- achteraf dus
+  // niet te zien of Blitzortung ons weigert (close-code met reden), of de
+  // verbinding gewoon wegvalt (1006, zonder close-frame), of het al eerder
+  // stukliep op netwerk/TLS (error-event). Die drie zijn nu uit elkaar te
+  // houden. Het error-event zelf blijft zonder herstelactie: 'close' volgt er
+  // altijd op, en dat is de plek waar we herstellen.
+  let laatsteFout = null;
+  ws.addEventListener('error', (ev) => {
+    laatsteFout = ev?.error?.message ?? ev?.message ?? null;
+  });
+  ws.addEventListener('close', (ev) =>
+    onClose({ code: ev?.code ?? null, reden: ev?.reason || null, fout: laatsteFout })
+  );
   return ws;
 }
 
@@ -424,46 +448,94 @@ export function startBlitzortungStream({ homeLat, homeLon, onUpdate, onError }) 
   // true staan terwijl er 0 flitsen meer binnenkwamen. Nu: onOpen en onClose
   // zijn weer onvoorwaardelijk (zoals voor deze fix), en de verbind()-helper
   // garandeert dat 'error' altijd gevolgd wordt door 'close' -- dus onClose is
-  // de enige plek die een nieuwe poging plant. De timeout doet alleen nog een
-  // geforceerde ws.close() op een poging die nooit open ging; die close-actie
-  // triggert vanzelf de onClose hierboven, dus geen aparte planHerverbinding()
-  // meer nodig vanuit de timeout zelf.
+  // de enige plek die een nieuwe poging plant.
+  //
+  // 2026-09-14, derde correctie (gevonden na 28 minuten stilte in de log,
+  // 23:03-23:31): de timeout deed alleen een geforceerde ws.close() op een
+  // poging die nooit open ging, in de aanname dat die close-actie vanzelf de
+  // onClose hierboven triggert. Dat klopt niet -- close() op een socket die
+  // nog in CONNECTING staat vuurt in Node GEEN 'close'-event af, en gooit ook
+  // niets, dus het catch-vangnet eronder sloeg evenmin aan. Niemand plande dus
+  // een nieuwe poging en de hele herstel-lus lag stil tot een herstart van de
+  // app (hetzelfde eindbeeld als het 12-sept-incident hierboven, via een ander
+  // gaatje). Nu plant de timeout zelf, met twee waarborgen:
+  //   * herverbindingGepland: een vlag PER POGING (bewust niet gedeeld, zie de
+  //     correctie hierboven) zodat de timeout en een alsnog nakomende onClose
+  //     samen hooguit een nieuwe poging starten -- terwijl een echte, latere
+  //     disconnect van een geslaagde verbinding gewoon blijft herstellen.
+  //   * opgegeven: een socket die alsnog opengaat nadat we 'm hebben
+  //     opgegeven, wordt genegeerd en gesloten -- anders zou die zombie naast
+  //     de nieuwe verbinding records mee blijven pompen en `verbonden` ten
+  //     onrechte op true zetten.
   function verbindOpnieuw() {
     if (gestopt) return;
     const host = WS_HOSTS[hostIndex];
     let heeftGeopend = false;
     let verbindTimer = null;
+    let herverbindingGepland = false;
+    let opgegeven = false;
+    let dezeWs = null;
+
+    function planEenmaligOpnieuw() {
+      if (herverbindingGepland) return;
+      herverbindingGepland = true;
+      planHerverbinding();
+    }
+
     try {
-      ws = verbind(host, {
+      dezeWs = verbind(host, {
         onOpen: () => {
+          if (opgegeven) {
+            log(`verbinding met ${host} ging alsnog open na de hang-timeout -- genegeerd en gesloten`);
+            try {
+              dezeWs?.close();
+            } catch {
+              // niets te doen -- deze socket telt sowieso niet meer mee
+            }
+            return;
+          }
           heeftGeopend = true;
           clearTimeout(verbindTimer);
           verbonden = true;
           backoffMs = 5000;
           log(`verbonden met ${host}`);
         },
-        onRecord: verwerkRecord,
+        onRecord: (record) => {
+          if (opgegeven) return; // zombie-socket van een opgegeven poging
+          verwerkRecord(record);
+        },
         onDecodeerfout: (err) => log(`kon bericht niet decoderen (${host}): ${err.message}`),
-        onClose: () => {
+        onClose: (info) => {
           clearTimeout(verbindTimer);
-          log(`verbinding met ${host} gesloten, nieuwe poging over ${Math.round(backoffMs / 1000)}s`);
-          planHerverbinding();
+          if (herverbindingGepland) {
+            log(`verbinding met ${host} alsnog gesloten (${beschrijfSluiting(info)}), nieuwe poging stond al gepland`);
+            return;
+          }
+          log(
+            `verbinding met ${host} gesloten (${beschrijfSluiting(info)}), ` +
+              `nieuwe poging over ${Math.round(backoffMs / 1000)}s`
+          );
+          planEenmaligOpnieuw();
         },
       });
+      ws = dezeWs;
       verbindTimer = setTimeout(() => {
         if (heeftGeopend) return;
-        log(`verbinding met ${host} bleef hangen (geen open binnen ${VERBIND_TIMEOUT_MS / 1000}s), forceer afsluiten`);
+        opgegeven = true;
+        log(
+          `verbinding met ${host} bleef hangen (geen open binnen ${VERBIND_TIMEOUT_MS / 1000}s), ` +
+            `forceer afsluiten, nieuwe poging over ${Math.round(backoffMs / 1000)}s`
+        );
         try {
-          ws.close();
+          dezeWs?.close();
         } catch {
-          // negeren -- als close() zelf al faalt vuurt er sowieso geen 'close'-event
-          // meer op deze ws, dus dan expliciet zelf de nieuwe poging inplannen
-          planHerverbinding();
+          // negeren -- planEenmaligOpnieuw() hieronder regelt het herstel toch
         }
+        planEenmaligOpnieuw();
       }, VERBIND_TIMEOUT_MS);
     } catch (err) {
       log(`kon niet verbinden met ${host}: ${err.message}`);
-      planHerverbinding();
+      planEenmaligOpnieuw();
     }
   }
 
