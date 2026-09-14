@@ -40,15 +40,24 @@
 // een foto krijgt in de bron-database.
 
 const FOTO_CACHE_MS = 7 * 24 * 60 * 60 * 1000; // gevonden foto: 7 dagen
-const GEEN_FOTO_CACHE_MS = 6 * 60 * 60 * 1000; // geen foto gevonden: 6 uur, dan nog eens proberen
-const FETCH_TIMEOUT_MS = 6000;
+const GEEN_FOTO_CACHE_MS = 6 * 60 * 60 * 1000; // pagina geladen maar geen foto: 6 uur, dan nog eens proberen
+// 2026-09-14, op melding van Lex ("ik zie ook nog geen foto's"): een MISLUKTE
+// poging (time-out, blokkade, netwerkfout) was hiervoor niet te onderscheiden
+// van "dit schip heeft geen foto" -- allebei null, allebei 6 uur vastgehouden.
+// Eén hapering betekende dus een halve dag geen foto voor dat schip. Bewezen
+// geval: ALREK (304944000) gaf 's middags een echte foto-URL en een halfuur
+// later null, terwijl de bron gewoon werkte (THE QUEEN JACQUELINE kwam op
+// datzelfde moment wél door). Mislukkingen worden nu kort onthouden en
+// gelogd, zodat ze vanzelf herstellen en zichtbaar zijn in het journaal.
+const MISLUKT_CACHE_MS = 60 * 1000; // time-out/blokkade: 1 minuut, daarna opnieuw proberen
+const FETCH_TIMEOUT_MS = 10000; // was 6s; VesselFinder is regelmatig net trager dan dat
 
 const cache = new Map(); // mmsi -> { url: string|null, tijdMs: number }
 const inVlucht = new Map(); // mmsi -> Promise<string|null>, dedupliceert gelijktijdige klikken op hetzelfde schip
 
 function nogGeldig(entry) {
   if (!entry) return false;
-  const maxLeeftijdMs = entry.url ? FOTO_CACHE_MS : GEEN_FOTO_CACHE_MS;
+  const maxLeeftijdMs = entry.url ? FOTO_CACHE_MS : (entry.mislukt ? MISLUKT_CACHE_MS : GEEN_FOTO_CACHE_MS);
   return Date.now() - entry.tijdMs < maxLeeftijdMs;
 }
 
@@ -67,12 +76,14 @@ async function zoekFotoOp(mmsi) {
       },
       signal: controller.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { fout: `status ${res.status}` };
     const html = await res.text();
     const match = html.match(/https:\/\/static\.vesselfinder\.net\/ship-photo\/[^"'\s\\]+/);
-    return match ? match[0] : null;
-  } catch {
-    return null; // netwerkfout, timeout, site onbereikbaar -- gewoon "geen foto", geen crash
+    return { url: match ? match[0] : null }; // pagina geladen: match of niet, allebei een echt antwoord
+  } catch (err) {
+    // Netwerkfout, time-out of onbereikbaar: GEEN echt antwoord. Zie de
+    // toelichting bij MISLUKT_CACHE_MS hierboven.
+    return { fout: err?.name === 'AbortError' ? `time-out na ${FETCH_TIMEOUT_MS} ms` : (err?.message ?? String(err)) };
   } finally {
     clearTimeout(timeout);
   }
@@ -88,10 +99,15 @@ export async function haalScheepsfotoOp(mmsiRuw) {
 
   if (inVlucht.has(mmsi)) return inVlucht.get(mmsi);
 
-  const belofte = zoekFotoOp(mmsi).then((url) => {
-    cache.set(mmsi, { url, tijdMs: Date.now() });
+  const belofte = zoekFotoOp(mmsi).then((resultaat) => {
+    if (resultaat.fout) {
+      console.warn(`[weer] scheepsfoto ${mmsi} mislukt: ${resultaat.fout}`);
+      cache.set(mmsi, { url: null, tijdMs: Date.now(), mislukt: true });
+    } else {
+      cache.set(mmsi, { url: resultaat.url, tijdMs: Date.now() });
+    }
     inVlucht.delete(mmsi);
-    return url;
+    return resultaat.url ?? null;
   });
   inVlucht.set(mmsi, belofte);
   return belofte;
