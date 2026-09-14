@@ -51,6 +51,15 @@ const GEEN_FOTO_CACHE_MS = 6 * 60 * 60 * 1000; // pagina geladen maar geen foto:
 // gelogd, zodat ze vanzelf herstellen en zichtbaar zijn in het journaal.
 const MISLUKT_CACHE_MS = 60 * 1000; // time-out/blokkade: 1 minuut, daarna opnieuw proberen
 const FETCH_TIMEOUT_MS = 10000; // was 6s; VesselFinder is regelmatig net trager dan dat
+// Harde bovengrens op de HELE opzoeking, los van de fetch-timeout hierboven.
+// 2026-09-14 gemeten: een opzoeking die 31 seconden later nog steeds niets had
+// teruggegeven, terwijl de fetch-afbreker op 10s staat -- de afbreker pakt het
+// dus niet in alle gevallen (een pagina die wel begint maar niet doorkomt).
+// /api/scheepsfoto wacht op deze belofte, dus zonder deze grens hangt het
+// verzoek van de browser mee. Liever "geen foto" dan een kaartje dat blijft
+// wachten; door de mislukt-markering wordt het een minuut later toch weer
+// geprobeerd.
+const HARDE_GRENS_MS = 13000;
 
 const cache = new Map(); // mmsi -> { url: string|null, tijdMs: number }
 const inVlucht = new Map(); // mmsi -> Promise<string|null>, dedupliceert gelijktijdige klikken op hetzelfde schip
@@ -99,7 +108,11 @@ export async function haalScheepsfotoOp(mmsiRuw) {
 
   if (inVlucht.has(mmsi)) return inVlucht.get(mmsi);
 
-  const belofte = zoekFotoOp(mmsi).then((resultaat) => {
+  const metGrens = Promise.race([
+    zoekFotoOp(mmsi),
+    new Promise((klaar) => setTimeout(() => klaar({ fout: `geen antwoord binnen ${HARDE_GRENS_MS} ms` }), HARDE_GRENS_MS)),
+  ]);
+  const belofte = metGrens.then((resultaat) => {
     if (resultaat.fout) {
       console.warn(`[weer] scheepsfoto ${mmsi} mislukt: ${resultaat.fout}`);
       cache.set(mmsi, { url: null, tijdMs: Date.now(), mislukt: true });
@@ -108,6 +121,14 @@ export async function haalScheepsfotoOp(mmsiRuw) {
     }
     inVlucht.delete(mmsi);
     return resultaat.url ?? null;
+  }).catch((err) => {
+    // Vangnet: zonder dit zou een onverwachte fout een afgewezen belofte in
+    // inVlucht achterlaten, en dan krijgt elke volgende klik op dat schip die
+    // afwijzing terug in plaats van een nieuwe poging.
+    console.warn(`[weer] scheepsfoto ${mmsi} onverwachte fout: ${err?.message ?? err}`);
+    cache.set(mmsi, { url: null, tijdMs: Date.now(), mislukt: true });
+    inVlucht.delete(mmsi);
+    return null;
   });
   inVlucht.set(mmsi, belofte);
   return belofte;
