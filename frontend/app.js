@@ -865,6 +865,11 @@ function initMap() {
   kaart.on('mousemove', (e) => {
     if (!vaarradarActief || !vaarCanvasLaag) return;
     const mmsi = vaarCanvasLaag.zoekSchipOpContainerPunt(e.containerPoint);
+    // 14 sept 2026-fix (Lex: hand-cursor bleef staan op een schip): de oude
+    // marker-opzet kreeg de pointer-cursor gratis via Leaflet se eigen
+    // ".leaflet-interactive"-styling op elk marker-DOM-element. Canvas heeft
+    // geen los element per schip, dus die styling moet hier zelf gezet worden.
+    kaart.getContainer().style.cursor = mmsi != null ? 'pointer' : '';
     if (mmsi === vaarCanvasHoverMmsi) {
       if (mmsi != null) {
         vaarCanvasTooltipEl.style.left = `${e.containerPoint.x}px`;
@@ -874,7 +879,13 @@ function initMap() {
     }
     vaarCanvasHoverMmsi = mmsi;
     vaarCanvasLaag.zetHover(mmsi);
-    if (mmsi == null) {
+    // 14 sept 2026-fix (Lex: tooltip van een ANDER schip bleef zichtbaar over
+    // een open popup heen): Leaflet blokkeert 'mousemove' niet zoals 'click',
+    // dus bewegen over de open-popup-DOM triggerde dit gewoon nog voor het
+    // schip eronder. Zolang er een popup/telefoon-sheet openstaat voor een
+    // ANDER schip, geen losse hover-tooltip tonen -- de popup zelf toont de
+    // info al.
+    if (mmsi == null || (vaarCanvasActiefMmsi != null && vaarCanvasActiefMmsi !== mmsi)) {
       vaarCanvasTooltipEl.classList.add('verborgen');
     } else {
       const s = vaarSchepenData.get(mmsi);
@@ -889,6 +900,7 @@ function initMap() {
     vaarCanvasHoverMmsi = null;
     vaarCanvasLaag?.zetHover(null);
     vaarCanvasTooltipEl.classList.add('verborgen');
+    kaart.getContainer().style.cursor = '';
   });
   kaart.on('click', (e) => {
     if (!vaarradarActief || !vaarCanvasLaag) return;
