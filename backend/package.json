@@ -15,7 +15,8 @@
     "nodemailer": "^9.0.5",
     "pngjs": "^7.0.0",
     "satellite.js": "^5.0.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "ws": "^8.18.0"
   },
   "engines": {
     "node": ">=20"

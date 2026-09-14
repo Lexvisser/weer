@@ -59,6 +59,11 @@ import { startVaarradarLokaalFeed } from './sources/vaarradarLokaal.js';
 import { startVaarradarAishubFeed } from './sources/vaarradarAishub.js';
 import { verrijkMetReisvoortgang, ruimReisvoortgangOp } from './reisvoortgang.js';
 import { fetchAisNood } from './sources/aisNood.js';
+// 14 sept 2026, stap 1 van het samenbrengen van Baken met de weer-app (zie
+// baken-status.md): het in Baken bewezen snapshot+delta-WebSocket-protocol,
+// hier als NIEUW kanaal naast de bestaande /api/vaarradar-route -- zie
+// wsVaarradar.js voor de volledige toelichting.
+import { maakVaarradarWs } from './wsVaarradar.js';
 import { haalScheepsfotoOp } from './sources/scheepsfoto.js';
 import { voegAbonnementToe, verwijderAbonnementViaEndpoint } from './sources/webpush.js';
 import { fetchStormvloedkering } from './sources/stormvloedkering.js';
@@ -865,6 +870,28 @@ export function createApp(env) {
   let vaarradarFeed = { posities: new Map(), stop: () => {} };
   let vaarradarLokaalFeed = { posities: new Map(), stop: () => {} };
   let vaarradarAishubFeed = { posities: new Map(), stop: () => {} };
+  // 14 sept 2026, stap 1 van het samenbrengen van Baken met de weer-app: de
+  // WS-hub zelf wordt pas na het aanmaken van `server` hieronder gezet (zie
+  // wsVaarradar.js) -- alvast hier gedeclareerd zodat stopPolling() 'm netjes
+  // kan afsluiten, zelfde patroon als de drie feeds hierboven.
+  let vaarradarWsHub = { aantalClients: () => 0, stop: () => {} };
+
+  // Zelfde samenvoegregel als de bestaande /api/vaarradar-route hieronder
+  // (lokaal wint van AISHub bij dezelfde MMSI) -- hier als losse, herbruikbare
+  // functie omdat de nieuwe WS-hub 'm elke tick opnieuw nodig heeft, niet pas
+  // per binnenkomend HTTP-verzoek. Verrijkt meteen met de geschatte
+  // reisvoortgang (reisvoortgang.js), zodat een toekomstige WS-frontend
+  // (stap 2) hetzelfde kaartje kan tonen als de huidige polling-route al
+  // doet. Raakt de bestaande /api/vaarradar-route niet aan.
+  function mergedVaarradarPosities() {
+    const merged = new Map();
+    for (const p of vaarradarAishubFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'aishub' });
+    for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
+    const nuMs = Date.now();
+    for (const s of merged.values()) verrijkMetReisvoortgang(s, nuMs);
+    ruimReisvoortgangOp(nuMs);
+    return merged;
+  }
 
   // 2026-08-24, op verzoek van Lex ("Kan het zijn dat na elke sync ukho even
   // niet getoond wordt tot de volgende ronde?"): elke bron begint na een
@@ -1006,6 +1033,7 @@ export function createApp(env) {
     vaarradarFeed.stop();
     vaarradarLokaalFeed.stop();
     vaarradarAishubFeed.stop();
+    vaarradarWsHub.stop();
   }
 
   function signalenMet(filterCategorie) {
@@ -1687,6 +1715,18 @@ export function createApp(env) {
     }
 
     return serveStatic(req, res);
+  });
+
+  // 14 sept 2026, stap 1 van het samenbrengen van Baken met de weer-app (zie
+  // baken-status.md, "Volgende stap"): het in Baken bewezen snapshot+delta-
+  // WebSocket-kanaal, hier op een NIEUW pad (/ws/vaarradar) naast de
+  // bestaande /api/vaarradar-route. Er is nog geen frontend die dit kanaal
+  // gebruikt -- dit voegt dus nog niets zichtbaars toe, het staat alleen
+  // klaar voor stap 2. Te testen met bijv. `wscat -c "ws://localhost:<poort>/ws/vaarradar?lat=52.09&lon=5.12&straal=250"`.
+  vaarradarWsHub = maakVaarradarWs(server, {
+    pad: '/ws/vaarradar',
+    getMerged: mergedVaarradarPosities,
+    log: (b) => console.log(`[weer] vaarradar-ws: ${b}`),
   });
 
   // 2026-08-27, iPad-analyse: Node's standaard keepAliveTimeout is maar 5s —
