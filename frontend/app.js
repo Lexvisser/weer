@@ -44,6 +44,7 @@ const TOGGLE_VLIEGRADAR_EL = document.getElementById('toggleVliegradar');
 const TOGGLE_FRONTEN_EL = document.getElementById('toggleFronten'); // 2026-08-30, zie toggleFronten()
 const TOGGLE_GRADEN_EL = document.getElementById('toggleGraden'); // 2026-08-30, zie toggleGradenGrid()
 // TOGGLE_STATIONS_EL staat bij het stations-blok zelf (zie toggleStations(), 2026-09-07).
+// TOGGLE_RWS_BOEIEN_EL/TOGGLE_ALLEEN_BOEIEN_EL staan bij het boeien-blok zelf (zie toggleRwsBoeien()/toggleAlleenBoeien(), 2026-09-14).
 const FRONTEN_INFO_EL = document.getElementById('frontenInfo');
 const TOGGLE_DWD_KAART_EL = document.getElementById('toggleDwdKaart'); // 2026-08-30, zie openDwdKaart()
 const DWD_KAART_OVERLAY_EL = document.getElementById('dwdKaartOverlay');
@@ -931,6 +932,7 @@ function initMap() {
   try { if (localStorage.getItem(GRADEN_KEY) === 'aan') toggleGradenGrid(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(STATIONS_KEY) === 'aan') toggleStations(); } catch (_) { /* privé-modus */ }
   try { if (localStorage.getItem(NWR_KEY) === 'aan') toggleNwr(); } catch (_) { /* privé-modus */ }
+  try { if (localStorage.getItem(RWS_BOEIEN_KEY) === 'aan') toggleRwsBoeien(); } catch (_) { /* privé-modus */ } // 2026-09-14
 
   // 2026-08-19: basiskaart-geschiedenis (kort) — CARTO's gratis dark_all gaf
   // in Europa een ingebakken "Zoom Level Not Supported"-plaatje (HTTP 200,
@@ -1028,6 +1030,8 @@ function initMap() {
   if (TOGGLE_FRONTEN_EL) TOGGLE_FRONTEN_EL.addEventListener('click', toggleFronten);
   if (TOGGLE_GRADEN_EL) TOGGLE_GRADEN_EL.addEventListener('click', toggleGradenGrid);
   if (TOGGLE_STATIONS_EL) TOGGLE_STATIONS_EL.addEventListener('click', toggleStations); // 2026-09-07, weerstations-laag
+  if (TOGGLE_RWS_BOEIEN_EL) TOGGLE_RWS_BOEIEN_EL.addEventListener('click', toggleRwsBoeien); // 2026-09-14, RWS-vaarwegmarkeringen (boeien/bakens)
+  if (TOGGLE_ALLEEN_BOEIEN_EL) TOGGLE_ALLEEN_BOEIEN_EL.addEventListener('click', toggleAlleenBoeien);
   if (TOGGLE_NWR_EL) TOGGLE_NWR_EL.addEventListener('click', toggleNwr); // 2026-09-09, NOAA Weather Radio-laag
   nwrDataTimerStart(); // 2026-09-10: NWS-data is de enige kaartbron, dus altijd verversen
   document.getElementById('nwrStopKnop')?.addEventListener('click', nwrStop);
@@ -9419,6 +9423,135 @@ function tekenStations({ stations, meetpunten, kustrapporten = [] }) {
     if (!rwsZichtbaar(p)) return;
     plaatsStationsMarker(p.lat, p.lon, p.naam, [rwsVakHtml(p)], stationsPijlHtml(null, [p]), () => rwsMeetpuntPopupHtml(p));
   });
+}
+
+// 2026-09-14, op verzoek van Lex ("We hebben data met daarin posities van
+// boeien etc. Kunnen we een aparte laag maken met al deze objecten en die
+// aan en uit zetten?", bevestigd met "bouw dit maar zo"): landelijke RWS-
+// vaarwegmarkeringen (boeien + vaste bakens/lichten uit PDOK, zie
+// sources/rwsVaarwegmarkeringen.js), een EIGEN laag met eigen knop -- los van
+// zowel de AIS/vaarradar-knop (⛴️, echte scheepsposities) als de bestaande
+// OpenSeaMap-"Boeien"-knop in het vaarmenu (die is de zeeteken-TEGELlaag,
+// geen eigen puntdata). Eerder onderzocht of dit aan de AIS-navigatiehulp-
+// stippen te koppelen was; die bleken in de eigen ontvangst vrijwel nooit
+// aanwezig, vandaar deze losstaande laag.
+//
+// Landelijk maar ~18.500 objecten: net als de NWR-zenderlijst in één keer
+// opgehaald zodra de laag aangaat (geen straal/bbox-herhaling nodig, het
+// bestand verandert hooguit 1x/maand) en aan de klantzijde geclusterd met
+// Leaflet.markercluster (al geladen, zie index.html) zodat het bij uitzoomen
+// gewoon een paar bolletjes-met-getal blijft i.p.v. 18.500 losse pinnen.
+const TOGGLE_RWS_BOEIEN_EL = document.getElementById('toggleRwsBoeien');
+const TOGGLE_ALLEEN_BOEIEN_EL = document.getElementById('toggleAlleenBoeien');
+const RWS_BOEIEN_KEY = 'weerRwsBoeienLaag';
+let rwsBoeienActief = false;
+let rwsBoeienLaag = null; // L.markerClusterGroup
+let rwsBoeienData = null; // eenmaal opgehaalde lijst, blijft in het geheugen zolang de pagina leeft
+let rwsBoeienLaadBezig = false;
+
+const RWS_BOEIEN_KLEUR = {
+  Rood: '#e03131', Groen: '#2e7d32', Geel: '#ffca28', Wit: '#eeeeee',
+  Zwart: '#222222', Blauw: '#1971c2', Oranje: '#f76707',
+};
+
+function rwsBoeienKleurCode(kleurTekst) {
+  if (!kleurTekst) return '#9aa0a6'; // onbekend -- grijs
+  const eerste = kleurTekst.split(/[;,/]/)[0]?.trim();
+  return RWS_BOEIEN_KLEUR[eerste] ?? '#9aa0a6';
+}
+
+function rwsBoeienIconHtml(m) {
+  const kleur = rwsBoeienKleurCode(m.kleur);
+  const licht = m.lichtkarakter ? '<span class="rws-boei-licht"></span>' : '';
+  // Boeien (drijvend): rond stipje. Vaste bakens/lichten: driehoekje --
+  // zelfde onderscheid als op een zeekaart tussen een boei en een vast object.
+  return m.drijvend
+    ? `<div class="rws-boei-pin is-drijvend" style="background:${kleur}">${licht}</div>`
+    : `<div class="rws-boei-pin is-vast" style="border-bottom-color:${kleur}">${licht}</div>`;
+}
+
+function rwsBoeienPopupHtml(m) {
+  const regels = [];
+  const r = (label, waarde) => { if (waarde != null && waarde !== '') regels.push(`<div class="station-stat"><span class="station-stat-label">${label}:</span> <span class="station-stat-waarde">${waarde}</span></div>`); };
+  r('Soort', m.drijvend ? 'boei (drijvend)' : 'vast baken/licht');
+  r('Kleur', m.kleur);
+  r('Vorm', m.vorm);
+  r('Type', m.type);
+  if (m.lichtkarakter) r('Lichtkarakter', `${m.lichtkarakter}${m.lichtgroep ? ` ${m.lichtgroep}` : ''}${m.lichtperiode ? `.${m.lichtperiode}s` : ''}`);
+  r('Vaarwater', m.vaarwater);
+  const titel = m.naam && m.naam !== '' ? m.naam : (m.drijvend ? 'Boei' : 'Baken');
+  return `<div class="popup-titel">🛟 ${escapeHtml(titel)}</div><div class="popup-stats">${regels.join('')}</div><div class="popup-sub">Rijkswaterstaat (PDOK)</div>`;
+}
+
+function tekenRwsBoeien() {
+  if (!rwsBoeienActief || !kaart || !rwsBoeienData) return;
+  if (!rwsBoeienLaag) {
+    rwsBoeienLaag = L.markerClusterGroup({ maxClusterRadius: 50, disableClusteringAtZoom: 14, spiderfyOnMaxZoom: false });
+    kaart.addLayer(rwsBoeienLaag);
+  }
+  rwsBoeienLaag.clearLayers();
+  const markers = rwsBoeienData.map((m) => L.marker([m.lat, m.lon], {
+    icon: L.divIcon({ className: '', html: rwsBoeienIconHtml(m), iconSize: [14, 14], iconAnchor: [7, 7] }),
+  }).bindPopup(() => rwsBoeienPopupHtml(m), { maxWidth: 260 }));
+  rwsBoeienLaag.addLayers(markers);
+}
+
+async function toggleRwsBoeien() {
+  rwsBoeienActief = !rwsBoeienActief;
+  TOGGLE_RWS_BOEIEN_EL?.classList.toggle('actief', rwsBoeienActief);
+  try { localStorage.setItem(RWS_BOEIEN_KEY, rwsBoeienActief ? 'aan' : 'uit'); } catch (_) { /* privé-modus */ }
+  if (!rwsBoeienActief) {
+    if (rwsBoeienLaag && kaart) kaart.removeLayer(rwsBoeienLaag);
+    rwsBoeienLaag = null;
+    return;
+  }
+  if (rwsBoeienData) {
+    tekenRwsBoeien();
+    return;
+  }
+  if (rwsBoeienLaadBezig) return;
+  rwsBoeienLaadBezig = true;
+  try {
+    const data = await fetch('/api/rws-vaarwegmarkeringen').then((r) => r.json());
+    rwsBoeienData = data.markeringen ?? [];
+    if (rwsBoeienActief) tekenRwsBoeien();
+  } catch (err) {
+    console.warn('[weer] rws-vaarwegmarkeringen ophalen mislukt:', err);
+  } finally {
+    rwsBoeienLaadBezig = false;
+  }
+}
+
+// 2026-09-14, tweede knop op hetzelfde verzoek ("Ook de optie om alleen deze
+// objecten te tonen zonder schepen en andere meldingen en icons"): verbergt
+// in één klik alle andere Leaflet-lagen (schepen, hazard-iconen, weer-
+// stations, fronten, NWR, gradengrid, OpenSeaMap-zeetekens, ...) en laat
+// alleen de RWS-boeienlaag over. Bewust GEEN losse toggle-state per laag
+// aangeraakt (geen enkele "...Actief"-vlag wordt gewijzigd, geen enkele timer
+// gestopt) -- puur de Leaflet-lagen zelf tijdelijk van de kaart af, zodat een
+// tweede klik alles exact terugzet zoals het stond, ook als er ondertussen
+// niets anders veranderd is. De achtergrondkaart (tegellaag) blijft altijd
+// staan, anders is er niets om de boeien op te zien.
+let alleenBoeienActief = false;
+let alleenBoeienOpgeslagenLagen = null;
+
+function toggleAlleenBoeien() {
+  alleenBoeienActief = !alleenBoeienActief;
+  TOGGLE_ALLEEN_BOEIEN_EL?.classList.toggle('actief', alleenBoeienActief);
+  if (!kaart) return;
+  if (alleenBoeienActief) {
+    if (!rwsBoeienActief) toggleRwsBoeien(); // zonder boeienlaag zelf is deze knop zinloos
+    alleenBoeienOpgeslagenLagen = [];
+    kaart.eachLayer((laag) => {
+      if (laag === rwsBoeienLaag) return;
+      if (laag instanceof L.TileLayer) return; // achtergrondkaart blijft staan
+      alleenBoeienOpgeslagenLagen.push(laag);
+    });
+    alleenBoeienOpgeslagenLagen.forEach((laag) => kaart.removeLayer(laag));
+  } else {
+    (alleenBoeienOpgeslagenLagen ?? []).forEach((laag) => { if (!kaart.hasLayer(laag)) kaart.addLayer(laag); });
+    alleenBoeienOpgeslagenLagen = null;
+  }
 }
 
 function toggleVliegradar() {

@@ -26,6 +26,7 @@ import { fetchNwrData } from './sources/nwrData.js'; // 2026-09-10: dezelfde NWR
 import { startLuisteren, stopLuisteren, luisterStatus, alleLuisterStatus, beschikbaar as luisterBeschikbaar, blokkenStatus, blokAudioPad } from './sources/radioLuister.js';
 import { zoekVrij as geocodeZoekVrij } from './sources/nwrGeocode.js'; // 2026-09-09, zoekveld // 2026-09-09, op verzoek luisteren (ffmpeg + whisper.cpp vanuit de app)
 import { fetchZeemarkering, laadZeemarkeringen, exporteerZeemarkeringen, zeemarkeringenLeeftijdMs, VERVERS_MS as ZEEMARKERING_VERVERS_MS } from './sources/zeemarkering.js'; // 2026-09-07, lichtkarakter/misthoorn/racon bij een meetpunt
+import { fetchVaarwegmarkeringen, laadVaarwegmarkeringen, exporteerVaarwegmarkeringen, vaarwegmarkeringenLeeftijdMs, VERVERS_MS as VAARWEGMARKERING_VERVERS_MS } from './sources/rwsVaarwegmarkeringen.js'; // 2026-09-14, losstaande RWS-boeienlaag (los van de AIS-navigatiehulp-stippen, zie git-historie van vandaag)
 import { fetchMeteoalarm } from './sources/meteoalarm.js';
 import { fetchGdacs } from './sources/gdacs.js';
 import { startBlitzortungStream } from './sources/blitzortung.js';
@@ -992,6 +993,23 @@ export function createApp(env) {
     };
     timers.push(setTimeout(ververZeemarkeringen, 5 * 60 * 1000));
     timers.push(setInterval(ververZeemarkeringen, 24 * 60 * 60 * 1000));
+
+    // 2026-09-14: RWS-vaarwegmarkeringen (boeien + vaste bakens/lichten,
+    // landelijk uit PDOK -- zie sources/rwsVaarwegmarkeringen.js), losse
+    // kaartlaag met eigen aan/uit-knop. Zelfde statisch-bestand-plus-
+    // maandelijkse-verversing-opzet als zeemarkeringen hierboven.
+    laadVaarwegmarkeringen();
+    const ververVaarwegmarkeringen = async () => {
+      if (vaarwegmarkeringenLeeftijdMs() < VAARWEGMARKERING_VERVERS_MS) return;
+      try {
+        await exporteerVaarwegmarkeringen();
+        laadVaarwegmarkeringen();
+      } catch (err) {
+        console.warn('[weer] rws-vaarwegmarkeringen verversen mislukt (volgende poging morgen):', err.message ?? err);
+      }
+    };
+    timers.push(setTimeout(ververVaarwegmarkeringen, 6 * 60 * 1000));
+    timers.push(setInterval(ververVaarwegmarkeringen, 24 * 60 * 60 * 1000));
     // Eerst de schijfcache (zie laadVeldVanSchijf in isobaren.js): een vers
     // veld telt als geslaagde ronde, dan haalt ververIsobaren() niets op.
     laadIsobarenVanSchijf().then((tijdMs) => { isobarenLaatstGeslaagd = tijdMs; return ververIsobaren(); });
@@ -1428,6 +1446,25 @@ export function createApp(env) {
       } catch (err) {
         console.error('[weer] zeemarkering-verzoek mislukt:', err.message ?? err);
         return sendJson(res, 502, { fout: 'Zeemarkering tijdelijk niet beschikbaar', markeringen: [] });
+      }
+    }
+    // 2026-09-14: RWS-vaarwegmarkeringen (boeien + vaste bakens/lichten) voor
+    // het huidige kaartbeeld -- ?west=&zuid=&oost=&noord= (bbox), niet op
+    // straal-vanaf-huis zoals /api/rws-meetpunten hierboven: dit is een
+    // losse, landelijke laag die je overal op het water aan wilt kunnen
+    // zetten. Zie sources/rwsVaarwegmarkeringen.js.
+    if (url === '/api/rws-vaarwegmarkeringen') {
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      try {
+        return sendJson(res, 200, fetchVaarwegmarkeringen({
+          west: params.get('west'),
+          zuid: params.get('zuid'),
+          oost: params.get('oost'),
+          noord: params.get('noord'),
+        }));
+      } catch (err) {
+        console.error('[weer] rws-vaarwegmarkeringen-verzoek mislukt:', err.message ?? err);
+        return sendJson(res, 502, { fout: 'Vaarwegmarkeringen tijdelijk niet beschikbaar', markeringen: [] });
       }
     }
     // 2026-09-08: NAVTEX-kustrapporten (Niton 490: Sandettie, Greenwich L/V,

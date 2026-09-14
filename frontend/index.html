@@ -252,6 +252,21 @@
         <!-- 2026-09-08: kustrapporten uit de eigen NAVTEX-ontvangst (Niton 490 kHz) -->
         <button id="stationsSubNavtex" class="satelliet-toggle stations-subknop" data-deel="navtex" title="Kustrapporten via NAVTEX (eigen ontvangst, 490 kHz)">NAVTEX</button>
       </span>
+      <!-- 2026-09-14, op verzoek van Lex ("We hebben data met daarin posities
+           van boeien etc. Kunnen we een aparte laag maken met al deze
+           objecten en die aan en uit zetten?"): landelijke RWS-vaarweg-
+           markeringen (boeien + vaste bakens/lichten uit PDOK), een eigen
+           laag los van zowel de AIS/vaarradar-knop (⛴️) als de bestaande
+           OpenSeaMap-"Boeien"-knop in het vaarmenu (die is de zeeteken-
+           tegellaag, geen eigen data). Zie toggleRwsBoeien() in app.js. -->
+      <button id="toggleRwsBoeien" class="satelliet-toggle" title="RWS-vaarwegmarkeringen (boeien en vaste bakens/lichten, landelijk, uit PDOK) tonen/verbergen">🛟<span class="knop-tekst"> RWS-boeien</span></button>
+      <!-- 2026-09-14, tweede knop op hetzelfde verzoek ("Ook de optie om
+           alleen deze objecten te tonen zonder schepen en andere meldingen en
+           icons"): verbergt in één klik alle andere lagen (schepen, hazard-
+           iconen, weerstations, fronten, etc.) en laat alleen de RWS-boeien
+           over; nogmaals klikken zet alles terug precies zoals het stond.
+           Zie toggleAlleenBoeien() in app.js. -->
+      <button id="toggleAlleenBoeien" class="satelliet-toggle" title="Alleen de RWS-vaarwegmarkeringen tonen, alle andere lagen (schepen, meldingen, iconen) tijdelijk verbergen">🔍<span class="knop-tekst"> Alleen boeien</span></button>
       <button id="radarSpeel">▶</button>
       <span id="radarTijd">—</span>
       <button id="toggleSatelliet" class="satelliet-toggle">🛰️<span class="knop-tekst"> Satelliet</span></button>

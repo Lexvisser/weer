@@ -2185,6 +2185,14 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .station-label { font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; color:#f4f6fb; line-height:1; white-space:nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 5px rgba(0,0,0,0.6); display:flex; align-items:baseline; gap:3px; }
 .station-bft { font-size:10px; font-weight:600; color:#3ec6ff; padding:1px 4px; border-radius:6px; background:rgba(5,6,10,0.65); }
 .station-pin.is-geen-meting { opacity:0.45; }
+/* 2026-09-14: RWS-vaarwegmarkeringen (boeien/bakens, zie toggleRwsBoeien() in
+   app.js) -- rond stipje voor een boei (drijvend), driehoekje voor een vast
+   baken/licht, zelfde onderscheid als op een zeekaart. Het kleurtje komt uit
+   obj_kleur (backend), een wit stipje erbovenop betekent "heeft een licht". */
+.rws-boei-pin { pointer-events:auto; cursor:pointer; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7)); position:relative; }
+.rws-boei-pin.is-drijvend { width:12px; height:12px; border-radius:50%; border:1px solid rgba(0,0,0,0.5); }
+.rws-boei-pin.is-vast { width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:12px solid #9aa0a6; }
+.rws-boei-licht { position:absolute; top:-4px; left:50%; transform:translateX(-50%); width:5px; height:5px; border-radius:50%; background:#fff6c8; box-shadow:0 0 4px 1px rgba(255,246,200,0.9); }
 .station-stat { display:flex; justify-content:space-between; gap:10px; }
 .station-stat-label { color:#9199b5; }
 /* Druktendens in de KNMI-pil: pijl + getal, in KNMI-blauw (2026-09-07, Lex). */
