@@ -27,6 +27,10 @@
 const BOEI_KLEUREN = {
   rood: '#d93025', groen: '#1e8e3e', geel: '#f4c22b', wit: '#f8f8f6',
   zwart: '#1c1c1c', grijs: '#9aa0a6', blauw: '#1a73e8', oranje: '#e8710a',
+  // 2026-09-14, na natellen van alle kleurwoorden in de dataset: dit waren de
+  // enige twee die nog ontbraken -- amber komt 392x voor als lichtkleur (die
+  // werden dus grijs getekend), bruin 8x als objectkleur.
+  amber: '#ffb300', bruin: '#8d6e4a',
 };
 
 function boeiKleurLijst(kleurTekst) {
@@ -447,13 +451,15 @@ const VaarCanvasLaag = L.Layer.extend({
       const ly = y - h / 2 + 1.5;
       ctx.save();
       ctx.fillStyle = lk;
-      ctx.globalAlpha = 0.3;
-      ctx.beginPath();
-      ctx.arc(lx, ly, 3.2, 0, Math.PI * 2);
-      ctx.fill();
+      if (zoom >= 13) { // halo alleen van dichtbij, anders wordt het bij duizenden lichten een roze waas
+        ctx.globalAlpha = 0.22;
+        ctx.beginPath();
+        ctx.arc(lx, ly, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.globalAlpha = 1;
       ctx.beginPath();
-      ctx.arc(lx, ly, 1.5, 0, Math.PI * 2);
+      ctx.arc(lx, ly, 1.8, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       ctx.lineWidth = 0.7;

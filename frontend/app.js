@@ -9521,7 +9521,7 @@ const RWS_LICHT_KARAKTER = { OC: 'Oc', ISO: 'Iso', FL: 'Fl', LFL: 'LFl', F: 'F',
 function rwsBoeienLichtTekst(m) {
   if (!m.lichtkarakter) return null;
   const kar = RWS_LICHT_KARAKTER[m.lichtkarakter.toUpperCase()] ?? m.lichtkarakter;
-  const kleurLetter = { Wit: 'W', Rood: 'R', Groen: 'G', Geel: 'Y', Blauw: 'Bu' }[m.lichtkleur] ?? '';
+  const kleurLetter = { Wit: 'W', Rood: 'R', Groen: 'G', Geel: 'Y', Blauw: 'Bu', Amber: 'Am' }[m.lichtkleur] ?? '';
   const groep = m.lichtgroep && m.lichtgroep !== '(1)' ? m.lichtgroep : '';
   const periode = m.lichtperiode ? `.${m.lichtperiode}s` : '';
   const hoogte = m.lichthoogteM ? `${m.lichthoogteM}m` : '';
