@@ -1410,6 +1410,54 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
   100% { transform:scale(1.7); opacity:0; }
 }
 
+/* 14 sept 2026, samenvoeging met Baken (zie baken-status.md): stijlen voor
+   vaarCanvas.js, 1-op-1 overgenomen uit Baken se styles.css. Losstaand van
+   de .vaar-marker-*/vaarRingPuls-regels hierboven (die horen bij de OUDE,
+   per-marker-tekenlogica) -- vandaar de eigen naam vaarCanvasRingPuls i.p.v.
+   hergebruik van vaarRingPuls, en het is bewust nog niet opgeruimd: zodra
+   stap 2 van de samenvoeging de canvas-laag daadwerkelijk gebruikt, kan de
+   oude .vaar-marker-*/vaarRingPuls-styling weg. */
+.vaar-canvas-laag {
+  pointer-events: none;
+}
+.vaar-canvas-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.vaar-canvas-ring-actief {
+  border-width: 3px;
+  border-color: #3ec6ff;
+}
+.vaar-canvas-ring-actief::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid #3ec6ff;
+  box-shadow: 0 0 6px 1px rgba(62, 198, 255, 0.8);
+  animation: vaarCanvasRingPuls 1.3s ease-out infinite;
+}
+@keyframes vaarCanvasRingPuls {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+.vaar-canvas-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  background: rgba(20, 20, 20, 0.9);
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 1200;
+  white-space: nowrap;
+}
+
 .home-pin { width:14px; height:14px; border-radius:50%; background:rgba(62,198,255,0.9); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); box-shadow:0 0 0 5px rgba(62,198,255,0.25), 0 0 12px rgba(62,198,255,0.55), 0 2px 6px rgba(10,13,22,0.3); }
 
 /* Losse bliksemflitsen achter een aangetikt onweercomplex — SVG-circles

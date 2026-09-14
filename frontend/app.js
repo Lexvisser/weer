@@ -838,6 +838,14 @@ function initMap() {
   // VAAR_MIN_ZOOM_VOOR_SCHEPEN hierboven) -- meteen reageren op een zoom-
   // wissel i.p.v. tot de eerstvolgende 3s-poll te wachten.
   kaart.on('zoomend', () => { if (vaarradarActief) ververVaarradar(); });
+  // 14 sept 2026, stap 2a van de Baken-samenvoeging (zie baken-status.md en
+  // verbindVaarradarWs() hierboven): zoomwissel doorgeven aan de parallelle
+  // verificatie-WS, zelfde reden als hierboven bij ververVaarradar().
+  kaart.on('zoomend', () => {
+    if (vaarWs && vaarWs.readyState === WebSocket.OPEN) {
+      vaarWs.send(JSON.stringify({ type: 'zoom', zoom: kaart.getZoom() }));
+    }
+  });
   // 2026-09-03: bij pannen opnieuw tekenen uit de laatste data (geen fetch),
   // zodat schepen die in beeld schuiven verschijnen -- zie tekenVaarSchepen().
   // Telling zit daar al in.
@@ -6458,6 +6466,90 @@ function huidigePositie() {
   });
 }
 
+// ---- 14 sept 2026, samenvoeging met Baken, stap 2a (zie baken-status.md) ----
+// Baken's bewezen snapshot+delta-WebSocket (wsVaarradar.js, backend-kant al
+// live sinds stap 1) hier voor het EERST vanuit de weer-app-frontend
+// aangesproken -- maar BEWUST nog puur ter verificatie: er wordt nog niks
+// getekend, alleen naar de console gelogd. De bestaande
+// ververVaarradar()/tekenVaarSchepen() (hieronder) blijven zolang stap 2b nog
+// niet gebouwd is de enige die iets op de kaart zetten. Verbindt alleen mee
+// zolang Vaart-modus AAN staat (zie toggleVaarradar()), net als de bestaande
+// polling dat ook alleen dan doet.
+let vaarWs = null;
+let vaarWsBackoffMs = 1000;
+const VAAR_WS_BACKOFF_MAX_MS = 30000;
+let vaarWsOpzettelijkDicht = false;
+
+function verbindVaarradarWs(lat, lon) {
+  try {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${protocol}//${location.host}/ws/vaarradar?lat=${lat}&lon=${lon}&straal=${vaarradarStraalKm}&zoom=${kaart.getZoom()}`;
+    vaarWsOpzettelijkDicht = false;
+    const ws = new WebSocket(url);
+    vaarWs = ws;
+    ws.addEventListener('open', () => {
+      vaarWsBackoffMs = 1000;
+      console.log('[vaarradar-ws] verbonden (verificatie -- tekent nog niets op de kaart).');
+    });
+    ws.addEventListener('message', (ev) => {
+      let bericht;
+      try {
+        bericht = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (bericht.type === 'snapshot') {
+        console.log(`[vaarradar-ws] snapshot: ${bericht.aantal} schepen.`);
+      } else if (bericht.type === 'delta') {
+        if (bericht.toegevoegd.length || bericht.gewijzigd.length || bericht.verwijderd.length) {
+          console.log(`[vaarradar-ws] delta: +${bericht.toegevoegd.length} ~${bericht.gewijzigd.length} -${bericht.verwijderd.length}`);
+        }
+      }
+    });
+    ws.addEventListener('close', () => {
+      if (vaarWs !== ws) return; // deze socket is intussen al door een nieuwere vervangen -- niks meer aan doen
+      vaarWs = null;
+      if (vaarWsOpzettelijkDicht || !vaarradarActief) return; // bewust dicht (uitgezet, of straal/positie gewijzigd) -- geen herverbinding
+      console.log(`[vaarradar-ws] verbinding verbroken, nieuwe poging over ${vaarWsBackoffMs}ms.`);
+      setTimeout(() => {
+        if (vaarradarActief) verbindVaarradarWs(lat, lon);
+      }, vaarWsBackoffMs);
+      vaarWsBackoffMs = Math.min(vaarWsBackoffMs * 2, VAAR_WS_BACKOFF_MAX_MS);
+    });
+    ws.addEventListener('error', (ev) => console.log(`[vaarradar-ws] fout: ${ev.message ?? 'onbekend'}`));
+  } catch (err) {
+    console.log(`[vaarradar-ws] opzetten mislukt: ${err.message ?? err}`);
+  }
+}
+
+function sluitVaarradarWs() {
+  vaarWsOpzettelijkDicht = true;
+  if (vaarWs) vaarWs.close();
+  vaarWs = null;
+}
+
+// Straal-wijziging (wisselVaarStraal hieronder) betekent een nieuwe server-
+// aanvraag nodig (de WS-straal ligt vast bij het verbinden, zie
+// wsVaarradar.js) -- dus gewoon opnieuw verbinden i.p.v. de oude proberen te
+// updaten. Positie opnieuw opvragen i.p.v. de vorige hergebruiken, voor het
+// geval je intussen echt verplaatst bent (zelfde bron als ververVaarradar()).
+function herverbindVaarradarWs() {
+  if (!vaarradarActief) return;
+  sluitVaarradarWs();
+  huidigePositie().then(({ lat, lon }) => {
+    if (vaarradarActief) verbindVaarradarWs(lat, lon);
+  });
+}
+// Let op: de bijbehorende kaart.on('zoomend', ...) voor deze WS staat NIET
+// hier (top-level), maar in initMap() hieronder, samen met de andere
+// kaart.on(...)-registraties -- `kaart` is op dit punt in het bestand nog
+// gewoon `null` (zie "let kaart = null;" hierboven), initMap() geeft 'm pas
+// een echte L.map()-instantie. Een top-level kaart.on(...) hier zou meteen
+// bij het laden van de pagina crashen (TypeError: cannot read 'on' of null)
+// en daarmee de HELE rest van dit script blokkeren -- exact de fout die de
+// eerste versie van deze stap 2a-toevoeging maakte (Lex: "alles is zwart en
+// leeg").
+
 // 2026-08-21, op verzoek van Lex ("als ik speel met de knoppen regenradar
 // satelliet etc. verdwijnen de vliegtuigen, zelfs na een herstart") —
 // ververVliegradar() vroeg voorheen bij ELKE poll (elke RADAR_POLL_MS = 3s)
@@ -7171,6 +7263,7 @@ function wisselVaarStraal() {
   }
   zetVaarStraalKnopLabel();
   ververVaarradar(); // meteen opnieuw ophalen met de nieuwe straal, niet wachten op de volgende 3s-poll
+  herverbindVaarradarWs(); // 14 sept 2026, stap 2a (zie baken-status.md): WS-verificatie mee laten opschuiven
 }
 
 function zetVaarStraalKnopLabel() {
@@ -9404,6 +9497,12 @@ function toggleVaarradar() {
     if (zeeDiepteLaag && kaart.hasLayer(zeeDiepteLaag)) kaart.removeLayer(zeeDiepteLaag);
     pasVaarBoeienToe(); // 2026-09-02: ⚓-knop in het vaarmenu, zie wisselVaarBoeienZichtbaar()
     if (kaartVolgType) stopKaartVolgen(false); // zie toggleVliegradar
+    // 14 sept 2026, stap 2a van de Baken-samenvoeging (zie baken-status.md):
+    // parallel meeverbinden met de nieuwe WS, puur ter verificatie -- zie
+    // verbindVaarradarWs() hierboven.
+    huidigePositie().then(({ lat, lon }) => {
+      if (vaarradarActief) verbindVaarradarWs(lat, lon);
+    });
   } else {
     if (vaarLaag) {
       kaart.removeLayer(vaarLaag);
@@ -9415,6 +9514,7 @@ function toggleVaarradar() {
     }
     vaarVormen.clear();
     vaarMarkers.clear(); // zie vaarMarkers hierboven; foto-urls mogen blijven
+    sluitVaarradarWs(); // 14 sept 2026, stap 2a: zie hierboven
     if (zeeModusActief) toggleZeeModus(); // vaarradar "bezat" de zeemodus-activatie hierboven, dus ook weer uit
   }
   zorgRadarPolling();
