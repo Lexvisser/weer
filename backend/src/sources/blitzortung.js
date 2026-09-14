@@ -18,6 +18,9 @@
 // streaming-verbinding i.p.v. periodiek pollen (vandaar pollIntervalMs: null
 // in config.js) — server.js start 'm één keer bij opstarten via
 // startBlitzortungStream(), niet via de gewone poll-lus.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { makeSignal, afstandKm } from '../normalize.js';
 // 2026-08-22: community-media hier uitgezet, zie de toelichting verderop bij
 // communityMediaVoor() — import staat in commentaar i.p.v. verwijderd, zelfde
@@ -158,6 +161,71 @@ function centroid(flitsen) {
   };
 }
 
+// ---- Terugval boven zee: dichtstbijzijnde haven ---------------------------
+// 2026-09-14, na Lex' constatering dat complexen boven de Ionische Zee geen
+// naam kregen. Dat is geen fout in de Nominatim-code hieronder: reverse-
+// geocoding werkt op landadressen, en boven open zee bestaat er simpelweg
+// geen adres ("geen adres gevonden op die locatie" in de log). In plaats van
+// dan helemaal niets te noemen, beschrijven we de plek ten opzichte van de
+// dichtstbijzijnde haven uit de UN/LOCODE-tabel die dit project toch al heeft
+// (unlocodeHavens.json, ook gebruikt door reisvoortgang.js): 11.763 havens
+// wereldwijd mét coördinaat, en havens liggen per definitie aan de kust --
+// precies het goede referentiepunt voor iets dat boven water hangt.
+//
+// Bewust GEEN tweede externe dienst (Overpass o.i.d.) ervoor: dit is offline,
+// kan niet uitvallen en kent geen rate limit. Nadeel, en dat is bekend bij
+// het bouwen: de dichtstbijzijnde haven is niet altijd een bekende naam
+// ("Portopalo" i.p.v. het herkenbaardere Syracuse), want de tabel bevat geen
+// inwonertal om op te wegen. Valt dat in de praktijk tegen, dan kan er alsnog
+// een place=city|town-lookup vóór gezet worden met deze havens als vangnet.
+const HAVEN_MAX_KM = 300; // verder weg zegt een haven niets meer (midden op de oceaan is de dichtstbijzijnde 1800 km)
+const KOMPAS = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW'];
+let havensCache = null; // pas bij het eerste gebruik inlezen -- houdt het opstarten licht
+
+function havens() {
+  if (havensCache) return havensCache;
+  try {
+    const bestand = join(dirname(fileURLToPath(import.meta.url)), '..', 'unlocodeHavens.json');
+    const ruw = JSON.parse(readFileSync(bestand, 'utf8'));
+    havensCache = Object.values(ruw)
+      .filter((v) => Array.isArray(v) && typeof v[0] === 'number' && typeof v[1] === 'number' && v[2])
+      .map(([lat, lon, naam]) => ({ lat, lon, naam }));
+  } catch (err) {
+    console.error('[weer] blitzortung: havenlijst niet leesbaar, geen zee-terugval voor plaatsnamen:', err.message ?? err);
+    havensCache = [];
+  }
+  return havensCache;
+}
+
+// Kompasrichting van de haven NAAR het complex -- "ten ZO van Portopalo"
+// beschrijft waar het onweer hangt, gezien vanaf die haven.
+function kompasrichting(vanLat, vanLon, naarLat, naarLon) {
+  const rad = (g) => (g * Math.PI) / 180;
+  const dLon = rad(naarLon - vanLon);
+  const y = Math.sin(dLon) * Math.cos(rad(naarLat));
+  const x = Math.cos(rad(vanLat)) * Math.sin(rad(naarLat)) - Math.sin(rad(vanLat)) * Math.cos(rad(naarLat)) * Math.cos(dLon);
+  const graden = (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+  return KOMPAS[Math.round(graden / 45) % 8];
+}
+
+// Geeft { kort, volledig } of null. `kort` gaat de titel in (zonder getal --
+// daar staat de afstand tot huis al in, twee afstanden door elkaar leest
+// verwarrend), `volledig` met afstand gaat de subtitel/detail in.
+function zeeOmschrijvingVoor(lat, lon) {
+  let beste = null;
+  let besteAfstand = Infinity;
+  for (const h of havens()) {
+    const d = afstandKm(lat, lon, h.lat, h.lon);
+    if (d < besteAfstand) {
+      besteAfstand = d;
+      beste = h;
+    }
+  }
+  if (!beste || besteAfstand > HAVEN_MAX_KM) return null;
+  const richting = kompasrichting(beste.lat, beste.lon, lat, lon);
+  return { kort: `ten ${richting} van ${beste.naam}`, volledig: `${Math.round(besteAfstand)} km ten ${richting} van ${beste.naam}` };
+}
+
 // ---- Plaatsnaam via reverse-geocoding (Nominatim/OpenStreetMap) -----------
 // 2026-08-19: Lex vroeg om een locatie bij onweercomplexen i.p.v. alleen
 // "nog 45 km". Nominatim is gratis en sleutelloos, past bij de rest van dit
@@ -277,6 +345,8 @@ function bouwSignalen(clusters, homeLat, homeLon, nu) {
     const puntNu = centroid(recent.length ? recent : c.flitsen);
     const afstandNu = afstandKm(homeLat, homeLon, puntNu.lat, puntNu.lon);
     const plaats = plaatsnaamVoor(puntNu.lat, puntNu.lon);
+    // Alleen als Nominatim niets had (open zee) terugvallen op de haven.
+    const zee = plaats ? null : zeeOmschrijvingVoor(puntNu.lat, puntNu.lon);
 
     let status = 'stabiel';
     if (afstandNu <= ACTIEF_AFSTAND_KM) {
@@ -292,7 +362,7 @@ function bouwSignalen(clusters, homeLat, homeLon, nu) {
     const ernst =
       status === 'actief' ? 'kritiek' : status === 'naderend' && afstandNu < 100 ? 'waarschuwing' : status === 'naderend' ? 'let-op' : 'info';
 
-    const plaatsSuffix = plaats ? ` (${plaats})` : '';
+    const plaatsSuffix = plaats ? ` (${plaats})` : zee ? ` (${zee.kort})` : '';
     const titel =
       status === 'actief'
         ? `Onweercomplex boven ${plaats ?? 'je'} (${c.flitsen.length} flitsen/30 min)`
@@ -302,7 +372,9 @@ function bouwSignalen(clusters, homeLat, homeLon, nu) {
             ? `Onweercomplex trekt weg${plaatsSuffix} - ${afstandNu} km`
             : plaats
               ? `Onweercomplex bij ${plaats} - ${afstandNu} km`
-              : `Onweercomplex op ${afstandNu} km`;
+              : zee
+                ? `Onweercomplex ${zee.kort} - ${afstandNu} km`
+                : `Onweercomplex op ${afstandNu} km`;
 
     // Grofmazige maar stabiele id (afgerond op ~0,5°) zodat hetzelfde complex
     // niet elke minuut een compleet nieuwe id krijgt zolang het ~ter plekke blijft.
@@ -322,12 +394,15 @@ function bouwSignalen(clusters, homeLat, homeLon, nu) {
         status,
         afstandKm: afstandNu,
         plaats,
+        // Los veld: `plaats` blijft strikt de landnaam van Nominatim (null
+        // boven zee), zodat niets dat daarop rekent van betekenis verandert.
+        nabijHaven: zee?.volledig ?? null,
         aantalFlitsenLaatsteHalfUur: c.flitsen.length,
         communityMedia: communityMediaVoor(complexId, plaats),
         subtitel: [
           `${c.flitsen.length} flitsen laatste 30 min`,
           `${afstandNu} km van huis`,
-          plaats ? `bij ${plaats}` : null,
+          plaats ? `bij ${plaats}` : zee?.volledig ?? null,
         ]
           .filter(Boolean)
           .join(' · '),
