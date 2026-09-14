@@ -79,9 +79,9 @@ export function fetchVaarwegmarkeringen({ west, zuid, oost, noord } = {}) {
   if (!markeringen) laadVaarwegmarkeringen();
   // Let op: URLSearchParams.get() geeft null terug voor een ontbrekende
   // parameter, en Number(null) is 0 -- niet NaN. Zonder deze expliciete
-  // "is er uberhaupt iets meegegeven"-check wordt een ontbrekende bbox dus
-  // stilletjes gelezen als bbox (0,0,0,0) en valt alles weg (bug van
-  // 2026-09-14: de laag toonde 0 van de 18.499 boeien).
+  // "is er überhaupt iets meegegeven"-check zou een ontbrekende bbox dus
+  // stilletjes als bbox (0,0,0,0) gelezen worden, en alles wegfilteren
+  // (bug gevonden 2026-09-14: de RWS-boeienlaag toonde daardoor 0 boeien).
   const opgegeven = [west, zuid, oost, noord].every((v) => v != null && v !== '');
   const w = Number(west), z = Number(zuid), o = Number(oost), n = Number(noord);
   const heeftBbox = opgegeven && [w, z, o, n].every(Number.isFinite);
@@ -102,6 +102,14 @@ function normaliseerTekst(waarde) {
   return t;
 }
 
+// Keuzelijst-velden (topteken, kleurpatroon, lichtkleur, racon) gebruiken "X"
+// als "niet van toepassing" -- bij de vrije-tekstvelden hierboven komt "X"
+// niet voor, dus dat blijft een aparte helper.
+function normaliseerKeuze(waarde) {
+  const t = normaliseerTekst(waarde);
+  return !t || t === 'X' ? null : t;
+}
+
 function normaliseerLichtKarakter(waarde) {
   const t = normaliseerTekst(waarde);
   if (!t) return null;
@@ -109,24 +117,75 @@ function normaliseerLichtKarakter(waarde) {
   return (m ? m[1] : t).trim();
 }
 
+// Lege velden weglaten: veruit de meeste objecten hebben geen topteken, licht
+// of racon, en met ~18.500 records scheelt dat flink in de bestandsgrootte en
+// in wat er per keer naar de frontend gaat. Let op: `false` moet blijven
+// staan (drijvend), dus alleen null/undefined eruit.
+function zonderLege(o) {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v != null));
+}
+
+// 2026-09-14, op verzoek van Lex ("zo compleet mogelijk doen"): naast naam/
+// kleur/vorm/licht ook alles wat nodig is om echte zeekaartsymbolen te
+// tekenen -- topteken (twee kegels = kardinaal), kleurpatroon (horizontale
+// of verticale strepen i.p.v. alleen de eerste kleur), lichtkleur, IALA-
+// categorie, racon, en bij de vaste objecten de nautische functie
+// (kribbaken/oeverlicht/havenlicht/lichtopstand) en de hoogte.
+// De twee collecties noemen een paar velden anders: obj_vorm vs
+// object_vorm_o, tt_toptek vs v_toptek, iala_categorie vs iala_cat,
+// licht_klr vs licht_kl.
 function markeringUitFeature(f, drijvend) {
   const p = f.properties ?? {};
   const lat = p.y_wgs84;
   const lon = p.x_wgs84;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return {
+  // Getallen komen als tekst met een decimale komma ("47,5").
+  const getal = (v) => {
+    const n = Number(String(v ?? '').replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : null;
+  };
+  // 2026-09-14, tweede ronde (Lex zag op OpenSeaMap "Dir Iso.W.4s47.5m21M"
+  // bij LL 112 GR. HOOG en vroeg of die completere info ook te halen was):
+  // op de 21M na staat dat allemaal gewoon in deze dataset. Eerste versie
+  // pakte obj_hoogte voor de hoogte -- dat veld staat overal op "0,00000";
+  // de werkelijke lichthoogte zit in licht_hgt.
+  const lichthoogte = getal(p.licht_hgt);
+  const lichtrichting = getal(p.licht_rich);
+  // Sectorlichten: tot 16 paren kleur + grens-hoek. De veldnamen zijn niet
+  // helemaal consequent (licht_11g naast licht_1_g), vandaar beide vormen.
+  const sectoren = [];
+  for (let i = 1; i <= 16; i++) {
+    const sectorKleur = normaliseerKeuze(p[`licht_${i}_k`]);
+    if (!sectorKleur) continue;
+    const grens = getal(p[`licht_${i}_g`] ?? p[`licht_${i}g`]);
+    sectoren.push(grens != null ? `${sectorKleur} tot ${grens}°` : sectorKleur);
+  }
+  return zonderLege({
     naam: normaliseerTekst(p.benaming),
     drijvend,
     kleur: normaliseerTekst(p.obj_kleur),
+    kleurpatroon: normaliseerKeuze(p.kleurpatr), // "Horizontaal" / "Vertikaal"; anders egaal
     vorm: normaliseerTekst(drijvend ? p.obj_vorm : p.object_vorm_o),
     type: normaliseerTekst(p.obj_soort),
+    functie: normaliseerTekst(p.naut_funct), // alleen bij de vaste objecten
+    topteken: normaliseerKeuze(drijvend ? p.tt_toptek : p.v_toptek),
+    toptekenKleur: normaliseerKeuze(p.tt_kleur),
+    toptekenPatroon: normaliseerKeuze(p.tt_klr_pat),
     lichtkarakter: normaliseerLichtKarakter(p.sign_kar),
     lichtgroep: normaliseerTekst(p.sign_groep),
     lichtperiode: normaliseerTekst(p.sign_perio),
+    lichtkleur: normaliseerKeuze(drijvend ? p.licht_klr : p.licht_kl),
+    iala: normaliseerKeuze(drijvend ? p.iala_categorie : p.iala_cat),
+    racon: normaliseerKeuze(p.racon_code),
+    lichthoogteM: lichthoogte,
+    lichtrichting: lichtrichting, // gerichte lichten/lichtenlijnen: peiling in graden
+    lichtsectoren: sectoren.length ? sectoren : null,
+    lichtnummer: normaliseerKeuze(p.licht_nr), // nummer in de officiële lichtenlijst
+    opgeheven: normaliseerKeuze(p.opgeheven),
     vaarwater: normaliseerTekst(p.vaarwater),
     lat: Math.round(lat * 1e5) / 1e5,
     lon: Math.round(lon * 1e5) / 1e5,
-  };
+  });
 }
 
 // ---- exporteren (PDOK, cursor-paginering) ----------------------------------

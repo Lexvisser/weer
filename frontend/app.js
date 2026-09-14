@@ -9511,13 +9511,22 @@ document.body.appendChild(rwsBoeienTooltipEl);
 // IALA-categorie zoals RWS die meegeeft (1 t/m 4). Alleen voor de popup.
 const RWS_IALA = { 1: 'lateraal', 2: 'kardinaal', 3: 'bijzonder', 4: 'overig' };
 
+// Zeekaartnotatie, zoals OpenSeaMap die ook toont: richting, karakter, groep,
+// kleurletter, periode, hoogte -- bv. "Dir Iso.W.4s47.5m" of "Fl(3)G.10s".
+// 2026-09-14, na Lex' vergelijking met OpenSeaMap ("de info is daar veel
+// completer"): hoogte en richting zaten al in de RWS-data, alleen niet in de
+// export. Het lichtbereik (de "21M" die OpenSeaMap erbij zet) kent RWS niet.
+const RWS_LICHT_KARAKTER = { OC: 'Oc', ISO: 'Iso', FL: 'Fl', LFL: 'LFl', F: 'F', Q: 'Q', VQ: 'VQ', UQ: 'UQ', IQ: 'IQ', MO: 'Mo', AL: 'Al', FFL: 'FFl' };
+
 function rwsBoeienLichtTekst(m) {
   if (!m.lichtkarakter) return null;
-  // Zeekaartnotatie: karakter, groep, kleurletter, periode -- bv. "Fl(3)G.10s".
+  const kar = RWS_LICHT_KARAKTER[m.lichtkarakter.toUpperCase()] ?? m.lichtkarakter;
   const kleurLetter = { Wit: 'W', Rood: 'R', Groen: 'G', Geel: 'Y', Blauw: 'Bu' }[m.lichtkleur] ?? '';
   const groep = m.lichtgroep && m.lichtgroep !== '(1)' ? m.lichtgroep : '';
   const periode = m.lichtperiode ? `.${m.lichtperiode}s` : '';
-  return `${m.lichtkarakter}${groep}${kleurLetter}${periode}`;
+  const hoogte = m.lichthoogteM ? `${m.lichthoogteM}m` : '';
+  const richting = m.lichtrichting != null ? 'Dir ' : '';
+  return `${richting}${kar}${groep}${kleurLetter}${periode}${hoogte}`;
 }
 
 function rwsBoeienTitel(m) {
@@ -9537,8 +9546,10 @@ function rwsBoeienPopupHtml(m) {
   r('Vorm', m.vorm);
   r('Topteken', m.topteken ? `${m.topteken}${m.toptekenKleur ? `, ${m.toptekenKleur.toLowerCase()}` : ''}` : null);
   r('Licht', rwsBoeienLichtTekst(m));
+  r('Lichtrichting', m.lichtrichting != null ? `${m.lichtrichting}°` : null);
+  r('Sectoren', m.lichtsectoren ? m.lichtsectoren.join(' · ') : null);
+  r('Lichtnummer', m.lichtnummer);
   r('Racon', m.racon);
-  r('Hoogte', m.hoogteM != null ? `${m.hoogteM} m` : null);
   r('IALA', m.iala ? (RWS_IALA[m.iala] ?? m.iala) : null);
   r('Type', m.type);
   r('Vaarwater', m.vaarwater);
