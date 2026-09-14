@@ -4040,7 +4040,7 @@ function popupExtraHtml(s) {
     if (d.afstandTotJouKm != null) stats.push(`${d.afstandTotJouKm}km van jou`);
     if (stats.length) blokken.push(`<div class="popup-stats">${stats.join(' · ')}</div>`);
     if (d.shakemapUrl) {
-      blokken.push(`<img class="popup-foto" src="${d.shakemapUrl}" alt="ShakeMap" loading="lazy" onerror="this.remove()">`);
+      blokken.push(`<img class="popup-foto" src="${d.shakemapUrl}" alt="ShakeMap" loading="eager" onerror="this.remove()">`);
     }
     if (d.bronUrl) blokken.push(`<a class="popup-link" href="${d.bronUrl}" target="_blank" rel="noopener">Meer info op usgs.gov →</a>`);
   }
@@ -4164,7 +4164,7 @@ function popupFotostripHtml(items) {
   const html = items
     .map((m) => {
       const badge = m.type === 'video' ? '<span class="popup-fotostrip-play">▶</span>' : '';
-      return `<a href="${m.link}" target="_blank" rel="noopener" title="${escapeAttr(m.titel)}" class="popup-fotostrip-item"><img src="${m.thumbUrl ?? m.url}" alt="${m.type === 'video' ? 'Communityvideo' : 'Communityfoto'}" loading="lazy" onerror="this.closest('a').remove()">${badge}</a>`;
+      return `<a href="${m.link}" target="_blank" rel="noopener" title="${escapeAttr(m.titel)}" class="popup-fotostrip-item"><img src="${m.thumbUrl ?? m.url}" alt="${m.type === 'video' ? 'Communityvideo' : 'Communityfoto'}" loading="eager" onerror="this.closest('a').remove()">${badge}</a>`;
     })
     .join('');
   const aantal = items.length;
@@ -7716,7 +7716,10 @@ function landcodeVoorSchip(s) {
 function vlagHtml(landcode) {
   if (!landcode) return '';
   const code = landcode.toLowerCase();
-  return `<span class="popup-vlag"><img src="https://flagcdn.com/w40/${code}.png" alt="" loading="lazy" onerror="this.remove()"><span class="popup-vlag-code">${landcode}</span></span>`;
+  // 2026-09-14: eager, niet lazy -- zie de uitleg bij zetScheepsfoto(). In een
+  // Leaflet-popup laadt een lazy afbeelding nooit: 0 px hoog telt als "niet in
+  // beeld". Het vlaggetje was daardoor 40x0 en dus onzichtbaar.
+  return `<span class="popup-vlag"><img src="https://flagcdn.com/w40/${code}.png" alt="" loading="eager" onerror="this.remove()"><span class="popup-vlag-code">${landcode}</span></span>`;
 }
 
 // 14 sept 2026, stap 2b: geen marker-object meer -- opgeslagen/bijgewerkt via
@@ -7988,7 +7991,17 @@ function zetScheepsfoto(cache, mmsi, url) {
   const img = document.createElement('img');
   img.className = 'popup-scheepsfoto';
   img.alt = '';
-  img.loading = 'lazy';
+  // 2026-09-14, op melding van Lex ("de foto's worden niet meer vertoond van
+  // de schepen"): hier stond loading="lazy", en dat liep vast in een cirkel.
+  // De <img> wordt in een Leaflet-popup geprikt die met transforms
+  // gepositioneerd wordt; zolang de foto nog niet geladen is, is hij 0 px
+  // hoog, en een element van 0 px "komt nooit in beeld" -- dus begon de
+  // browser er nooit aan, dus bleef hij 0 px. Gemeten in de app: complete=
+  // false, naturalWidth=0, weergegeven 409x0; met eager meteen 409x230.
+  // Lazy had hier sowieso geen nut: de foto wordt pas opgehaald op het moment
+  // dat het kaartje opengaat (zie haalEnToonScheepsfoto), dus er valt niets
+  // uit te stellen.
+  img.loading = 'eager';
   img.src = url;
   cache.fotoEl.prepend(img);
   cache.fotoUrl = url;
