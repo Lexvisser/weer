@@ -26,6 +26,13 @@ import { stuurWebPushAlarm } from './webpush.js';
 import { telefoonAlarmAan, pushAlarmAan, mailAlarmAan } from '../alarmSchakelaars.js';
 
 const NOOD_EMERGENCY_KM = 50;
+// 14 sept 2026, na de wereldwijde AISHub-box (AISHUB_BOX_KM=0): de merged
+// positielijst bevat nu de hele wereld, en foute status-14-transponders zijn
+// wereldwijd heel gewoon -- de eerste live test gaf meteen een noodmelding op
+// 4450 km. Daarom alleen nog alarmeren binnen deze straal (standaard 250 km =
+// wat het feitelijk was toen de box nog 250 km was), instelbaar via
+// AIS_NOOD_STRAAL_KM in .env (0 = geen grens, oude gedrag). Lex: "doe maar".
+const NOOD_STRAAL_KM_STANDAARD = 250;
 const VERGEET_NA_MS = 60 * 60 * 1000; // zender een uur niet meer gezien -> signaal weg
 const NOOD_STATUS = 14;
 const TEST_STATUS = 15;
@@ -43,11 +50,13 @@ function dagstempel(ms) {
   return new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
 }
 
-export function fetchAisNood({ posities, homeLat, homeLon }) {
+export function fetchAisNood({ posities, homeLat, homeLon, straalKm }) {
   const nu = Date.now();
   const signalen = [];
+  const maxKm = straalKm === 0 ? Infinity : Number.isFinite(straalKm) && straalKm > 0 ? straalKm : NOOD_STRAAL_KM_STANDAARD;
   for (const s of posities) {
     if (!isAisNood(s) || typeof s.lat !== 'number' || typeof s.lon !== 'number') continue;
+    if (afstandKm(homeLat, homeLon, s.lat, s.lon) > maxKm) continue; // buiten de noodstraal: negeren
     let w = eersteWaarneming.get(s.mmsi);
     if (!w || nu - w.laatstMs > VERGEET_NA_MS) {
       w = { tijdMs: s.tijdMs ?? nu, laatstMs: nu };

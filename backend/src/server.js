@@ -57,6 +57,7 @@ import { controleerIssAlarm } from './sources/celestrak.js';
 import { startVaarradarFeed, vaarradarBinnenStraal } from './sources/vaarradar.js';
 import { startVaarradarLokaalFeed } from './sources/vaarradarLokaal.js';
 import { startVaarradarAishubFeed } from './sources/vaarradarAishub.js';
+import { startVaarradarGfwFeed } from './sources/vaarradarGfw.js'; // 14 sept 2026: GFW, 1-op-1 uit Baken
 import { verrijkMetReisvoortgang, ruimReisvoortgangOp } from './reisvoortgang.js';
 import { fetchAisNood } from './sources/aisNood.js';
 // 14 sept 2026, stap 1 van het samenbrengen van Baken met de weer-app (zie
@@ -870,6 +871,7 @@ export function createApp(env) {
   let vaarradarFeed = { posities: new Map(), stop: () => {} };
   let vaarradarLokaalFeed = { posities: new Map(), stop: () => {} };
   let vaarradarAishubFeed = { posities: new Map(), stop: () => {} };
+  let vaarradarGfwFeed = { posities: new Map(), stop: () => {} }; // 14 sept 2026: GFW (sources/vaarradarGfw.js)
   // 14 sept 2026, stap 1 van het samenbrengen van Baken met de weer-app: de
   // WS-hub zelf wordt pas na het aanmaken van `server` hieronder gezet (zie
   // wsVaarradar.js) -- alvast hier gedeclareerd zodat stopPolling() 'm netjes
@@ -885,6 +887,10 @@ export function createApp(env) {
   // doet. Raakt de bestaande /api/vaarradar-route niet aan.
   function mergedVaarradarPosities() {
     const merged = new Map();
+    // 14 sept 2026: GFW als LAAGSTE bron -- eerst zetten, zodat een verser
+    // AISHub-/lokaal-signaal voor dezelfde MMSI 'm hieronder overschrijft
+    // (zelfde volgorde als Baken se merged()).
+    for (const p of vaarradarGfwFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'gfw' });
     for (const p of vaarradarAishubFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'aishub' });
     for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
     const nuMs = Date.now();
@@ -941,7 +947,7 @@ export function createApp(env) {
       const merged = new Map();
       for (const p of vaarradarAishubFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'aishub' });
       for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
-      return fetchAisNood({ posities: merged.values(), homeLat: env.homeLat, homeLon: env.homeLon });
+      return fetchAisNood({ posities: merged.values(), homeLat: env.homeLat, homeLon: env.homeLon, straalKm: env.aisNoodStraalKm }); // 14 sept 2026: straal, zie aisNood.js
     };
     for (const source of SOURCES) {
       if (source.id === 'blitzortung') continue; // streaming, geen timer-polling — zie hieronder
@@ -1025,6 +1031,7 @@ export function createApp(env) {
     vaarradarFeed = startVaarradarFeed(env);
     vaarradarLokaalFeed = startVaarradarLokaalFeed(env);
     vaarradarAishubFeed = startVaarradarAishubFeed(env);
+    vaarradarGfwFeed = startVaarradarGfwFeed(env); // 14 sept 2026
   }
 
   function stopPolling() {
@@ -1033,6 +1040,7 @@ export function createApp(env) {
     vaarradarFeed.stop();
     vaarradarLokaalFeed.stop();
     vaarradarAishubFeed.stop();
+    vaarradarGfwFeed.stop();
     vaarradarWsHub.stop();
   }
 
@@ -1648,6 +1656,7 @@ export function createApp(env) {
       const vaarradar = {
         lokaal: vaarradarLokaalFeed.posities.size,
         aishub: vaarradarAishubFeed.posities.size,
+        gfw: vaarradarGfwFeed.posities.size, // 14 sept 2026
         aisstream: vaarradarFeed.posities.size,
         aisstreamSleutel: Boolean(env.aisstreamApiKey),
       };

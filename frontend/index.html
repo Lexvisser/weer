@@ -164,9 +164,16 @@
              tussen drie kleurmodi (per schip / per scheepstype / op snelheid,
              zie kleurVoorSchip() in app.js). -->
         <button id="vaarKleurModus" class="vaar-menu-item" title="Kleur van de bootjes wisselen: per schip / per scheepstype / op snelheid">🎨 <span class="knop-tekst">Type</span></button>
-        <!-- 2026-09-01: AISHub-aanvulling aan/uit. Standaard AAN (zie
-             aishubZichtbaar in app.js). -->
+        <!-- 2026-09-01: AISHub-aanvulling aan/uit. Standaard AAN.
+             14 sept 2026, op verzoek van Lex ("ik wil ook mijn eigen ontvanger
+             als een optie, dus Lokaal, AISHub, GFW"): drie bronknoppen, zelfde
+             opzet als Baken (zichtbaarPerBron in app.js). GFW bewust standaard
+             NIET .actief en wordt ook niet onthouden -- staat bij elke start
+             uit (Lex' eerdere keuze in Baken: "af en toe bijschakelen, niet
+             standaard aan"). -->
+        <button id="vaarBronLokaalToggle" class="vaar-menu-item actief" title="Schepen van je eigen ontvanger (RTL-SDR + AIS-catcher) tonen/verbergen">📍 <span class="knop-tekst">Lokaal</span></button>
         <button id="vaarAishubToggle" class="vaar-menu-item actief" title="AISHub-schepen (aanvulling naast eigen ontvangst) tonen/verbergen">🌐 <span class="knop-tekst">AISHub</span></button>
+        <button id="vaarBronGfwToggle" class="vaar-menu-item" title="Global Fishing Watch: vertraagde satelliet-posities (dagen oud, alleen Atlantische Oceaan) tonen/verbergen -- staat bij elke start uit">🛰️ <span class="knop-tekst">GFW</span></button>
         <!-- 2026-09-02, op verzoek van Lex ("Is het mogelijk om de boeien te
              verbergen? ... Het is erg druk nu") -- OpenSeaMap-zeetekens
              (boeien, lichten, vaargeulen) aan/uit, alleen binnen Vaart-modus.

@@ -57,6 +57,15 @@ const env = {
   // patroon. Niet gezet (of ongeldig) = de vertrouwde 250 km van voorheen;
   // 0 = expliciet wereldwijd (geen box meesturen). Zie vaarradarAishub.js.
   aishubBoxKm: process.env.AISHUB_BOX_KM === undefined || process.env.AISHUB_BOX_KM.trim() === '' ? null : Number(process.env.AISHUB_BOX_KM),
+  // 14 sept 2026: Global Fishing Watch (zie sources/vaarradarGfw.js, 1-op-1 uit
+  // Baken) -- vertraagde satelliet-AIS-dagbenadering voor de open oceaan
+  // (voorlopig alleen de Atlantische Oceaan/ICCAT). Zonder token blijft de
+  // bron leeg. GFW_POLL_UUR leeg = eigen standaard in vaarradarGfw.js (6u).
+  gfwApiToken: (process.env.GFW_API_TOKEN ?? '').trim() || null,
+  gfwPollUur: Number(process.env.GFW_POLL_UUR) || undefined,
+  // 14 sept 2026: AIS-nooddetectie alleen binnen deze straal (zie
+  // sources/aisNood.js). Leeg = 250 km; 0 = geen grens.
+  aisNoodStraalKm: process.env.AIS_NOOD_STRAAL_KM === undefined || process.env.AIS_NOOD_STRAAL_KM.trim() === '' ? null : Number(process.env.AIS_NOOD_STRAAL_KM),
   // 2026-08-22, op verzoek van Lex — Web Push (zie sources/webpush.js) als
   // eigen, niet-storend PWA-alarmkanaal naast Pushover. De publieke sleutel
   // is (per ontwerp van VAPID) niet geheim — mag gewoon naar de frontend via

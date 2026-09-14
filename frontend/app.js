@@ -57,6 +57,8 @@ const VAAR_MENU_INHOUD_EL = document.getElementById('vaarMenuInhoud');
 const VAAR_UIT_KNOP_EL = document.getElementById('vaarUitKnop');
 const VAAR_KLEUR_KNOP_EL = document.getElementById('vaarKleurModus');
 const VAAR_AISHUB_KNOP_EL = document.getElementById('vaarAishubToggle');
+const VAAR_LOKAAL_KNOP_EL = document.getElementById('vaarBronLokaalToggle'); // 14 sept 2026: bronknoppen Lokaal/AISHub/GFW
+const VAAR_GFW_KNOP_EL = document.getElementById('vaarBronGfwToggle');
 const VAAR_BOEIEN_KNOP_EL = document.getElementById('vaarBoeienToggle');
 const VAAR_STRAAL_KNOP_EL = document.getElementById('vaarStraalKnop');
 const VAAR_TYPE_FILTER_PANEEL_EL = document.getElementById('vaarTypeFilterPaneel');
@@ -1040,7 +1042,9 @@ function initMap() {
   // Elke keuze/aanraking in het menu = "er wordt gekozen": auto-inklappen afblazen.
   VAAR_MENU_INHOUD_EL?.addEventListener('pointerdown', annuleerVaarMenuAutoDicht);
   VAAR_KLEUR_KNOP_EL?.addEventListener('click', wisselVaarKleurModus);
-  VAAR_AISHUB_KNOP_EL?.addEventListener('click', wisselVaarAishubZichtbaar);
+  VAAR_LOKAAL_KNOP_EL?.addEventListener('click', () => wisselVaarBronZichtbaar('lokaal'));
+  VAAR_AISHUB_KNOP_EL?.addEventListener('click', () => wisselVaarBronZichtbaar('aishub'));
+  VAAR_GFW_KNOP_EL?.addEventListener('click', () => wisselVaarBronZichtbaar('gfw'));
   VAAR_BOEIEN_KNOP_EL?.addEventListener('click', wisselVaarBoeienZichtbaar);
   VAAR_STRAAL_KNOP_EL?.addEventListener('click', wisselVaarStraal);
   zetVaarStraalKnopLabel(); // meteen bij opstarten het opgeslagen/standaard getal tonen
@@ -6929,7 +6933,7 @@ function vaarZoekUitvoeren() {
     const knop = document.createElement('button');
     knop.type = 'button';
     knop.className = 'vaar-zoek-treffer';
-    const verborgen = schipVerborgenDoorFilter(s) || (!aishubZichtbaar && s.bron === 'aishub');
+    const verborgen = schipVerborgenDoorFilter(s) || !vaarBronZichtbaar(s);
     const sub = [scheepsTypeLabel(s), km != null ? `${km < 10 ? km.toFixed(1) : Math.round(km)} km` : null, verborgen ? 'verborgen door filter' : null].filter(Boolean).join(' · ');
     knop.innerHTML = `<div class="vaar-zoek-treffer-naam"><span class="popup-scheepskleur" style="background:${kleurVoorSchip(s)}"></span>${escapeHtml(s.naam || `MMSI ${s.mmsi}`)}</div><div class="vaar-zoek-treffer-sub">${escapeHtml(sub)}</div>`;
     knop.addEventListener('click', () => vaarZoekGaNaar(s));
@@ -6967,12 +6971,12 @@ function werkVaarTellingBij() {
     return;
   }
   const grens = kaart.getBounds();
-  let inData = 0, getekend = 0, doorFilter = 0, doorAishub = 0, stapel = 0;
+  let inData = 0, getekend = 0, doorFilter = 0, doorBron = 0, stapel = 0;
   const posities = new Set();
   laatsteVaarSchepen.forEach((s) => {
     if (typeof s.lat !== 'number' || typeof s.lon !== 'number' || !grens.contains([s.lat, s.lon])) return;
     inData++;
-    if (!aishubZichtbaar && s.bron === 'aishub') { doorAishub++; return; }
+    if (!vaarBronZichtbaar(s)) { doorBron++; return; }
     if (schipVerborgenDoorFilter(s)) { doorFilter++; return; }
     getekend++;
     const sleutel = `${s.lat.toFixed(4)},${s.lon.toFixed(4)}`; // ~10m: zelfde plek = over elkaar getekend
@@ -6980,7 +6984,7 @@ function werkVaarTellingBij() {
   });
   const regels = [`In beeld: ${getekend} van ${inData} getekend`];
   if (doorFilter) regels.push(`${doorFilter} verborgen door typefilter`);
-  if (doorAishub) regels.push(`${doorAishub} verborgen (AISHub uit)`);
+  if (doorBron) regels.push(`${doorBron} verborgen (bron uit)`);
   if (stapel) regels.push(`${stapel} op dezelfde plek als een ander`);
   vaarTellingEl.textContent = regels.join('\n');
 }
@@ -7308,10 +7312,12 @@ function vaarTooltipHtml(s) {
     ? `<div>Bestemming: ${escapeHtml(s.bestemming)}</div>`
     : '';
   const positieRegel = s.tijdMs ? `<div>Positie ontvangen: ${geledenTekst(s.tijdMs)}</div>` : '';
+  const gfwRegel = s.bron === 'gfw' ? '<div>via GFW-satelliet (dagbenadering, dagen oud)</div>' : ''; // 14 sept 2026
   return (
     `<div><strong>${escapeHtml(naam)}</strong>${landLabel}</div>` +
     `<div>${snelheid} kn / ${koers}°</div>` +
     bestemmingRegel +
+    gfwRegel +
     positieRegel
   );
 }
@@ -7355,19 +7361,48 @@ function zetVaarKleurKnopLabel() {
 // AISHUB_OPACITEIT in bouwVaarIcon() hieronder. Bewust GEEN aparte kleur:
 // kleur is al druk bezet met betekenis (kleurVoorSchip() hierboven, drie
 // modi). Standaard AAN (zelfde localStorage-patroon als VAARKLEUR_KEY).
-const VAAR_AISHUB_KEY = 'weerVaarAishubZichtbaar';
-let aishubZichtbaar = true;
+// 14 sept 2026, op verzoek van Lex ("ik wil ook mijn eigen ontvanger als een
+// optie, dus Lokaal, AISHub, GFW"): van één AISHub-vlag (aishubZichtbaar,
+// localStorage 'weerVaarAishubZichtbaar') naar één object per bron, 1-op-1
+// Baken se zichtbaarPerBron. GFW is BEWUST uitgezonderd van het onthouden:
+// Lex wil 'm "af en toe bijschakelen maar niet standaard aan" -- dus bij elke
+// paginastart uit, ongeacht een vorige sessie. Puur een zichtbaarheidsfilter
+// in de browser: de server blijft GFW gewoon op de achtergrond verversen.
+// De oude AISHub-sleutel wordt eenmalig overgenomen (migratie), zodat een
+// eerder uitgezette AISHub-knop niet ineens weer aan staat.
+const VAAR_BRONNEN_KEY = 'weerVaarBronnenZichtbaar';
+const zichtbaarPerBron = { lokaal: true, aishub: true, gfw: false };
 try {
-  const opgeslagen = localStorage.getItem(VAAR_AISHUB_KEY);
-  if (opgeslagen === '0') aishubZichtbaar = false;
+  const opgeslagen = JSON.parse(localStorage.getItem(VAAR_BRONNEN_KEY) ?? 'null');
+  if (opgeslagen && typeof opgeslagen === 'object') {
+    for (const bron of ['lokaal', 'aishub']) {
+      if (typeof opgeslagen[bron] === 'boolean') zichtbaarPerBron[bron] = opgeslagen[bron];
+    }
+  } else if (localStorage.getItem('weerVaarAishubZichtbaar') === '0') {
+    zichtbaarPerBron.aishub = false; // migratie van de oude losse sleutel
+  }
 } catch (_) {
-  /* prive-modus, gewoon bij de standaard (aan) blijven */
+  /* prive-modus of corrupte waarde, gewoon bij de standaard blijven */
+}
+function bewaarVaarBronnenZichtbaar() {
+  try {
+    const { lokaal, aishub } = zichtbaarPerBron; // gfw bewust niet meebewaren
+    localStorage.setItem(VAAR_BRONNEN_KEY, JSON.stringify({ lokaal, aishub }));
+  } catch (_) {
+    /* prive-modus */
+  }
+}
+// Schepen van een onbekende/andere bron (bijv. het oude aisstream) altijd tonen.
+function vaarBronZichtbaar(s) {
+  return zichtbaarPerBron[s.bron] ?? true;
 }
 // 2026-09-02-bug-fix, op melding van Lex ("de knop van AISHub is ook al blauw
 // als er nog een keer op geklikt moet worden"): index.html zet de knop
 // standaard op 'actief', maar de onthouden stand (localStorage) werd bij het
 // laden nooit op de knop teruggezet -- pas na een klik liep het weer gelijk.
-VAAR_AISHUB_KNOP_EL?.classList.toggle('actief', aishubZichtbaar);
+VAAR_LOKAAL_KNOP_EL?.classList.toggle('actief', zichtbaarPerBron.lokaal);
+VAAR_AISHUB_KNOP_EL?.classList.toggle('actief', zichtbaarPerBron.aishub);
+VAAR_GFW_KNOP_EL?.classList.toggle('actief', zichtbaarPerBron.gfw);
 const AISHUB_OPACITEIT = 0.55; // vol dekkend voor lokaal, duidelijk getemperd voor AISHub-only
 
 function wisselVaarStraal() {
@@ -7387,14 +7422,11 @@ function zetVaarStraalKnopLabel() {
   if (label) label.textContent = vaarradarStraalKm >= VAARRADAR_STRAAL_MAX ? ' max' : ` ${vaarradarStraalKm}km`;
 }
 
-function wisselVaarAishubZichtbaar() {
-  aishubZichtbaar = !aishubZichtbaar;
-  VAAR_AISHUB_KNOP_EL?.classList.toggle('actief', aishubZichtbaar);
-  try {
-    localStorage.setItem(VAAR_AISHUB_KEY, aishubZichtbaar ? '1' : '0');
-  } catch (_) {
-    /* prive-modus */
-  }
+function wisselVaarBronZichtbaar(bron) {
+  zichtbaarPerBron[bron] = !zichtbaarPerBron[bron];
+  const knop = bron === 'lokaal' ? VAAR_LOKAAL_KNOP_EL : bron === 'aishub' ? VAAR_AISHUB_KNOP_EL : VAAR_GFW_KNOP_EL;
+  knop?.classList.toggle('actief', zichtbaarPerBron[bron]);
+  if (bron !== 'gfw') bewaarVaarBronnenZichtbaar();
   tekenVaarSchepenCanvas(); // meteen bijwerken, niet wachten op de volgende WS-tick
 }
 
@@ -7462,7 +7494,17 @@ function vaarIconSchaal(afmetingen) {
 // is nu 60 min, zie VENSTER_MS in vaarradarAishub.js/vaarradarLokaal.js).
 // Drie vaste stappen, geen glijdende schaal -- dan blijft vaarIconSleutel()
 // stabiel (zie de flicker-fix bij ververVaarradar()).
-function vaarVervaging(tijdMs) {
+function vaarVervaging(tijdMs, bron) {
+  // 14 sept 2026: GFW-posities zijn per definitie dagen oud (dagbenadering,
+  // ~3-4 dagen vertraging) -- op de 10/30-minutenschaal hieronder zouden die
+  // altijd op de vaagste stand staan. Voor 'gfw' daarom Baken se uren-schaal
+  // (1u / 6u), de rest ongewijzigd.
+  if (bron === 'gfw') {
+    const uren = Number.isFinite(tijdMs) ? (Date.now() - tijdMs) / 3600000 : 0;
+    if (uren < 1) return 1;
+    if (uren < 6) return 0.6;
+    return 0.3;
+  }
   const minuten = Number.isFinite(tijdMs) ? (Date.now() - tijdMs) / 60000 : 0;
   if (minuten < 10) return 1;
   if (minuten < 30) return 0.6;
@@ -7756,7 +7798,10 @@ function reislijnHtml(s) {
 }
 
 function scheepsKaartHtml(s, statusTekst) {
-  const bronTekst = s.bron === 'aishub' ? 'AISHub' : s.bron === 'lokaal' ? 'eigen ontvanger' : 'aisstream';
+  // 14 sept 2026: GFW is een vertraagde dagbenadering, geen live positie -- dat
+  // verschil hier meteen laten zien (Baken-tekst), incl. de dag waarop GFW het
+  // schip laatst zag (gfwDatum, alleen in de volledige WS-velden).
+  const bronTekst = s.bron === 'aishub' ? 'AISHub' : s.bron === 'lokaal' ? 'eigen ontvanger' : s.bron === 'gfw' ? `GFW satelliet, laatst gezien ${s.gfwDatum ?? 'onbekend'}` : 'aisstream';
   const koers = s.cogGraden ?? s.koersGraden;
   const snelheidKoers = s.snelheidKn != null || koers != null
     ? `${s.snelheidKn != null ? `${Math.round(s.snelheidKn * 10) / 10} kn` : '—'} / ${koers != null ? `${Math.round(koers)}°` : '—'}`
@@ -7927,7 +7972,7 @@ function vaarPopupHtmlVoorSchip(s) {
   // "via AISHub"-label alleen als deze positie niet van onze eigen ontvangst
   // komt -- zo blijft in de popup zelf ook zichtbaar waarom een bootje
   // getemperd (opacity) getekend is, niet alleen op de kaart.
-  const bronLabel = s.bron === 'aishub' ? '<span class="popup-aishub-label">via AISHub</span>' : '';
+  const bronLabel = s.bron === 'aishub' ? '<span class="popup-aishub-label">via AISHub</span>' : s.bron === 'gfw' ? '<span class="popup-aishub-label">via GFW</span>' : '';
   const typeLabel = scheepsTypeLabel(s); // subtype-bewust, zie scheepsTypeLabel()
   // Vlag groot in de linkerbovenhoek, naam + type als twee regels rechts
   // ervan (zie .popup-schip .popup-scheepskop-* in styles.css).
@@ -8022,16 +8067,15 @@ function tekenVaarSchepenCanvas() {
   const schepen = [];
   for (const s of vaarSchepenData.values()) {
     if (typeof s.lat !== 'number' || typeof s.lon !== 'number' || !beeldGrens.contains([s.lat, s.lon])) continue;
-    // AISHub-only schepen (bron: 'aishub') blijven weg als de knop uitstaat --
-    // lokaal ontvangen schepen (bron: 'lokaal') blijven altijd zichtbaar.
-    if (!aishubZichtbaar && s.bron === 'aishub') continue;
+    // Bronknoppen (Lokaal/AISHub/GFW, zie zichtbaarPerBron hierboven).
+    if (!vaarBronZichtbaar(s)) continue;
     // Scheepstype-filterpaneel, zie bouwVaarTypeFilterPaneel() hierboven.
     if (schipVerborgenDoorFilter(s)) continue;
     const kleur = kleurVoorSchip(s);
     // Ongeacht de AISHub-knop krijgen AISHub-only schepen altijd een lagere
     // dekkingsgraad dan lokaal ontvangen schepen (zie AISHUB_OPACITEIT
     // hierboven), vermenigvuldigd met de leeftijds-vervaging.
-    const alpha = vaarVervaging(s.tijdMs) * (s.bron === 'aishub' ? AISHUB_OPACITEIT : 1);
+    const alpha = vaarVervaging(s.tijdMs, s.bron) * (s.bron === 'aishub' ? AISHUB_OPACITEIT : 1);
     // navigatiehulpmiddelen (boeien/bakens) bewegen per definitie nooit --
     // altijd als stip tekenen, nooit als ware-vorm-polygon of pijl (die
     // laatste twee vereisen een zinvolle headingGraden/koersGraden, die dit
