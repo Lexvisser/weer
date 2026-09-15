@@ -12042,6 +12042,10 @@ const BAAN_CY = 104;     // middelpunt y
 const BAAN_R = 86;       // straal horizon
 const BAAN_PROFIEL_Y0 = 222; // bovenkant zijaanzicht (= 90°)
 const BAAN_PROFIEL_H = 60;   // hoogte zijaanzicht (0..90°)
+// 2026-09-15, Lex: "de cirkel in groen met een lichte gloed" — horizon-
+// cirkel, streepjes, windroos en de horizonlijn van het zijaanzicht in dit
+// groen (ISS Spotter-sfeer); de baan zelf blijft licht zodat 'ie afsteekt.
+const BAAN_GROEN = '#39ff88';
 const BAAN_PROFIEL_X0 = 40;
 const BAAN_PROFIEL_X1 = 220;
 
@@ -12131,6 +12135,7 @@ function passageBaanSvg(traject, live) {
   // Markers: eerste zichtbare punt, hoogste punt, laatste zichtbare punt.
   const zichtbare = bovenHorizon.filter((p) => p[3] === 1);
   const markers = [];
+  let topProfiel = null;
   if (zichtbare.length) {
     const eerste = zichtbare[0];
     const laatste = zichtbare[zichtbare.length - 1];
@@ -12152,6 +12157,9 @@ function passageBaanSvg(traject, live) {
     const p1 = naarProfiel(eerste);
     const pt = naarProfiel(top);
     const p2 = naarProfiel(laatste);
+    // 2026-09-15, Lex: "de tijd van de culminatie tussen begin en eind" —
+    // tijd van het hoogste punt op de tijd-as van het zijaanzicht.
+    topProfiel = { x: pt.x, y: pt.y, klok: klok(top[0]) };
     markers.push(`<circle cx="${p1.x.toFixed(1)}" cy="${p1.y.toFixed(1)}" r="2.6" fill="#5df7ff"/>`);
     markers.push(`<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="3" fill="#0c0f1a" stroke="#ffd75e" stroke-width="1.5"/>`);
     markers.push(
@@ -12182,21 +12190,21 @@ function passageBaanSvg(traject, live) {
   }
 
   const ring = (el, dash) =>
-    `<circle cx="${BAAN_C}" cy="${BAAN_CY}" r="${(BAAN_R * (1 - el / 90)).toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="1" ${dash ? 'stroke-dasharray="2 4"' : ''}/>`;
+    `<circle cx="${BAAN_C}" cy="${BAAN_CY}" r="${(BAAN_R * (1 - el / 90)).toFixed(1)}" fill="none" stroke="rgba(57,255,136,0.16)" stroke-width="1" ${dash ? 'stroke-dasharray="2 4"' : ''}/>`;
   const windroos = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW']
     .map((naam, i) => {
-      const { x, y } = baanPositie(i * 45, -13);
+      const { x, y } = baanPositie(i * 45, -17);
       return `<text x="${x.toFixed(1)}" y="${(y + 3.5).toFixed(1)}" text-anchor="middle" class="baan-windroos${i % 2 ? ' baan-windroos--tussen' : ''}">${naam}</text>`;
     })
     .join('');
   const streepjes = Array.from({ length: 16 }, (_, i) => {
     const a = baanPositie(i * 22.5, 0);
     const b = baanPositie(i * 22.5, i % 4 === 0 ? -6 : -3);
-    return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`;
+    return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(57,255,136,0.55)" stroke-width="1"/>`;
   }).join('');
 
   const profielAs = `
-    <line x1="${BAAN_PROFIEL_X0}" y1="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H}" x2="${BAAN_PROFIEL_X1}" y2="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+    <line x1="${BAAN_PROFIEL_X0}" y1="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H}" x2="${BAAN_PROFIEL_X1}" y2="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H}" stroke="${BAAN_GROEN}" stroke-width="1.2" filter="url(#baanGroeneGloed)"/>
     <line x1="${BAAN_PROFIEL_X0}" y1="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 30 / 90)).toFixed(1)}" x2="${BAAN_PROFIEL_X1}" y2="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 30 / 90)).toFixed(1)}" stroke="rgba(255,255,255,0.09)" stroke-width="1" stroke-dasharray="2 4"/>
     <line x1="${BAAN_PROFIEL_X0}" y1="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 60 / 90)).toFixed(1)}" x2="${BAAN_PROFIEL_X1}" y2="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 60 / 90)).toFixed(1)}" stroke="rgba(255,255,255,0.09)" stroke-width="1" stroke-dasharray="2 4"/>
     <text x="${BAAN_PROFIEL_X0 - 4}" y="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H + 3}" text-anchor="end" class="baan-as">0°</text>
@@ -12205,6 +12213,7 @@ function passageBaanSvg(traject, live) {
     <text x="${BAAN_PROFIEL_X0 - 4}" y="${BAAN_PROFIEL_Y0 + 3}" text-anchor="end" class="baan-as">90°</text>
     <text x="${BAAN_PROFIEL_X0}" y="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H + 13}" text-anchor="start" class="baan-as">${klok(baan[0][0])}</text>
     <text x="${BAAN_PROFIEL_X1}" y="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H + 13}" text-anchor="end" class="baan-as">${klok(baan[baan.length - 1][0])}</text>
+    ${topProfiel ? `<line x1="${topProfiel.x.toFixed(1)}" y1="${topProfiel.y.toFixed(1)}" x2="${topProfiel.x.toFixed(1)}" y2="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H}" stroke="rgba(255,215,94,0.35)" stroke-width="1" stroke-dasharray="2 3"/><text x="${topProfiel.x.toFixed(1)}" y="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H + 13}" text-anchor="middle" class="baan-as baan-as--top">${topProfiel.klok}</text>` : ''}
     <text x="${(BAAN_PROFIEL_X0 + BAAN_PROFIEL_X1) / 2}" y="${BAAN_PROFIEL_Y0 - 8}" text-anchor="middle" class="baan-as">hoogte boven de horizon in de tijd</text>`;
 
   return `<svg class="passage-baan" viewBox="0 0 250 300" aria-hidden="true">
@@ -12213,12 +12222,17 @@ function passageBaanSvg(traject, live) {
         <feGaussianBlur stdDeviation="1.6" result="b"/>
         <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
+      <filter id="baanGroeneGloed" filterUnits="userSpaceOnUse" x="0" y="0" width="250" height="300">
+        <feGaussianBlur stdDeviation="3.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
       <radialGradient id="baanHemel" cx="50%" cy="50%" r="50%">
         <stop offset="0%" stop-color="#151a2e"/>
         <stop offset="100%" stop-color="#0a0d18"/>
       </radialGradient>
     </defs>
-    <circle cx="${BAAN_C}" cy="${BAAN_CY}" r="${BAAN_R}" fill="url(#baanHemel)" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+    <circle cx="${BAAN_C}" cy="${BAAN_CY}" r="${BAAN_R}" fill="url(#baanHemel)"/>
+    <circle cx="${BAAN_C}" cy="${BAAN_CY}" r="${BAAN_R}" fill="none" stroke="${BAAN_GROEN}" stroke-width="1.4" filter="url(#baanGroeneGloed)"/>
     ${ring(30, true)}${ring(60, true)}
     <line x1="${BAAN_C}" y1="${BAAN_CY - BAAN_R}" x2="${BAAN_C}" y2="${BAAN_CY + BAAN_R}" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
     <line x1="${BAAN_C - BAAN_R}" y1="${BAAN_CY}" x2="${BAAN_C + BAAN_R}" y2="${BAAN_CY}" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>

@@ -2010,8 +2010,9 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    de kaartbreedte, met een plafond zodat 'ie op desktop niet enorm wordt. */
 .passage-baan { width: 100%; max-width: 250px; height: auto; display: block; margin: 0 auto; overflow: visible; }
 .baan-label { font-family:'JetBrains Mono',monospace; font-size:8.5px; fill:#eaf6ff; paint-order: stroke; stroke: #0c0f1a; stroke-width: 2.5px; stroke-linejoin: round; }
-.baan-windroos { font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; fill:#c9d1e6; }
-.baan-windroos--tussen { font-size:8px; font-weight:400; fill:#7d8399; }
+.baan-windroos { font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; fill:#39ff88; }
+.baan-windroos--tussen { font-size:8px; font-weight:400; fill:rgba(57,255,136,0.6); }
+.baan-as--top { fill:#ffd75e; }
 .baan-as { font-family:'JetBrains Mono',monospace; font-size:7.5px; fill:#7d8399; }
 .passage-baan-legenda { font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#7d8399; text-align:center; margin-top:2px; }
 .baan-leg-zicht { color:#eaf6ff; }
