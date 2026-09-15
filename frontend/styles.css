@@ -1810,9 +1810,13 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    boven de Hemel-lijst, zie SKY_RUBRIEKEN in app.js. Zelfde horizontale-
    scroll-chip-aanpak als elders in de app (geen verticale ruimte kwijt,
    werkt vanzelf met meer rubrieken zonder layout-aanpassing). */
-.sky-rubrieken { display:flex; gap:8px; padding:0 16px 12px; overflow-x:auto; scrollbar-width:none; }
-.sky-rubrieken::-webkit-scrollbar { display:none; }
-.sky-rubriek { flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 12px; border-radius:20px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#9199b5; cursor:pointer; white-space:nowrap; }
+/* 2026-09-15 (Lex: "er is iets afgekapt in de breedte"): met de vijfde chip
+   (Vanavond) paste de rij niet meer op een smal scherm en werd de laatste
+   chip afgesneden — de rij scrolde weliswaar horizontaal, maar zonder balk
+   (zie bovenaan) is dat onzichtbaar. Nu wrapt de rij gewoon naar een tweede
+   regel, met iets krappere chips. */
+.sky-rubrieken { display:flex; flex-wrap:wrap; gap:8px 6px; padding:0 16px 12px; }
+.sky-rubriek { flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 10px; border-radius:20px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#9199b5; cursor:pointer; white-space:nowrap; }
 .sky-rubriek.actief { background:rgba(110,127,240,0.22); border-color:rgba(110,127,240,0.55); color:#f4f6fb; }
 .sky-rubriek:active { opacity:0.75; }
 .sky-lijst { display:flex; flex-direction:column; gap:10px; padding:0 16px 20px; }
