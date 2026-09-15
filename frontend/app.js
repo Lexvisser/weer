@@ -11976,6 +11976,17 @@ function planetenKaartVoorHemel(s) {
 // een ongefilterd "alles door elkaar"-overzicht overbodig geworden. Default
 // staat nu op de eerste écht bestaande rubriek ('maan') i.p.v. 'alles'.
 const SKY_RUBRIEKEN = [
+  // 2026-09-15, op verzoek van Lex ("maan, planeten en ISS de aanbevolen
+  // passage standaard tonen bij hemel"): één overzichtsrubriek als startpunt
+  // — maankaart, planetenkompas en (alleen als die er is) de aanbevolen
+  // ISS-passage met baan-plaatje. De losse rubrieken eronder blijven het
+  // volledige overzicht. Weerkaart/zon-maan-kaart blijven bewust bij Maan
+  // (Lex: "dat weer moet uiteindelijk ergens anders komen").
+  {
+    key: 'vanavond',
+    label: '✨ Vanavond',
+    match: (s) => s.id.startsWith('moon') || s.id === 'planeten-nu' || (s.id.startsWith('iss-') && Boolean(s.detail?.aanbevolen)),
+  },
   { key: 'maan', label: '🌙 Maan', match: (s) => s.id.startsWith('moon') },
   // 2026-08-22, op verzoek van Lex — precies de rubriek die het commentaar
   // hierboven al voorzag toen dit systeem gebouwd werd. Zie
@@ -12017,7 +12028,7 @@ const RUIMTE_SUBGROEPEN = [
   // horen (zie eerdere navraag: één subkopje voor allebei, niet twee).
   { label: '☀️ Flares', match: (s) => s.id.startsWith('swpc') || s.id.startsWith('donki') },
 ];
-let actieveSkyRubriek = 'maan';
+let actieveSkyRubriek = 'vanavond'; // 2026-09-15: was 'maan', zie SKY_RUBRIEKEN
 let laatsteSignalenPerCategorie = {};
 // 2026-08-21, op verzoek van Lex ("Metteorieten wordt knop, ik klik erop,
 // Bam! lijst verschijnt. Zo voor alle verzamelingen") — de subkopjes
@@ -12341,8 +12352,8 @@ function actieveAanbevolenIssPassage() {
 function moetIssLivePollen() {
   return (
     huidigeView === 'hemel' &&
-    actieveSkyRubriek === 'ruimte' &&
-    uitgeklapteRuimteGroepen.has('🛰️ ISS') &&
+    // 2026-09-15: de aanbevolen passage staat ook op de Vanavond-rubriek.
+    ((actieveSkyRubriek === 'ruimte' && uitgeklapteRuimteGroepen.has('🛰️ ISS')) || actieveSkyRubriek === 'vanavond') &&
     Boolean(actieveAanbevolenIssPassage())
   );
 }
@@ -12678,6 +12689,40 @@ function renderSky(signalenPerCategorie) {
       }
       if (uitgeklapt) items.forEach((s) => SKY_LIJST_EL.appendChild(maakSkyKaart(s)));
     });
+    return;
+  }
+
+  if (rubriek.key === 'vanavond') {
+    // Vaste volgorde (maan, planeten, ISS) i.p.v. ernst/tijd-sortering. Bij
+    // de ISS de eerstkomende aanbevolen passage; issKaartVoorHemel() geeft
+    // null als die al voorbij is (celestrak.js ververst maar elke 6 uur) —
+    // dan gewoon geen ISS-blok, niet de generieke rij.
+    const maan = signalen.find((s) => s.id.startsWith('moon'));
+    const planeten = signalen.find((s) => s.id === 'planeten-nu');
+    const iss = signalen
+      .filter((s) => s.id.startsWith('iss-'))
+      .sort((a, b) => new Date(a.detail?.starttijd) - new Date(b.detail?.starttijd))[0];
+    if (maan) SKY_LIJST_EL.appendChild(maakSkyKaart(maan));
+    if (planeten) SKY_LIJST_EL.appendChild(maakSkyKaart(planeten));
+    const issKaart = iss ? issKaartVoorHemel(iss) : null;
+    if (issKaart) {
+      // Zelfde subkop + "Live op kaart"-knop als bij Ruimte > ISS, zodat je
+      // vanaf hier ook meteen naar de kaart kunt.
+      const rij = document.createElement('div');
+      rij.className = 'sky-subkop-rij';
+      const kop = document.createElement('div');
+      kop.className = 'sky-subkop sky-subkop--vast';
+      kop.innerHTML = '<span>🛰️ ISS</span>';
+      rij.appendChild(kop);
+      const volgKnop = document.createElement('button');
+      volgKnop.type = 'button';
+      volgKnop.className = `sky-subkop-volg${kaartVolgType === 'iss' ? ' actief' : ''}`;
+      volgKnop.textContent = kaartVolgType === 'iss' ? '📍 Op kaart' : '📍 Live op kaart';
+      volgKnop.addEventListener('click', () => startKaartVolgen('iss'));
+      rij.appendChild(volgKnop);
+      SKY_LIJST_EL.appendChild(rij);
+      SKY_LIJST_EL.appendChild(issKaart);
+    }
     return;
   }
 

@@ -1832,6 +1832,9 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .sky-subkop-rij:first-child { margin-top:12px; }
 .sky-subkop { display:flex; align-items:center; justify-content:space-between; flex:1; min-width:0; background:none; border:none; text-align:left; font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600; color:#f4f6fb; padding:0 2px 6px; cursor:pointer; }
 .sky-subkop:active { opacity:0.7; }
+/* 2026-09-15: vaste (niet-klikbare) subkop op de Vanavond-rubriek, zie renderSky(). */
+.sky-subkop--vast { cursor:default; }
+.sky-subkop--vast:active { opacity:1; }
 .sky-subkop-pijl { font-family:'JetBrains Mono',monospace; font-size:11px; color:#9199b5; flex-shrink:0; margin-left:8px; }
 .sky-subkop-volg { flex-shrink:0; margin-bottom:6px; background:rgba(93,255,197,0.14); border:1px solid rgba(93,255,197,0.35); color:#5dffc5; font-family:'JetBrains Mono',monospace; font-size:10px; padding:5px 8px; border-radius:6px; cursor:pointer; white-space:nowrap; }
 .sky-subkop-volg:active { opacity:0.7; }
