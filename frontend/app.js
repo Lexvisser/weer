@@ -784,7 +784,8 @@ function werkMeldingenBadgeBij(tellerRelevant) {
 }
 
 function initMap() {
-  kaart = L.map('map', { attributionControl: true, zoomControl: true, maxZoom: 18 }).setView([THUIS.homeLat, THUIS.homeLon], 6);
+  // 2026-09-15, op verzoek van Lex ("doe ik met muis en op de iPad met pinch"): geen +/- zoomknoppen meer.
+  kaart = L.map('map', { attributionControl: true, zoomControl: false, maxZoom: 18 }).setView([THUIS.homeLat, THUIS.homeLon], 6);
 
   // 2026-08-26-fix, op melding van Lex (blijvend zwart/afgesneden vlak
   // rechts op de kaart, tablet-breedte, meteen bij het openen -- geen
