@@ -2169,6 +2169,10 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 /* Uitlezing van het gridvak onder de cursor, linksboven onder de zoomknoppen
    (zie toonGradenVak() in app.js). Tweede regel: exacte cursorpositie, ook in
    NAVTEX-notatie (51-38.92N 002-37.53E). */
+.kaart-hoekknop { position:absolute; top:70px; left:10px; z-index:1000; width:28px; height:28px; border-radius:6px; border:1px solid rgba(255,255,255,0.12); background:rgba(10,11,18,0.85); color:#e8eaed; font-size:14px; line-height:1; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,0.3); }
+.kaart-hoekknop:hover { background:rgba(30,34,54,0.95); }
+.kaart-hoekknop.actief { background:#3ec6ff; color:#05060a; border-color:#3ec6ff; }
+.afstand-meter-uitlezing { position:absolute; top:70px; left:44px; z-index:1000; font-family:'JetBrains Mono',monospace; font-size:11px; color:#3ec6ff; background:rgba(5,6,10,0.82); border:1px solid rgba(62,198,255,0.4); border-radius:8px; padding:5px 9px; pointer-events:none; white-space:nowrap; }
 .graden-vak { position:absolute; top:90px; left:10px; z-index:1000; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#3ec6ff; background:rgba(5,6,10,0.78); border:1px solid rgba(62,198,255,0.35); border-radius:8px; padding:4px 9px; pointer-events:none; white-space:nowrap; }
 .graden-vak.verborgen { display:none; }
 .graden-vak-cursor { color:#e6e9f2; opacity:0.85; }

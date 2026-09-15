@@ -77,6 +77,13 @@
          alleen zichtbaar als de laag aanstaat — zie toggleFronten() in app.js. -->
     <!-- 2026-08-30: uitlezing van het gridvak onder de cursor (alleen met
          het gradengrid aan) — zie toonGradenVak() in app.js. -->
+    <!-- 2026-09-15, op verzoek van Lex ("een afstandmeter op de kaart"): klik
+         op de knop om te meten, daarna elke kaartklik zet een punt (lijn +
+         lopende afstand); nog een klik op de knop = meten stoppen (lijn/
+         afstand blijven staan); daarna nog een klik = wissen, klaar voor een
+         nieuwe meting. Zie toggleAfstandMeter() in app.js. -->
+    <button type="button" class="kaart-hoekknop" id="afstandMeterKnop" title="Afstand meten op de kaart: klik = punt zetten, nog een klik op deze knop = stoppen, daarna wissen">📏</button>
+    <div class="afstand-meter-uitlezing verborgen" id="afstandMeterUitlezing"></div>
     <div class="graden-vak verborgen" id="gradenVak"></div>
     <div class="fronten-info verborgen" id="frontenInfo"></div>
     <div class="navtex-volgende verborgen" id="navtexVolgendeUitzending">

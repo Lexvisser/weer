@@ -866,7 +866,7 @@ function initMap() {
   // zolang Vaart-modus aan staat, anders zou dit de andere kaartmodi (Hemel/
   // Vlucht/Zee) in de weg zitten.
   kaart.on('mousemove', (e) => {
-    if (!vaarradarActief || !vaarCanvasLaag) return;
+    if (afstandMeetStatus === 'actief' || !vaarradarActief || !vaarCanvasLaag) return;
     const mmsi = vaarCanvasLaag.zoekSchipOpContainerPunt(e.containerPoint);
     // 14 sept 2026-fix (Lex: hand-cursor bleef staan op een schip): de oude
     // marker-opzet kreeg de pointer-cursor gratis via Leaflet se eigen
@@ -906,7 +906,7 @@ function initMap() {
     kaart.getContainer().style.cursor = '';
   });
   kaart.on('click', (e) => {
-    if (!vaarradarActief || !vaarCanvasLaag) return;
+    if (afstandMeetStatus === 'actief' || !vaarradarActief || !vaarCanvasLaag) return;
     const mmsi = vaarCanvasLaag.zoekSchipOpContainerPunt(e.containerPoint);
     if (mmsi == null) {
       if (vaarCanvasPopup) kaart.closePopup(vaarCanvasPopup);
@@ -925,7 +925,7 @@ function initMap() {
     return rwsBoeienLaag.zoekSchipOpContainerPunt(containerPoint);
   };
   kaart.on('mousemove', (e) => {
-    if (!rwsBoeienActief || !rwsBoeienLaag) return;
+    if (afstandMeetStatus === 'actief' || !rwsBoeienActief || !rwsBoeienLaag) return;
     const id = boeiOnderCursor(e.containerPoint);
     if (id != null) kaart.getContainer().style.cursor = 'pointer';
     if (id === rwsBoeienHoverId) {
@@ -949,7 +949,7 @@ function initMap() {
   });
   kaart.on('mouseout', () => { if (rwsBoeienActief) verbergRwsBoeienTooltip(); });
   kaart.on('click', (e) => {
-    if (!rwsBoeienActief || !rwsBoeienLaag) return;
+    if (afstandMeetStatus === 'actief' || !rwsBoeienActief || !rwsBoeienLaag) return;
     const id = boeiOnderCursor(e.containerPoint);
     const m = id != null ? rwsBoeienData?.[id] : null;
     if (!m) {
@@ -966,9 +966,18 @@ function initMap() {
   // 2026-08-30, op verzoek van Lex ("in welk gridvak de cursor is"): vak
   // onder de muis oplichten + uitlezen. Op touch geen hover, dus daar telt
   // een tik op de kaart als 'cursor'. Zie toonGradenVak().
-  kaart.on('mousemove', (e) => { if (gradenActief) toonGradenVak(e.latlng); });
+  kaart.on('mousemove', (e) => { if (afstandMeetStatus !== 'actief' && gradenActief) toonGradenVak(e.latlng); });
   kaart.on('mouseout', () => { if (gradenActief) verbergGradenVak(); });
-  kaart.on('click', (e) => { if (gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
+  kaart.on('click', (e) => { if (afstandMeetStatus !== 'actief' && gradenActief && window.matchMedia('(hover: none)').matches) toonGradenVak(e.latlng); });
+  kaart.on('click', (e) => {
+    if (afstandMeetStatus !== 'actief') return;
+    afstandMeetVoegPuntToe(e.latlng);
+  });
+  kaart.on('mousemove', (e) => {
+    if (afstandMeetStatus !== 'actief' || !afstandMeetPunten.length) return;
+    afstandMeetVoorbeeldLaag.setLatLngs([afstandMeetPunten[afstandMeetPunten.length - 1], e.latlng]);
+    afstandMeetVerversUitlezing(e.latlng);
+  });
   // 2026-09-09: een klik naast een zender stopte het luisteren. Weer weggehaald
   // op 2026-09-10 (Lex: "we moeten er toch ook vanaf dat een willekeurige klik
   // het luisteren stopt") — inmiddels hangt er een luistersessie op de server
@@ -1856,6 +1865,102 @@ function bouwGemengdeOntvangstHtml(segmenten) {
 // permanente zeegebied-namen (bindTooltip permanent:true in
 // bouwZeeGebiedenLaag) — dat is de zeekaart zelf, precies wat de
 // transparantie moet laten zien.
+// 2026-09-15, op verzoek van Lex ("een afstandmeter op de kaart"): eigen,
+// simpele meetlint met Leaflet-primitieven (polyline + circleMarker), geen
+// aparte library. Drie standen: 'uit' (niets), 'actief' (elke kaartklik zet
+// een punt; een gestippelde lijn volgt de muis als voorbeeld van het
+// volgende stuk), 'klaar' (lijn + totaal blijven gewoon staan, niet meer
+// klikbaar). De knop cyclet: uit -> actief -> klaar -> uit (wist). Bewust
+// GEEN dubbelklik-als-stopknop: dat levert in Leaflet twee losse 'click'-
+// events vlak vóór de 'dblclick' op, dus een extra (bijna-)dubbel punt --
+// de knop is de enige, betrouwbare manier om te stoppen.
+const AFSTAND_METER_KNOP_EL = document.getElementById('afstandMeterKnop');
+const AFSTAND_METER_UITLEZING_EL = document.getElementById('afstandMeterUitlezing');
+let afstandMeetStatus = 'uit'; // 'uit' | 'actief' | 'klaar'
+let afstandMeetPunten = [];
+let afstandMeetLaag = null;
+let afstandMeetVoorbeeldLaag = null;
+let afstandMeetMarkers = [];
+
+function afstandMeterTekst(km) {
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  return `${km.toFixed(km < 10 ? 2 : 1)} km`;
+}
+
+function afstandMeetTotaalKm(extraPunt) {
+  const punten = extraPunt ? [...afstandMeetPunten, extraPunt] : afstandMeetPunten;
+  let totaal = 0;
+  for (let i = 1; i < punten.length; i++) {
+    totaal += afstandKm(punten[i - 1].lat, punten[i - 1].lng, punten[i].lat, punten[i].lng);
+  }
+  return totaal;
+}
+
+function afstandMeetVerversUitlezing(voorbeeldPunt) {
+  if (!AFSTAND_METER_UITLEZING_EL) return;
+  if (!afstandMeetPunten.length) { AFSTAND_METER_UITLEZING_EL.classList.add('verborgen'); return; }
+  const totaal = afstandMeetTotaalKm(voorbeeldPunt);
+  if (voorbeeldPunt) {
+    const laatste = afstandMeetPunten[afstandMeetPunten.length - 1];
+    const stuk = afstandKm(laatste.lat, laatste.lng, voorbeeldPunt.lat, voorbeeldPunt.lng);
+    AFSTAND_METER_UITLEZING_EL.textContent = `${afstandMeterTekst(totaal)} · dit stuk ${afstandMeterTekst(stuk)}`;
+  } else {
+    const puntenTekst = afstandMeetPunten.length > 1 ? ` · ${afstandMeetPunten.length} punten` : '';
+    AFSTAND_METER_UITLEZING_EL.textContent = `${afstandMeterTekst(totaal)}${puntenTekst}`;
+  }
+  AFSTAND_METER_UITLEZING_EL.classList.remove('verborgen');
+}
+
+function afstandMeetVoegPuntToe(latlng) {
+  afstandMeetPunten.push(latlng);
+  afstandMeetLaag.setLatLngs(afstandMeetPunten);
+  afstandMeetMarkers.push(
+    L.circleMarker(latlng, { radius: 4, color: '#3ec6ff', weight: 2, fillColor: '#05060a', fillOpacity: 1, interactive: false }).addTo(kaart),
+  );
+  afstandMeetVerversUitlezing();
+}
+
+function afstandMeetWis() {
+  if (afstandMeetLaag) { kaart.removeLayer(afstandMeetLaag); afstandMeetLaag = null; }
+  if (afstandMeetVoorbeeldLaag) { kaart.removeLayer(afstandMeetVoorbeeldLaag); afstandMeetVoorbeeldLaag = null; }
+  afstandMeetMarkers.forEach((m) => kaart.removeLayer(m));
+  afstandMeetMarkers = [];
+  afstandMeetPunten = [];
+  afstandMeetStatus = 'uit';
+  AFSTAND_METER_KNOP_EL?.classList.remove('actief');
+  kaart.doubleClickZoom.enable();
+  kaart.getContainer().style.cursor = '';
+  AFSTAND_METER_UITLEZING_EL?.classList.add('verborgen');
+}
+
+function afstandMeetStart() {
+  afstandMeetWis(); // altijd schoon beginnen
+  afstandMeetStatus = 'actief';
+  AFSTAND_METER_KNOP_EL?.classList.add('actief');
+  kaart.doubleClickZoom.disable(); // een dubbelklik tijdens het meten mag niet inzoomen
+  kaart.getContainer().style.cursor = 'crosshair';
+  afstandMeetLaag = L.polyline([], { color: '#3ec6ff', weight: 3 }).addTo(kaart);
+  afstandMeetVoorbeeldLaag = L.polyline([], { color: '#3ec6ff', weight: 2, dashArray: '5,6', opacity: 0.7, interactive: false }).addTo(kaart);
+}
+
+function afstandMeetStop() {
+  if (afstandMeetStatus !== 'actief') return;
+  if (afstandMeetVoorbeeldLaag) { kaart.removeLayer(afstandMeetVoorbeeldLaag); afstandMeetVoorbeeldLaag = null; }
+  kaart.doubleClickZoom.enable();
+  kaart.getContainer().style.cursor = '';
+  if (afstandMeetPunten.length < 2) { afstandMeetWis(); return; } // niks gemeten -- meteen opruimen
+  afstandMeetStatus = 'klaar';
+  AFSTAND_METER_KNOP_EL?.classList.remove('actief');
+  afstandMeetVerversUitlezing();
+}
+
+function toggleAfstandMeter() {
+  if (afstandMeetStatus === 'uit') afstandMeetStart();
+  else if (afstandMeetStatus === 'actief') afstandMeetStop();
+  else afstandMeetWis();
+}
+AFSTAND_METER_KNOP_EL?.addEventListener('click', toggleAfstandMeter);
+
 function ruimKaartVensterOp() {
   // Kaart-popups (o.a. het label van een kaarticoon) en de losse tooltips.
   try {
