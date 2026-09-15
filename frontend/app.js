@@ -868,7 +868,17 @@ function initMap() {
   // Vlucht/Zee) in de weg zitten.
   kaart.on('mousemove', (e) => {
     if (afstandMeetStatus === 'actief' || !vaarradarActief || !vaarCanvasLaag) return;
-    const mmsi = vaarCanvasLaag.zoekSchipOpContainerPunt(e.containerPoint);
+    // 15 sept 2026-fix (Lex: "AIS hovertekst zit regelmatig over het
+    // kaartje"): de 14-sept-fix hieronder onderdrukte de tooltip alleen voor
+    // een ANDER schip dan het open kaartje -- maar het kaartje hangt precies
+    // boven het actieve schip zelf, dus met de muis op het kaartje vond de
+    // hit-test dat schip eronder en verscheen zíjn tooltip over het kaartje
+    // heen. Twee regels erbij: (1) muis boven de popup-DOM zelf telt als
+    // "geen schip" (Leaflet laat 'mousemove' daar gewoon door), en (2) voor
+    // het actieve schip nooit een tooltip -- het kaartje toont die info al.
+    const bovenPopup = e.originalEvent?.target?.closest?.('.leaflet-popup, #schipSheet');
+    const gevonden = bovenPopup ? null : vaarCanvasLaag.zoekSchipOpContainerPunt(e.containerPoint);
+    const mmsi = gevonden != null && gevonden === vaarCanvasActiefMmsi ? null : gevonden;
     // 14 sept 2026-fix (Lex: hand-cursor bleef staan op een schip): de oude
     // marker-opzet kreeg de pointer-cursor gratis via Leaflet se eigen
     // ".leaflet-interactive"-styling op elk marker-DOM-element. Canvas heeft
