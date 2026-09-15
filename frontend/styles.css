@@ -75,19 +75,13 @@ body {
   overscroll-behavior-y: contain;
   padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px) + 24px);
 }
-/* 2026-09-15, op verzoek van Lex ("die verticale schuifbalk is superlelijk"):
-   op desktop tekende Windows/Chrome zijn standaard grijze schuifbalk in het
-   scrollende .view-vak. Nu app-breed een dunne, donkere balk zonder pijlen
-   die pas zichtbaar wordt bij hoveren/scrollen — zelfde overlay-gevoel als
-   op de telefoon. Firefox via scrollbar-width/-color, Chrome/Edge/Safari via
-   de ::-webkit-scrollbar-regels. */
-* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }
-*::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 6px; }
-*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
-*::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-*::-webkit-scrollbar-corner { background: transparent; }
+/* 2026-09-15, op verzoek van Lex ("die verticale schuifbalk is superlelijk"
+   → "kunnen we niet helemaal zonder balk?"): app-breed géén schuifbalk meer
+   zichtbaar. Scrollen zelf blijft gewoon werken (muiswiel, touch, toetsen);
+   alleen de balk wordt niet getekend. Firefox via scrollbar-width:none,
+   Chrome/Edge/Safari via ::-webkit-scrollbar { display:none }. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .view-titel { font-family:'Space Grotesk',sans-serif; font-size:15px; color:#f4f6fb; padding: 14px 16px 10px; }
 /* 2026-08-20-fix, op verzoek van Lex ("als de kaart groot is dan zie ik half
    kaart half lijst") — #viewKaart hieronder (een ID-selector) heeft een
