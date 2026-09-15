@@ -245,11 +245,13 @@ export async function fetchStarlinkTrein({ homeLat, homeLon }) {
 // celestrak.js/server.js) — alleen de aankondigingstermijn wijkt af: Lex
 // wilde voor de trein 5 minuten in plaats van 2.
 export function controleerStarlinkAlarm() {
+  // 2026-09-15: async geworden (baan-PNG voor de mail) — fout hier mag de
+  // 30s-timer in server.js nooit laten stuklopen, vandaar de catch.
   controleerPassageAlarm(laatsteAanbevolenPassage, {
     vooraankondigingSeconden: 5 * 60,
     alarmIdVoorvoegsel: 'starlink-alarm',
     titelVoorvoegsel: 'Starlink-trein',
-  });
+  }).catch((err) => console.error('[weer] Starlink-alarm mislukt:', err.message ?? err));
 }
 
 // Voor starlinkLive.js — hergebruikt de TLE van de laatste (6-uurs) poll

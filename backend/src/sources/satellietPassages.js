@@ -16,6 +16,7 @@ import { stuurWebPushAlarm } from './webpush.js';
 // grafische weergave) — zie passageTraject.js. Optioneel: zonder TLE valt
 // alles hieronder gewoon terug op de kale g7vrd-gegevens.
 import { berekenTraject, beschrijfPassage, windrichting16 } from './passageTraject.js';
+import { maakPassageBaanPng } from './passageBaanAfbeelding.js';
 
 const WINDRICHTINGEN = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW'];
 
@@ -158,6 +159,9 @@ export async function haalPassagesOp({
         duurMinuten,
         eindtijd: p.end,
         traject,
+        // 2026-09-15: de drempels waaraan deze passage voldeed, voor de
+        // uitleg in de mail (controleerPassageAlarm).
+        criteria: { minElevatieGraden, minDuurMinuten, nuttigVensterStartUur, nuttigVensterEindUur },
       };
     }
 
@@ -201,14 +205,14 @@ export async function haalPassagesOp({
 // stuurMailAlarm/stuurWebPushAlarm hebben zelf al een gemeld-Set per id, dus
 // dit hoeft niet zelf bij te houden of het al verstuurd is — gewoon elke
 // tick aanroepen zolang het venster loopt, de callees dedupliceren vanzelf.
-export function controleerPassageAlarm(aanbevolenPassage, { vooraankondigingSeconden, alarmIdVoorvoegsel, titelVoorvoegsel }) {
+export async function controleerPassageAlarm(aanbevolenPassage, { vooraankondigingSeconden, alarmIdVoorvoegsel, titelVoorvoegsel }) {
   if (!aanbevolenPassage) return;
   const secondenTotStart = (new Date(aanbevolenPassage.starttijd).getTime() - Date.now()) / 1000;
   // +30s marge (dezelfde 30s als de tick-frequentie) zodat een tick het
   // venster altijd raakt, ook bij wat drift.
   if (secondenTotStart <= 0 || secondenTotStart > vooraankondigingSeconden + 30) return;
 
-  const { richtingOp, maxElevatieGraden, duurMinuten, starttijd, eindtijd, traject } = aanbevolenPassage;
+  const { richtingOp, maxElevatieGraden, duurMinuten, starttijd, eindtijd, traject, criteria } = aanbevolenPassage;
   const minutenTekst = Math.round(vooraankondigingSeconden / 60);
   const titel = `${titelVoorvoegsel} begint zo`;
   // 2026-09-15, op verzoek van Lex ("Deze info moet ook in de mail... de
@@ -230,7 +234,21 @@ export function controleerPassageAlarm(aanbevolenPassage, { vooraankondigingSeco
   const bericht = regels.join('\n');
   const alarmId = `${alarmIdVoorvoegsel}-${aanbevolenPassage.starttijd}`;
 
+  // 2026-09-15, op verzoek van Lex: in de MAIL ook de uitleg waarom juist
+  // deze passage een melding krijgt (de drempels uit celestrak.js/
+  // starlinkTrain.js) en het baan-plaatje als PNG. Pushover/webpush houden
+  // het korte bericht -- daar past geen plaatje en geen lap tekst.
+  const uitleg = criteria
+    ? `\n\nWaarom deze melding: dit is de eerstvolgende passage die aan de drempels voldoet — hoogste punt minstens ${criteria.minElevatieGraden}°, minstens ${criteria.minDuurMinuten} minuten daarboven, en tussen ${String(criteria.nuttigVensterStartUur).padStart(2, '0')}:00 en ${String(criteria.nuttigVensterEindUur).padStart(2, '0')}:00. Lagere, kortere of nachtelijke passages staan wel in de app (Hemel > Ruimte), maar krijgen geen melding.`
+    : '';
+  const baanPng = traject ? await maakPassageBaanPng(traject) : null;
+
   stuurAlarm({ id: alarmId, titel, bericht });
-  stuurMailAlarm({ id: alarmId, titel, bericht });
+  stuurMailAlarm({
+    id: alarmId,
+    titel,
+    bericht: bericht + uitleg,
+    afbeeldingen: baanPng ? [{ png: baanPng, cid: 'passagebaan', filename: 'baan.png', alt: 'Baan van de passage aan de hemel' }] : [],
+  });
   stuurWebPushAlarm({ id: alarmId, titel, bericht });
 }

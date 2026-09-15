@@ -150,9 +150,11 @@ export async function fetchCelestrak({ homeLat, homeLon }) {
 // hierboven voor waarom dat een aparte timer moet zijn i.p.v. de trage
 // 6-uurs pollIntervalMs). Vuurt 2 minuten vóór een aanbevolen passage begint.
 export function controleerIssAlarm() {
+  // 2026-09-15: async geworden (baan-PNG voor de mail) — fout hier mag de
+  // 30s-timer in server.js nooit laten stuklopen, vandaar de catch.
   controleerPassageAlarm(laatsteAanbevolenPassage, {
     vooraankondigingSeconden: 2 * 60,
     alarmIdVoorvoegsel: 'iss-alarm',
     titelVoorvoegsel: 'ISS-passage',
-  });
+  }).catch((err) => console.error('[weer] ISS-alarm mislukt:', err.message ?? err));
 }

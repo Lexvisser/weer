@@ -314,7 +314,10 @@ function htmlMetTijdzonePillen(tekst) {
   return uit + escapeHtmlMail(tekst.slice(vorige));
 }
 
-export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebiedPolygon, gebiedPolygonTrail, to }) {
+// 2026-09-15: `afbeeldingen` — optionele extra inline-PNG's ([{ png, cid,
+// filename, alt }]), voor het baan-plaatje bij een ISS-/Starlink-melding
+// (zie satellietPassages.js). Zelfde cid-mechanisme als het gebiedkaartje.
+export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebiedPolygon, gebiedPolygonTrail, to, afbeeldingen = [] }) {
   if (!id) return;
   if (gemeld.has(id)) {
     console.log(`[weer] mail: "${id}" al eerder gemeld (ook over herstarts heen), overgeslagen (titel: ${titel}).`);
@@ -347,11 +350,17 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   // 2026-09-06: via POST (zie haalKaartAfbeelding), geen URL-lengtegrens meer.
   const kaartPng = await haalKaartAfbeelding({ lat, lon, gebiedPolygon, gebiedPolygonTrail });
   if (kaartPng) attachments.push({ filename: 'gebied.png', content: kaartPng, cid: 'gebiedkaart' });
+  const extraImgs = [];
+  for (const a of afbeeldingen) {
+    if (!a?.png || !a?.cid) continue;
+    attachments.push({ filename: a.filename ?? `${a.cid}.png`, content: a.png, cid: a.cid });
+    extraImgs.push(`<img src="cid:${a.cid}" alt="${a.alt ?? ''}" style="max-width:100%;width:375px;border-radius:8px;margin-top:12px;display:block;" />`);
+  }
   // 2026-08-28: de mail is nu ALTIJD ook HTML (voorheen alleen met kaartje)
   // zodat de tijdzone-pillen overal zichtbaar zijn; de platte-tekst-variant
   // krijgt dezelfde omgerekende tijden tussen haakjes als terugval voor
   // clients zonder HTML.
-  const html = `<div style="font-family:sans-serif;white-space:pre-wrap;">${htmlMetTijdzonePillen(tekst)}</div>${attachments.length ? '<img src="cid:gebiedkaart" alt="Kaart met gebied" style="max-width:100%;border-radius:8px;margin-top:12px;" />' : ''}`;
+  const html = `<div style="font-family:sans-serif;white-space:pre-wrap;">${htmlMetTijdzonePillen(tekst)}</div>${kaartPng ? '<img src="cid:gebiedkaart" alt="Kaart met gebied" style="max-width:100%;border-radius:8px;margin-top:12px;" />' : ''}${extraImgs.join('')}`;
 
   // 2026-09-15, op verzoek van Lex: bij een reeks heruitgaves van dezelfde
   // dreiging kreeg elke mail exact dezelfde subject (bv. "🌪️ Tornado
