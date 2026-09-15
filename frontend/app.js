@@ -11702,7 +11702,8 @@ function hemelSub(s) {
       ? `dooft uit in ${d.traject.eindeZicht.richting} (${d.traject.eindeZicht.el}°)`
       : `onder in ${d.richtingOnder16 ?? d.richtingOnder}`;
     const tekst = d.beschrijving ? `<div class="passage-beschrijving">${d.beschrijving}</div>` : '';
-    return `<span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${opIn}, ${onderIn}${tekst}`;
+    const bel = d.aanbevolen ? '<span class="passage-bel" title="Hiervoor krijg je een melding, 2 minuten vooraf">🔔</span> · ' : '';
+    return `${bel}<span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${opIn}, ${onderIn}${tekst}`;
   }
   // 2026-08-21: de titel is nu een aftelling ("Nog 61 dagen tot: Orioniden",
   // zie backend/sources/meteors.js), dus de tweede regel vertelt waarnaar je
@@ -12541,7 +12542,7 @@ function issKaartVoorHemel(s) {
   } else {
     const overTekst = overTijdTekst(d.starttijd);
     kaart.innerHTML = `
-      <div class="iss-badge">${d.aanbevolen ? '🌟 Aanbevolen passage' : '🛰️ Volgende passage'}</div>
+      <div class="iss-badge">🛰️ Volgende passage${d.aanbevolen ? ' · 🔔 melding 2 min vooraf' : ''}</div>
       <div class="t1">ISS-passage om ${tijdstempelTekst(d.starttijd)}${overTekst ? ` (${overTekst})` : ''}</div>
       <div class="t2">max. ${d.maxElevatieGraden}° · ${d.duurMinuten} min · <span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${d.richtingOp16 ?? d.richtingOp}, ${d.traject?.dooftUit ? `dooft uit in ${d.traject.eindeZicht.richting} (${d.traject.eindeZicht.el}°)` : `onder in ${d.richtingOnder16 ?? d.richtingOnder}`}</div>
       ${d.traject?.baan ? `<div class="planeten-kompas-wrap">${passageBaanSvg(d.traject)}</div>${passageBaanLegenda(d.traject)}${passageTabelHtml(d.traject)}` : ''}
@@ -12559,10 +12560,11 @@ function issKaartVoorHemel(s) {
 function maakSkyKaart(s) {
   if (s.id.startsWith('moon')) return maanKaartVoorHemel(s);
   if (s.id === 'planeten-nu') return planetenKaartVoorHemel(s);
-  if (s.id.startsWith('iss-') && s.detail?.aanbevolen) {
-    const speciaal = issKaartVoorHemel(s);
-    if (speciaal) return speciaal;
-  }
+  // 2026-09-15 (Lex: "is het fenomeen aanbevolen passage nog zinvol zo?"):
+  // de aparte "aanbevolen"-kaart in de Ruimte-lijst is vervallen — de
+  // Vanavond-rubriek toont al altijd de eerstvolgende passage met baan en
+  // live-stip (issKaartVoorHemel). "Aanbevolen" betekent nu alleen nog:
+  // hiervoor komt de melding (🔔 in hemelSub en op de Vanavond-badge).
   const kaart = document.createElement('div');
   kaart.className = 'sky-card';
   // 2026-09-15: bij ISS-/Starlink-passages die niet DE aanbevolen zijn, het

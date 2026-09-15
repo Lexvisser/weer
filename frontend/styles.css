@@ -2018,6 +2018,8 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    is standaard grijsblauw (#9199b5, zie .sky-card .t2) — dat zou de sterren
    ook grijs maken. */
 .iss-sterren { font-size: 15px; color: #ffd75e; letter-spacing: 1px; }
+/* 2026-09-15: 🔔 = de passage waarvoor de melding komt (voorheen "aanbevolen"). */
+.passage-bel { font-size: 13px; }
 /* 2026-09-15, getij-labels (Lex: "de pijlen eb en vloed veel duidelijker") —
    zie hemelSub() in app.js. Vet en iets groter dan de .t2-tekst eromheen,
    hoogwater blauwgroen, laagwater oranje; de tijd zelf licht i.p.v. grijs. */
