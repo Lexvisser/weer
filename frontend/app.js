@@ -13276,8 +13276,21 @@ function sluitAlarmPopup() {
 }
 
 ALARM_POPUP_SLUIT_EL.addEventListener('click', sluitAlarmPopup);
+// 2026-09-15, op melding van Lex ("dat rode kaartje... gaat niet naar de
+// kaart"): bij meerdere heruitgaves kort na elkaar (bv. 6x dezelfde tornado
+// warning terwijl je sliep) staan er meerdere alarmen in alarmWachtrij.
+// sluitAlarmPopup() toont dan via toonVolgendeAlarmPopup() meteen de
+// VOLGENDE wachtende popup weer bovenop de kaart -- je zag dus nooit de
+// kaart, alleen de ene rode kaart na de andere. "Bekijk op kaart" is een
+// expliciete keuze om de actuele situatie te zien, dus de rest van de
+// wachtrij is dan niet meer relevant (die volgt toch al live mee zodra de
+// kaart op dit gebied gecentreerd staat, zie ververGeselecteerdGebied) --
+// wachtrij leeggooien vóór sluitAlarmPopup() zodat de klik altijd zichtbaar
+// naar de kaart gaat. "Sluiten" (het kruisje) blijft de wachtrij wel gewoon
+// aframen, dat gedrag is ongewijzigd.
 ALARM_POPUP_BEKIJK_EL.addEventListener('click', () => {
   const signal = huidigAlarmSignaal;
+  alarmWachtrij = [];
   sluitAlarmPopup();
   if (signal) centreerOpMelding(signal);
 });

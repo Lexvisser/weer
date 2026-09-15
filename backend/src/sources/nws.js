@@ -151,10 +151,12 @@ function stuurSpoorMail(signaal, keten) {
   const spoor = keten.gebiedPolygons ?? [];
   if (spoor.length < 2) return;
   if (JSON.stringify(spoor[spoor.length - 1]) === JSON.stringify(spoor[spoor.length - 2])) return; // gebied ongewijzigd: niks nieuws te zien
+  keten.aantalMeldingen = (keten.aantalMeldingen ?? 1) + 1; // 2026-09-15: telt alleen mee als er ook echt een mail uitgaat
+  bewaarKetens();
   const label = signaal.categorie === 'tornado' ? '🌪️ Tornado Warning' : signaal.categorie === 'tornado-watch' ? 'Tornado Watch' : signaal.categorie;
   stuurMailAlarm({
     id: `${signaal.id}-spoor`,
-    titel: `${label} – heruitgave ${spoor.length} (gebied aangepast)`,
+    titel: `${label} – heruitgave ${keten.aantalMeldingen} (gebied aangepast)`,
     bericht: kaartTekst(signaal),
     lat: signaal.lat,
     lon: signaal.lon,
@@ -251,8 +253,14 @@ function vindEnSchuifKeten(signaal, huidigeIds) {
     // Begrensd op TRAIL_MAX (zie email.js) -- hier ruim gehouden, de
     // uiteindelijke begrenzing gebeurt daar vlak vóór de kaart-URL.
     const gebiedPolygons = [...(keten.gebiedPolygons ?? []), signaal.detail?.gebiedPolygon].filter(Boolean).slice(-12);
-    const nieuweKeten = { categorie: signaal.categorie, gebiedTokens: tokens, gebiedPolygons, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now() };
+    // 2026-09-15: aantalMeldingen telt hoeveel keer er daadwerkelijk een mail
+    // is uitgegaan voor deze doorlopende dreiging -- gebruikt voor een
+    // doorlopend "(heruitgave N)"-nummer in de mail-subject (zie de
+    // stuurMailAlarm-aanroep in fetchNws() en stuurSpoorMail() hieronder),
+    // ongeacht of het om een escalatie- of een gebied-aangepast-mail gaat.
+    const nieuweKeten = { categorie: signaal.categorie, gebiedTokens: tokens, gebiedPolygons, niveau: Math.max(niveau, keten.niveau), laatstGezien: Date.now(), aantalMeldingen: keten.aantalMeldingen ?? 1 };
     actieveKetens.set(signaal.id, nieuweKeten);
+    if (!onderdrukken) nieuweKeten.aantalMeldingen += 1; // escalatie-mail gaat altijd de deur uit
     bewaarKetens();
     if (onderdrukken) stuurSpoorMail(signaal, nieuweKeten); // 2026-09-04: evolutie in de mail, zie stuurSpoorMail()
     console.log(
@@ -286,6 +294,7 @@ function registreerNieuweKeten(signaal) {
     gebiedPolygons: signaal.detail?.gebiedPolygon ? [signaal.detail.gebiedPolygon] : [],
     niveau: dreigingsNiveauRang(signaal),
     laatstGezien: Date.now(),
+    aantalMeldingen: 1, // 2026-09-15: zie toelichting bij vindEnSchuifKeten/stuurSpoorMail
   });
   bewaarKetens();
 }
@@ -309,6 +318,7 @@ function magDoorAlarmeren(signaal, huidigeIds) {
     if (niveau > kop.niveau) {
       console.log(`[weer] nws: keten-kop "${signaal.id}" escaleert (${kop.niveau} -> ${niveau}), alarm gaat door.`);
       kop.niveau = niveau;
+      kop.aantalMeldingen = (kop.aantalMeldingen ?? 1) + 1; // 2026-09-15: telt mee als eigen mail, zie stuurMailAlarm-aanroep in fetchNws()
       bewaarKetens();
       return true;
     }
@@ -650,6 +660,12 @@ export async function fetchNws() {
           ? '🌪️ Tornado Warning'
           : 'Tornado Watch';
         const bericht = kaartTekst(s);
+        // 2026-09-15: doorlopend heruitgavenummer in de mail-subject (zie
+        // aantalMeldingen in vindEnSchuifKeten/stuurSpoorMail hierboven) --
+        // alleen voor mail (Apple Mail bundelt anders gelijke subjects in
+        // 1 gesprek), Pushover/webpush houden hun kale titel.
+        const mailKeten = actieveKetens.get(s.id);
+        const mailTitel = mailKeten && mailKeten.aantalMeldingen > 1 ? `${titel} (heruitgave ${mailKeten.aantalMeldingen})` : titel;
         if (pushAlarmAan(s.categorie)) stuurAlarm({ id: s.id, titel, bericht, prioriteit: s.categorie === 'tornado' ? 2 : 1 });
         // 2026-08-20: lat/lon/gebiedPolygon erbij op verzoek van Lex ("kaartje
         // met de boundary in de mail") — zie kaartUrlVoor() in email.js.
@@ -659,7 +675,7 @@ export async function fetchNws() {
         // opgeschoven/gegroeide gebied laat zien, niet alleen het huidige.
         if (mailAlarmAan(s.categorie)) stuurMailAlarm({
           id: s.id,
-          titel,
+          titel: mailTitel,
           bericht,
           lat: s.lat,
           lon: s.lon,

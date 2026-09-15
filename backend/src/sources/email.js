@@ -353,11 +353,22 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   // clients zonder HTML.
   const html = `<div style="font-family:sans-serif;white-space:pre-wrap;">${htmlMetTijdzonePillen(tekst)}</div>${attachments.length ? '<img src="cid:gebiedkaart" alt="Kaart met gebied" style="max-width:100%;border-radius:8px;margin-top:12px;" />' : ''}`;
 
+  // 2026-09-15, op verzoek van Lex: bij een reeks heruitgaves van dezelfde
+  // dreiging kreeg elke mail exact dezelfde subject (bv. "🌪️ Tornado
+  // Warning"), waardoor Apple Mail's gespreksweergave ze allemaal onder de
+  // allereerste mail bundelde ("alle latere heruitgaven ook te zien bij de
+  // allereerste"). Verzendtijd achter de subject maakt 'm altijd uniek --
+  // geldt voor alle bronnen die stuurMailAlarm aanroepen (nws.js/
+  // meteoalarm.js), niet alleen tornado's. Alleen de mail-subject wijzigt;
+  // titel blijft ongemoeid voor Pushover/webpush (die worden niet
+  // samengevoegd, dus geen reden om die te wijzigen).
+  const subjectMetTijd = `${titel} · ${formatteerKort(Date.now(), 'Europe/Amsterdam')}`;
+
   try {
     await getTransporter().sendMail({
       from: `"Weer Alarm" <${afzenderAdres()}>`,
       to: ontvanger,
-      subject: titel,
+      subject: subjectMetTijd,
       text: verrijkTekstMetTijdzones(tekst),
       html,
       attachments: attachments.length ? attachments : undefined,
