@@ -2333,9 +2333,11 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .webcam-paneel-kop .webcam-paneel-sub { color:#9fb2c8; font-weight:400; font-size:10.5px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .webcam-paneel-kop button { font:inherit; font-size:12px; padding:2px 7px; border-radius:6px; border:1px solid rgba(62,198,255,0.5); background:transparent; color:#3ec6ff; cursor:pointer; }
 .webcam-paneel video { display:block; width:100%; aspect-ratio:16/9; background:#000; cursor:zoom-in; }
+.webcam-paneel .webcam-yt-frame { display:block; width:100%; aspect-ratio:16/9; background:#000; border:0; }
 /* 15 sept 2026: schermvullend (Fullscreen API op het hele paneel, zie webcamVolledig() in app.js) */
 .webcam-paneel:fullscreen { width:100vw; height:100vh; border:none; border-radius:0; display:flex; flex-direction:column; background:#000; }
 .webcam-paneel:fullscreen video { flex:1; aspect-ratio:auto; min-height:0; object-fit:contain; cursor:zoom-out; }
+.webcam-paneel:fullscreen .webcam-yt-frame { flex:1; aspect-ratio:auto; min-height:0; }
 @media (max-width: 640px) { .webcam-panelen { left:6px; right:6px; max-width:none; } .webcam-paneel { width:100%; } }
 
 /* 2026-09-09 (avond): NWR-waarnemingen als losse iconen die uit de zenderpin

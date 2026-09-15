@@ -9994,17 +9994,32 @@ let webcamHlsLaden = null; // Promise zolang hls.min.js geladen wordt
 
 function webcamBron(id) { return `/api/webcam/${id}/playlist.m3u8`; }
 
+// 2026-09-15: Strandweer.nu/Port of Rotterdam zenden hun Waterweg- en
+// Maasvlakte-cams niet via een eigen HLS-bron uit, maar als gewone YouTube-
+// livestream. Geen tokenproxy nodig -- gewoon een iframe, alleen laden zolang
+// het venster openstaat (geen YouTube-tracking als je 'm niet aan hebt staan).
+const YT_WEBCAMS = {
+  'waterweg-yt': '_pGIJmXxAHk',
+  maasvlakte: 'M09NaBVPjAI',
+};
+function ytWebcamSrc(id) {
+  return `https://www.youtube.com/embed/${YT_WEBCAMS[id]}?autoplay=1&mute=1&modestbranding=1&rel=0&playsinline=1`;
+}
+
 function webcamVan(id) {
   let w = webcams.get(id);
   if (w) return w;
   const paneel = document.getElementById(`webcamPaneel-${id}`);
   if (!paneel) return null;
+  const isYt = id in YT_WEBCAMS;
   w = {
-    id, open: false, hls: null, herstartTimer: null, paneel,
+    id, open: false, hls: null, herstartTimer: null, paneel, type: isYt ? 'yt' : 'hls',
     video: paneel.querySelector('video'),
+    frame: paneel.querySelector('iframe.webcam-yt-frame'),
     statusEl: paneel.querySelector('.webcam-status'),
     knop: document.querySelector(`.webcam-knop[data-webcam="${id}"]`),
   };
+  w.statusRust = w.statusEl?.textContent ?? ''; // oorspronkelijke ondertitel, terug bij sluiten
   webcams.set(id, w);
   return w;
 }
@@ -10025,6 +10040,10 @@ function laadHlsJs() {
 }
 
 function webcamStop(w) {
+  if (w.type === 'yt') {
+    if (w.frame) w.frame.src = 'about:blank';
+    return;
+  }
   if (w.herstartTimer) { clearTimeout(w.herstartTimer); w.herstartTimer = null; }
   if (w.hls) { try { w.hls.destroy(); } catch { /* al weg */ } w.hls = null; }
   const video = w.video;
@@ -10037,8 +10056,14 @@ function webcamStop(w) {
 }
 
 async function webcamStart(w) {
+  if (!w.open) return;
+  if (w.type === 'yt') {
+    if (w.frame) w.frame.src = ytWebcamSrc(w.id);
+    webcamStatus(w, 'live (YouTube)');
+    return;
+  }
   const video = w.video;
-  if (!video || !w.open) return;
+  if (!video) return;
   webcamStop(w);
   webcamStatus(w, 'verbinden…');
   // Native HLS (Safari/iPadOS): gewoon de bron zetten, geen bibliotheek.
@@ -10094,7 +10119,7 @@ function toggleWebcam(id, force) {
   w.paneel.classList.toggle('verborgen', !w.open);
   w.knop?.classList.toggle('actief', w.open);
   if (w.open) webcamStart(w);
-  else { webcamStop(w); webcamStatus(w, 'Hoek van Holland'); }
+  else { webcamStop(w); webcamStatus(w, w.statusRust); }
 }
 document.querySelectorAll('.webcam-knop').forEach((k) => k.addEventListener('click', () => toggleWebcam(k.dataset.webcam)));
 // 15 sept 2026, op verzoek van Lex ("met een klik fullscreen en met een klik

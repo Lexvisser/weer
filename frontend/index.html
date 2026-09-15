@@ -157,6 +157,24 @@
         </div>
         <video muted playsinline autoplay title="Klik = schermvullend / terug"></video>
       </div>
+      <div class="webcam-paneel verborgen" id="webcamPaneel-waterweg-yt" data-webcam="waterweg-yt">
+        <div class="webcam-paneel-kop">
+          <span>📷 Nieuwe Waterweg</span>
+          <span class="webcam-paneel-sub webcam-status">Strandweer.nu (YouTube)</span>
+          <button type="button" class="webcam-vol" title="Schermvullend (nog een klik of Esc = terug)">⛶</button>
+          <button type="button" class="webcam-sluit" title="Webcam sluiten">✕</button>
+        </div>
+        <iframe class="webcam-yt-frame" allow="autoplay; encrypted-media" allowfullscreen frameborder="0" title="Live Camera Nieuwe Waterweg"></iframe>
+      </div>
+      <div class="webcam-paneel verborgen" id="webcamPaneel-maasvlakte" data-webcam="maasvlakte">
+        <div class="webcam-paneel-kop">
+          <span>📷 Maasvlakte</span>
+          <span class="webcam-paneel-sub webcam-status">Port of Rotterdam (YouTube)</span>
+          <button type="button" class="webcam-vol" title="Schermvullend (nog een klik of Esc = terug)">⛶</button>
+          <button type="button" class="webcam-sluit" title="Webcam sluiten">✕</button>
+        </div>
+        <iframe class="webcam-yt-frame" allow="autoplay; encrypted-media" allowfullscreen frameborder="0" title="Live stream Amazonehaven west"></iframe>
+      </div>
     </div>
     <!-- Gevaren/Weer-schakelaar is op 2026-08-18 weggehaald: die deed toch
          alleen de radar-controls-balk hieronder tonen/verbergen, niet welke
@@ -239,6 +257,8 @@
         <button class="vaar-menu-item webcam-knop" data-webcam="hvh" title="Live webcam Waterweg-ingang (Hoek van Holland) tonen/verbergen">📷 <span class="knop-tekst">Waterweg-ingang</span></button>
         <button class="vaar-menu-item webcam-knop" data-webcam="berghaven" title="Live webcam Berghaven (Hoek van Holland) tonen/verbergen">📷 <span class="knop-tekst">Berghaven</span></button>
         <button class="vaar-menu-item webcam-knop" data-webcam="draaibaar" title="Live webcam Waterweg-draaibaar (Hoek van Holland) tonen/verbergen">📷 <span class="knop-tekst">Waterweg-draaibaar</span></button>
+        <button class="vaar-menu-item webcam-knop" data-webcam="waterweg-yt" title="Live webcam Nieuwe Waterweg (Strandweer.nu, YouTube) tonen/verbergen">📷 <span class="knop-tekst">Waterweg (YT)</span></button>
+        <button class="vaar-menu-item webcam-knop" data-webcam="maasvlakte" title="Live webcam Amazonehaven west / Maasvlakte (Port of Rotterdam, YouTube) tonen/verbergen">📷 <span class="knop-tekst">Maasvlakte</span></button>
         <div class="vaar-menu-scheidslijn"></div>
         <!-- 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
              "Ship Type"-paneel) -- geen apart uitklap-knopje meer nodig zoals
