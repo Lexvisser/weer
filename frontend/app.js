@@ -11992,7 +11992,10 @@ const SKY_RUBRIEKEN = [
   {
     key: 'vanavond',
     label: '✨ Vanavond',
-    match: (s) => s.id.startsWith('moon') || s.id === 'planeten-nu' || (s.id.startsWith('iss-') && Boolean(s.detail?.aanbevolen)),
+    // 2026-09-15 (Lex: "de aanbevolen baan is nu voorbij, maar dan wil ik
+    // eigenlijk gewoon de volgende baan zien"): alle ISS-passages doen mee,
+    // renderSky() kiest daaruit de eerstvolgende die nog niet voorbij is.
+    match: (s) => s.id.startsWith('moon') || s.id === 'planeten-nu' || s.id.startsWith('iss-'),
   },
   { key: 'maan', label: '🌙 Maan', match: (s) => s.id.startsWith('moon') },
   // 2026-08-22, op verzoek van Lex — precies de rubriek die het commentaar
@@ -12345,11 +12348,14 @@ let issWereldkaartIssMarker = null;
 // op het baan-plaatje getekend kan worden (zie passageBaanSvg()).
 let issLiveKaartTraject = null;
 
+// 2026-09-15: niet meer alleen de aanbevolen passage — op de Vanavond-
+// rubriek staat nu telkens de eerstvolgende passage (ook een niet-
+// aanbevolen), en die moet tijdens het overkomen ook de live-stip krijgen.
 function actieveAanbevolenIssPassage() {
   const alleSignalen = laatsteSignalenPerCategorie['hemel'] ?? [];
   const nu = Date.now();
   return alleSignalen.find((s) => {
-    if (!s.id.startsWith('iss-') || !s.detail?.aanbevolen) return false;
+    if (!s.id.startsWith('iss-') || !s.detail?.starttijd) return false;
     const start = new Date(s.detail.starttijd).getTime();
     const eind = new Date(s.detail.eindtijd).getTime();
     return Number.isFinite(start) && Number.isFinite(eind) && nu >= start && nu <= eind;
@@ -12535,7 +12541,7 @@ function issKaartVoorHemel(s) {
   } else {
     const overTekst = overTijdTekst(d.starttijd);
     kaart.innerHTML = `
-      <div class="iss-badge">🌟 Aanbevolen passage</div>
+      <div class="iss-badge">${d.aanbevolen ? '🌟 Aanbevolen passage' : '🛰️ Volgende passage'}</div>
       <div class="t1">ISS-passage om ${tijdstempelTekst(d.starttijd)}${overTekst ? ` (${overTekst})` : ''}</div>
       <div class="t2">max. ${d.maxElevatieGraden}° · ${d.duurMinuten} min · <span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${d.richtingOp16 ?? d.richtingOp}, ${d.traject?.dooftUit ? `dooft uit in ${d.traject.eindeZicht.richting} (${d.traject.eindeZicht.el}°)` : `onder in ${d.richtingOnder16 ?? d.richtingOnder}`}</div>
       ${d.traject?.baan ? `<div class="planeten-kompas-wrap">${passageBaanSvg(d.traject)}</div>${passageBaanLegenda(d.traject)}${passageTabelHtml(d.traject)}` : ''}
@@ -12706,8 +12712,9 @@ function renderSky(signalenPerCategorie) {
     // dan gewoon geen ISS-blok, niet de generieke rij.
     const maan = signalen.find((s) => s.id.startsWith('moon'));
     const planeten = signalen.find((s) => s.id === 'planeten-nu');
+    const nu = Date.now();
     const iss = signalen
-      .filter((s) => s.id.startsWith('iss-'))
+      .filter((s) => s.id.startsWith('iss-') && new Date(s.detail?.eindtijd).getTime() >= nu)
       .sort((a, b) => new Date(a.detail?.starttijd) - new Date(b.detail?.starttijd))[0];
     if (maan) SKY_LIJST_EL.appendChild(maakSkyKaart(maan));
     if (planeten) SKY_LIJST_EL.appendChild(maakSkyKaart(planeten));
