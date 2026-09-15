@@ -354,7 +354,7 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   for (const a of afbeeldingen) {
     if (!a?.png || !a?.cid) continue;
     attachments.push({ filename: a.filename ?? `${a.cid}.png`, content: a.png, cid: a.cid });
-    extraImgs.push(`<img src="cid:${a.cid}" alt="${a.alt ?? ''}" style="max-width:100%;width:375px;border-radius:8px;margin-top:12px;display:block;" />`);
+    extraImgs.push(`<img src="cid:${a.cid}" alt="${a.alt ?? ''}" style="width:100%;max-width:375px;height:auto;border-radius:8px;margin-top:12px;display:block;" />`);
   }
   // 2026-08-28: de mail is nu ALTIJD ook HTML (voorheen alleen met kaartje)
   // zodat de tijdzone-pillen overal zichtbaar zijn; de platte-tekst-variant
