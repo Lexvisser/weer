@@ -36,6 +36,7 @@
 // bij een schip dat van gridcel wisselt) -- per mmsi wordt hieronder alleen
 // de entry met de laatste "date" bewaard.
 
+import { VersieMap } from '../versieMap.js';
 const GFW_REGIO_ID = 'ICCAT'; // Atlantische Oceaan (en aangrenzende zeeën) -- zie toelichting hierboven
 const GFW_REGIO_DATASET = 'public-rfmo';
 const GFW_DATASET = 'public-global-presence:latest';
@@ -103,7 +104,7 @@ function vertaalVaartuig(v) {
 }
 
 export function startVaarradarGfwFeed(env) {
-  const posities = new Map(); // mmsi -> { mmsi, naam, lat, lon, scheepscategorie, tijdMs, gfwDatum, ... }
+  const posities = new VersieMap(); // mmsi -> { mmsi, naam, lat, lon, scheepscategorie, tijdMs, gfwDatum, ... } // 2026-09-15: VersieMap i.p.v. Map, zie versieMap.js (server.js bouwt de samengevoegde set alleen opnieuw als .versie wijzigt)
 
   if (!env.gfwApiToken) {
     console.log('[weer] vaarradarGfw: geen GFW_API_TOKEN ingesteld, laag blijft leeg (zie backend/.env.example).');

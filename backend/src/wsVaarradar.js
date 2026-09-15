@@ -40,6 +40,8 @@ function velden(s, gedetailleerd) {
   return gedetailleerd ? s : beknoptSchip(s);
 }
 
+const STRAAL_MAX_KM = 20000; // harde servergrens; de frontend toont deze stap als "max"
+
 function afstandKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -50,6 +52,10 @@ function afstandKm(lat1, lon1, lat2, lon2) {
 }
 
 function binnenStraal(merged, lat, lon, straalKm) {
+  // 2026-09-15: bij "max" (de servergrens, zie hieronder) valt alles binnen de
+  // straal -- dan is de afstandsberekening per schip (116k haversines per
+  // tick) pure verspilling.
+  if (straalKm >= STRAAL_MAX_KM) return new Map(merged);
   const resultaat = new Map();
   for (const p of merged.values()) {
     if (afstandKm(lat, lon, p.lat, p.lon) <= straalKm) resultaat.set(p.mmsi, p);
@@ -62,6 +68,10 @@ function binnenStraal(merged, lat, lon, straalKm) {
 // "wijziging" ook als er verder niets veranderd is.
 function ongewijzigd(a, b) {
   if (!a || !b) return false;
+  // 2026-09-15: server.js hergebruikt het object van een schip zolang het
+  // inhoudelijk niet wijzigt (zie mergedVaarradarPosities), dus in verreweg
+  // de meeste gevallen is dit dezelfde referentie -- geen JSON nodig.
+  if (a === b) return true;
   const { tijdMs: _tijdA, ...restA } = a;
   const { tijdMs: _tijdB, ...restB } = b;
   return JSON.stringify(restA) === JSON.stringify(restB);
@@ -84,7 +94,7 @@ export function maakVaarradarWs(httpServer, { pad = '/ws/vaarradar', getMerged, 
     const lonRuw = url.searchParams.get('lon');
     const lat = latRuw === null ? NaN : Number(latRuw);
     const lon = lonRuw === null ? NaN : Number(lonRuw);
-    const straal = Math.min(20000, Math.max(1, Number(url.searchParams.get('straal')) || 250));
+    const straal = Math.min(STRAAL_MAX_KM, Math.max(1, Number(url.searchParams.get('straal')) || 250));
     const zoomRuw = url.searchParams.get('zoom');
     const zoom = zoomRuw === null || !Number.isFinite(Number(zoomRuw)) ? ZOOM_DETAIL_OMHOOG : Number(zoomRuw);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {

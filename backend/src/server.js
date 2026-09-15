@@ -887,18 +887,55 @@ export function createApp(env) {
   // reisvoortgang (reisvoortgang.js), zodat een toekomstige WS-frontend
   // (stap 2) hetzelfde kaartje kan tonen als de huidige polling-route al
   // doet. Raakt de bestaande /api/vaarradar-route niet aan.
+  // 2026-09-15, n.a.v. Lex ("scheepsfoto's veel trager sinds er een bron
+  // bij is"): deze functie draait elke seconde in de WS-tick (wsVaarradar.js)
+  // en kopieerde/verrijkte daarbij ALLE ~116.000 posities (GFW 65k + AISHub
+  // 51k + lokaal) opnieuw -- met de GFW-bron erbij (14 sept) werd dat zo
+  // zwaar dat de hele Node-event-loop elke seconde honderden ms stilstond:
+  // live gemeten deed /api/config 300-1100 ms en een WS-verbinding 11 s om
+  // open te gaan. Vandaar ook de trage foto's: /api/scheepsfoto stond gewoon
+  // in de rij achter de tick. Nu: de twee grote, trage bronnen (GFW elke 6 u,
+  // AISHub elke 65 s) worden in een "basis"-Map gecachet die alleen opnieuw
+  // gebouwd wordt als een van beide daadwerkelijk wijzigde (zie versieMap.js);
+  // per tick blijft alleen een Map-kopie van die basis (goedkoop) plus de
+  // ~100 lokale schepen over. Bij een herbouw wordt bovendien het OUDE
+  // object hergebruikt als een schip inhoudelijk niet veranderd is, zodat de
+  // tick met een simpele identiteits-check (vorige === s) kan zien dat er
+  // niets te sturen is, zonder JSON.stringify per schip per seconde.
+  let vaarradarBasis = { sleutel: null, map: new Map() };
+
   function mergedVaarradarPosities() {
-    const merged = new Map();
-    // 14 sept 2026: GFW als LAAGSTE bron -- eerst zetten, zodat een verser
-    // AISHub-/lokaal-signaal voor dezelfde MMSI 'm hieronder overschrijft
-    // (zelfde volgorde als Baken se merged()).
-    for (const p of vaarradarGfwFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'gfw' });
-    for (const p of vaarradarAishubFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'aishub' });
-    for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
     const nuMs = Date.now();
-    for (const s of merged.values()) verrijkMetReisvoortgang(s, nuMs);
-    ruimReisvoortgangOp(nuMs);
+    const sleutel = `${vaarradarGfwFeed.posities.versie ?? -1}|${vaarradarAishubFeed.posities.versie ?? -1}`;
+    if (vaarradarBasis.sleutel !== sleutel) {
+      const oud = vaarradarBasis.map;
+      const basis = new Map();
+      // 14 sept 2026: GFW als LAAGSTE bron -- eerst zetten, zodat een verser
+      // AISHub-/lokaal-signaal voor dezelfde MMSI 'm hieronder overschrijft
+      // (zelfde volgorde als Baken se merged()).
+      for (const p of vaarradarGfwFeed.posities.values()) basis.set(p.mmsi, { ...p, bron: 'gfw' });
+      for (const p of vaarradarAishubFeed.posities.values()) basis.set(p.mmsi, { ...p, bron: 'aishub' });
+      let hergebruikt = 0;
+      for (const [mmsi, s] of basis) {
+        verrijkMetReisvoortgang(s, nuMs);
+        const vorige = oud.get(mmsi);
+        if (vorige && vaarradarOngewijzigd(vorige, s)) { basis.set(mmsi, vorige); hergebruikt += 1; }
+      }
+      ruimReisvoortgangOp(nuMs);
+      vaarradarBasis = { sleutel, map: basis };
+      console.log(`[weer] vaarradar-basis opnieuw gebouwd: ${basis.size} schepen (${hergebruikt} ongewijzigd hergebruikt).`);
+    }
+    const merged = new Map(vaarradarBasis.map);
+    for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, verrijkMetReisvoortgang({ ...p, bron: 'lokaal' }, nuMs));
     return merged;
+  }
+
+  // Zelfde vergelijking als ongewijzigd() in wsVaarradar.js (tijdMs buiten
+  // beschouwing, anders telt elke AISHub-poll als wijziging).
+  function vaarradarOngewijzigd(a, b) {
+    const { tijdMs: _ta, ...restA } = a;
+    const { tijdMs: _tb, ...restB } = b;
+    return JSON.stringify(restA) === JSON.stringify(restB);
   }
 
   // 2026-08-24, op verzoek van Lex ("Kan het zijn dat na elke sync ukho even

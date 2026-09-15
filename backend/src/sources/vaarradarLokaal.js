@@ -37,6 +37,7 @@
 // (nog) niet bekend zijn — hieronder naar null omgezet zoals de rest van de
 // app dat gewend is (zie vaarradar.js).
 
+import { VersieMap } from '../versieMap.js';
 const POLL_MS = 3 * 1000; // 2026-09-01, op verzoek van Lex ("dan zou de boot wat meer bewegen") verlaagd van 10s
 // naar 3s, gelijk aan de frontend-poll (RADAR_POLL_MS in app.js) — voorheen stapelden beide
 // vertragingen op (tot 10s backend + tot 3s frontend = tot 13s voor een verse positie op de
@@ -327,7 +328,7 @@ function vertaalFeature(feature) {
 }
 
 export function startVaarradarLokaalFeed(env) {
-  const posities = new Map(); // mmsi -> { mmsi, naam, lat, lon, koersGraden, snelheidKn, tijdMs }
+  const posities = new VersieMap(); // mmsi -> { mmsi, naam, lat, lon, koersGraden, snelheidKn, tijdMs } // 2026-09-15: VersieMap i.p.v. Map, zie versieMap.js (server.js bouwt de samengevoegde set alleen opnieuw als .versie wijzigt)
 
   if (!env.vaarradarLokaalUrl) {
     console.log('[weer] vaarradarLokaal: geen VAARRADAR_LOKAAL_URL ingesteld, laag blijft leeg (zie backend/.env.example).');

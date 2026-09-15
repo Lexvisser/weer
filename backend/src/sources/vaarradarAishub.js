@@ -46,6 +46,7 @@ import { afstandKm } from '../normalize.js';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { VersieMap } from '../versieMap.js';
 
 // 2026-09-02, op melding van Lex ("na een commit en een sync moet ik telkens
 // wachten op AISHub"): bij elke herstart begon deze feed leeg én pollde hij
@@ -186,7 +187,7 @@ function vertaalVaartuig(v) {
 }
 
 export function startVaarradarAishubFeed(env) {
-  const posities = new Map(); // mmsi -> { mmsi, naam, lat, lon, koersGraden, snelheidKn, scheepscategorie, tijdMs }
+  const posities = new VersieMap(); // mmsi -> { mmsi, naam, lat, lon, koersGraden, snelheidKn, scheepscategorie, tijdMs } // 2026-09-15: VersieMap i.p.v. Map, zie versieMap.js (server.js bouwt de samengevoegde set alleen opnieuw als .versie wijzigt)
 
   if (!env.aishubUsername) {
     console.log('[weer] vaarradarAishub: geen AISHUB_USERNAME ingesteld, laag blijft leeg (zie backend/.env.example).');
