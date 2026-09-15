@@ -1878,6 +1878,10 @@ function ruimKaartVensterOp() {
   // ook het spelerbalkje linksboven.
   nwrPaneelSluit();
   nwrStop();
+  // 2026-09-15: het zoekveld staat niet meer aan de NWR-laag vast (zie
+  // index.html), maar blijft hier WEL tijdelijk verborgen zolang de
+  // halfdoorzichtige NAVTEX-Ontvangst-viewer open is (anders schijnt het
+  // erdoorheen) -- sluitNavtexRuw() zet 'm terug aan.
   KAART_ZOEK_EL?.classList.add('verborgen');
   // Overige plaatjes op de kaart.
   if (navtexDxOpen) zetNavtexDx(false);
@@ -1904,6 +1908,7 @@ function openNavtexRuw(doorAuto) {
 
 function sluitNavtexRuw() {
   NAVTEX_RUW_OVERLAY_EL?.classList.add('verborgen');
+  KAART_ZOEK_EL?.classList.remove('verborgen'); // zie ruimKaartVensterOp()
   navtexRuwGeopendDoorAuto = false;
   stopNavtexRuwStream();
   stopNavtexWaterval();
@@ -8405,7 +8410,9 @@ KAART_ZOEK_EL?.addEventListener('submit', (e) => { e.preventDefault(); kaartZoek
 function toggleNwr() {
   nwrActief = !nwrActief;
   TOGGLE_NWR_EL?.classList.toggle('actief', nwrActief);
-  KAART_ZOEK_EL?.classList.toggle('verborgen', !nwrActief);
+  // 2026-09-15, op verzoek van Lex: het zoekveld niet langer aan de NWR-laag
+  // koppelen -- het blijft nu altijd zichtbaar (ook los van deze laag bruikbaar
+  // om snel naar een plaats te navigeren).
   if (nwrActief) {
     tekenNwr();
     nwrTekstStart(); // 2026-09-09: wat de zender zegt (server-side verstaan)
