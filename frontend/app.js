@@ -11923,10 +11923,17 @@ function planetenLegendaRijen(planeten, legenda) {
     // de eerstvolgende opkomst (0°-horizoncrossing) — dat ligt hooguit een
     // paar minuten vóór het moment dat 'ie ook echt de 5°-drempel passeert,
     // ruim genoeg voor een "wanneer kan ik gaan kijken"-indicatie.
+    // 2026-09-15, op verzoek van Lex ("uit te breiden met tijd op en
+    // onder?"): opIso/onderIso zaten al in de data (planeten.js), nu allebei
+    // in beeld — zichtbaar: erbij wanneer 'ie ondergaat; onzichtbaar: op én
+    // onder, zodat je het hele venster ziet. tijdstempelTekst() zet er zelf
+    // een datum bij als het niet vandaag is.
+    const op = p.opIso ? tijdstempelTekst(p.opIso) : null;
+    const onder = p.onderIso ? tijdstempelTekst(p.onderIso) : null;
     const stand = p.zichtbaarNu
-      ? `${p.elevatieGraden}° boven ${p.richting} · mag. ${p.magnitude}`
-      : p.opIso
-        ? `op om ${tijdstempelTekst(p.opIso)}`
+      ? `${p.elevatieGraden}° boven ${p.richting} · mag. ${p.magnitude}${onder ? ` · onder ${onder}` : ''}`
+      : op
+        ? `op ${op}${onder ? ` · onder ${onder}` : ''}`
         : 'onder de horizon';
     const onzichtbaarKlasse = p.zichtbaarNu ? '' : ' planeet-item--onzichtbaar';
 
