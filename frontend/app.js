@@ -11677,7 +11677,15 @@ function hemelSub(s) {
     return `${d.aantalSatellieten} satellieten · vliegt nu, maar niet hoog genoeg zichtbaar binnenkort`;
   }
   if (s.id.startsWith('iss') || s.id.startsWith('starlink')) {
-    return `<span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${d.richtingOp}, onder in ${d.richtingOnder}`;
+    // 2026-09-15: 16-delige richting als die er is (WZW i.p.v. ZW), en de
+    // begeleidende tekst uit passageTraject.js eronder (zie ook
+    // maakSkyKaart() voor het uitklapbare baan-plaatje).
+    const opIn = d.richtingOp16 ?? d.richtingOp;
+    const onderIn = d.traject?.dooftUit
+      ? `dooft uit in ${d.traject.eindeZicht.richting} (${d.traject.eindeZicht.el}°)`
+      : `onder in ${d.richtingOnder16 ?? d.richtingOnder}`;
+    const tekst = d.beschrijving ? `<div class="passage-beschrijving">${d.beschrijving}</div>` : '';
+    return `<span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${opIn}, ${onderIn}${tekst}`;
   }
   // 2026-08-21: de titel is nu een aftelling ("Nog 61 dagen tot: Orioniden",
   // zie backend/sources/meteors.js), dus de tweede regel vertelt waarnaar je
@@ -12014,6 +12022,234 @@ let uitgeklapteRuimteGroepen = new Set();
 // — die kaart staat al live en heeft een meermaals bijgestelde geschiedenis
 // (zie de comments daar); dit voorkomt elk risico dat een ISS-wijziging de
 // Planeten-kaart per ongeluk raakt.
+// ---- Baan-plaatje van een satellietpassage, 2026-09-15 --------------------
+// Op verzoek van Lex ("een hele mooie grafische weergave (lichte lijnen op
+// een donkere achtergrond) waarin azimuth en elevatie duidelijk worden
+// weergegeven... Azimuth stel ik me een 2d cirkel bij voor met de hoek die
+// ISS maakt. Elevatie: ik sta open voor ideeën"). Gekozen: de klassieke
+// hemelkaart-projectie (zoals Heavens-Above): een cirkel is de horizon met
+// N/O/Z/W aan de rand, het midden is het zenit (recht boven je), en de
+// ringen zijn 30° en 60° hoogte. Eén plaatje toont zo azimut (hoek rond de
+// cirkel) én elevatie (afstand tot het midden) tegelijk. Daaronder een
+// klein zijaanzicht (tijd → hoogte) zodat ook het verloop in de tijd te
+// zien is. Zichtbaar deel = lichte doorgetrokken lijn met gloed; het deel in
+// de aardschaduw of in daglicht = gestippeld en gedimd. Markers op opkomst,
+// hoogste punt en het punt waar hij uitdooft/ondergaat, met kloktijden.
+// Data: detail.traject.baan uit passageTraject.js (backend), rijen van
+// [seconden sinds start, elevatie, azimut, zichtbaar 0/1].
+const BAAN_C = 125;      // middelpunt x van de hemelkaart in het SVG
+const BAAN_CY = 104;     // middelpunt y
+const BAAN_R = 86;       // straal horizon
+const BAAN_PROFIEL_Y0 = 222; // bovenkant zijaanzicht (= 90°)
+const BAAN_PROFIEL_H = 60;   // hoogte zijaanzicht (0..90°)
+const BAAN_PROFIEL_X0 = 40;
+const BAAN_PROFIEL_X1 = 220;
+
+function baanPositie(az, el) {
+  const elGeklemd = Math.max(0, Math.min(90, el));
+  const r = BAAN_R * (1 - elGeklemd / 90);
+  const rad = (az * Math.PI) / 180;
+  return { x: BAAN_C + r * Math.sin(rad), y: BAAN_CY - r * Math.cos(rad) };
+}
+
+function baanKlok(startIso, seconden) {
+  const d = new Date(new Date(startIso).getTime() + seconden * 1000);
+  return d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+// Deelt de puntenlijst op in aaneengesloten stukken met dezelfde
+// zichtbaarheid, zodat elk stuk zijn eigen lijnstijl kan krijgen.
+function baanSegmenten(punten) {
+  const segmenten = [];
+  let huidig = null;
+  punten.forEach((p, i) => {
+    const zichtbaar = p[3] === 1;
+    if (!huidig || huidig.zichtbaar !== zichtbaar) {
+      // Het vorige punt óók meenemen zodat de lijn doorloopt zonder gat.
+      huidig = { zichtbaar, punten: i > 0 ? [punten[i - 1], p] : [p] };
+      segmenten.push(huidig);
+    } else {
+      huidig.punten.push(p);
+    }
+  });
+  return segmenten;
+}
+
+function baanPad(punten, naarXY) {
+  return punten
+    .map((p, i) => {
+      const { x, y } = naarXY(p);
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
+function baanMarker(x, y, tekst, opties = {}) {
+  const { vorm = 'stip', dx = 8, dy = -6, anker = 'start' } = opties;
+  const symbool =
+    vorm === 'kruis'
+      ? `<path d="M${(x - 4).toFixed(1)} ${(y - 4).toFixed(1)} L${(x + 4).toFixed(1)} ${(y + 4).toFixed(1)} M${(x - 4).toFixed(1)} ${(y + 4).toFixed(1)} L${(x + 4).toFixed(1)} ${(y - 4).toFixed(1)}" stroke="#ff9f6e" stroke-width="1.6" stroke-linecap="round"/>`
+      : vorm === 'top'
+        ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4" fill="#0c0f1a" stroke="#ffd75e" stroke-width="1.6"/>`
+        : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#5df7ff"/>`;
+  return `${symbool}<text x="${(x + dx).toFixed(1)}" y="${(y + dy).toFixed(1)}" text-anchor="${anker}" class="baan-label">${tekst}</text>`;
+}
+
+// Kiest per marker een kant voor het tekstlabel die niet buiten de cirkel
+// of over het middelpunt valt: label naar buiten toe (weg van het midden).
+function baanLabelKant(x, y) {
+  const links = x < BAAN_C;
+  const boven = y < BAAN_CY;
+  return { dx: links ? -7 : 7, dy: boven ? -6 : 12, anker: links ? 'end' : 'start' };
+}
+
+function passageBaanSvg(traject, live) {
+  const baan = traject?.baan;
+  if (!Array.isArray(baan) || baan.length < 2) return '';
+  const startIso = traject.start ?? null;
+  const klok = (sec) => (startIso ? baanKlok(startIso, sec) : '');
+
+  const bovenHorizon = baan.filter((p) => p[1] >= 0);
+  const segmenten = baanSegmenten(bovenHorizon);
+  const naarKaart = (p) => baanPositie(p[2], p[1]);
+  const totaalSec = baan[baan.length - 1][0] || 1;
+  const naarProfiel = (p) => ({
+    x: BAAN_PROFIEL_X0 + ((BAAN_PROFIEL_X1 - BAAN_PROFIEL_X0) * p[0]) / totaalSec,
+    y: BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - Math.max(0, Math.min(90, p[1])) / 90),
+  });
+
+  const lijnen = segmenten
+    .map((seg) => {
+      const stijl = seg.zichtbaar
+        ? 'stroke="#eaf6ff" stroke-width="2.2" filter="url(#baanGloed)"'
+        : 'stroke="rgba(234,246,255,0.35)" stroke-width="1.2" stroke-dasharray="2 4"';
+      return `<path d="${baanPad(seg.punten, naarKaart)}" fill="none" stroke-linecap="round" stroke-linejoin="round" ${stijl}/>` +
+        `<path d="${baanPad(seg.punten, naarProfiel)}" fill="none" stroke-linecap="round" stroke-linejoin="round" ${stijl}/>`;
+    })
+    .join('');
+
+  // Markers: eerste zichtbare punt, hoogste punt, laatste zichtbare punt.
+  const zichtbare = bovenHorizon.filter((p) => p[3] === 1);
+  const markers = [];
+  if (zichtbare.length) {
+    const eerste = zichtbare[0];
+    const laatste = zichtbare[zichtbare.length - 1];
+    const top = bovenHorizon.reduce((a, b) => (b[1] > a[1] ? b : a));
+    const m1 = naarKaart(eerste);
+    const k1 = baanLabelKant(m1.x, m1.y);
+    markers.push(baanMarker(m1.x, m1.y, klok(eerste[0]), k1));
+    const mt = naarKaart(top);
+    const kt = baanLabelKant(mt.x, mt.y);
+    markers.push(baanMarker(mt.x, mt.y, `${Math.round(top[1])}° ${klok(top[0])}`, { ...kt, vorm: 'top' }));
+    const m2 = naarKaart(laatste);
+    const k2 = baanLabelKant(m2.x, m2.y);
+    // Als begin- en eindpunt dicht bij elkaar liggen (korte passage die
+    // snel uitdooft), het eindlabel een regel lager zetten i.p.v. eroverheen.
+    if (Math.hypot(m2.x - m1.x, m2.y - m1.y) < 40 && Math.abs(k2.dy - k1.dy) < 1) k2.dy += k2.dy < 0 ? -10 : 10;
+    markers.push(baanMarker(m2.x, m2.y, klok(laatste[0]), { ...k2, vorm: traject.dooftUit ? 'kruis' : 'stip' }));
+    // Zelfde drie in het zijaanzicht (alleen het hoogste punt krijgt tekst,
+    // de tijden staan al op de x-as).
+    const p1 = naarProfiel(eerste);
+    const pt = naarProfiel(top);
+    const p2 = naarProfiel(laatste);
+    markers.push(`<circle cx="${p1.x.toFixed(1)}" cy="${p1.y.toFixed(1)}" r="2.6" fill="#5df7ff"/>`);
+    markers.push(`<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="3" fill="#0c0f1a" stroke="#ffd75e" stroke-width="1.5"/>`);
+    markers.push(
+      traject.dooftUit
+        ? `<path d="M${(p2.x - 3.5).toFixed(1)} ${(p2.y - 3.5).toFixed(1)} L${(p2.x + 3.5).toFixed(1)} ${(p2.y + 3.5).toFixed(1)} M${(p2.x - 3.5).toFixed(1)} ${(p2.y + 3.5).toFixed(1)} L${(p2.x + 3.5).toFixed(1)} ${(p2.y - 3.5).toFixed(1)}" stroke="#ff9f6e" stroke-width="1.5" stroke-linecap="round"/>`
+        : `<circle cx="${p2.x.toFixed(1)}" cy="${p2.y.toFixed(1)}" r="2.6" fill="#5df7ff"/>`
+    );
+  }
+
+  // Richtingspijltje halverwege het zichtbare stuk, zodat je ziet welke kant
+  // hij op vliegt.
+  let pijl = '';
+  if (zichtbare.length > 3) {
+    const i = Math.floor(zichtbare.length / 2);
+    const a = naarKaart(zichtbare[i - 1]);
+    const b = naarKaart(zichtbare[i + 1]);
+    const hoek = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+    const m = naarKaart(zichtbare[i]);
+    pijl = `<path d="M-5 -3.5 L1.5 0 L-5 3.5 Z" fill="#eaf6ff" transform="translate(${m.x.toFixed(1)} ${m.y.toFixed(1)}) rotate(${hoek.toFixed(1)})"/>`;
+  }
+
+  // Live-stip (tijdens een actieve passage) — zelfde cyaan pulserende stip
+  // als issKompasSvg() eerder, nu bovenop de baan.
+  let liveStip = '';
+  if (live && live.elevatieGraden != null && live.elevatieGraden >= 0 && live.azimuthGraden != null) {
+    const { x, y } = baanPositie(live.azimuthGraden, live.elevatieGraden);
+    liveStip = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="#5df7ff" stroke="rgba(10,12,22,0.6)" stroke-width="1.5"><animate attributeName="opacity" values="1;0.55;1" dur="2s" repeatCount="indefinite"/></circle>`;
+  }
+
+  const ring = (el, dash) =>
+    `<circle cx="${BAAN_C}" cy="${BAAN_CY}" r="${(BAAN_R * (1 - el / 90)).toFixed(1)}" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="1" ${dash ? 'stroke-dasharray="2 4"' : ''}/>`;
+  const windroos = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW']
+    .map((naam, i) => {
+      const { x, y } = baanPositie(i * 45, -13);
+      return `<text x="${x.toFixed(1)}" y="${(y + 3.5).toFixed(1)}" text-anchor="middle" class="baan-windroos${i % 2 ? ' baan-windroos--tussen' : ''}">${naam}</text>`;
+    })
+    .join('');
+  const streepjes = Array.from({ length: 16 }, (_, i) => {
+    const a = baanPositie(i * 22.5, 0);
+    const b = baanPositie(i * 22.5, i % 4 === 0 ? -6 : -3);
+    return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`;
+  }).join('');
+
+  const profielAs = `
+    <line x1="${BAAN_PROFIEL_X0}" y1="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H}" x2="${BAAN_PROFIEL_X1}" y2="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+    <line x1="${BAAN_PROFIEL_X0}" y1="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 30 / 90)).toFixed(1)}" x2="${BAAN_PROFIEL_X1}" y2="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 30 / 90)).toFixed(1)}" stroke="rgba(255,255,255,0.09)" stroke-width="1" stroke-dasharray="2 4"/>
+    <line x1="${BAAN_PROFIEL_X0}" y1="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 60 / 90)).toFixed(1)}" x2="${BAAN_PROFIEL_X1}" y2="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 60 / 90)).toFixed(1)}" stroke="rgba(255,255,255,0.09)" stroke-width="1" stroke-dasharray="2 4"/>
+    <text x="${BAAN_PROFIEL_X0 - 4}" y="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H + 3}" text-anchor="end" class="baan-as">0°</text>
+    <text x="${BAAN_PROFIEL_X0 - 4}" y="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 30 / 90) + 3).toFixed(1)}" text-anchor="end" class="baan-as">30°</text>
+    <text x="${BAAN_PROFIEL_X0 - 4}" y="${(BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H * (1 - 60 / 90) + 3).toFixed(1)}" text-anchor="end" class="baan-as">60°</text>
+    <text x="${BAAN_PROFIEL_X0 - 4}" y="${BAAN_PROFIEL_Y0 + 3}" text-anchor="end" class="baan-as">90°</text>
+    <text x="${BAAN_PROFIEL_X0}" y="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H + 13}" text-anchor="start" class="baan-as">${klok(baan[0][0])}</text>
+    <text x="${BAAN_PROFIEL_X1}" y="${BAAN_PROFIEL_Y0 + BAAN_PROFIEL_H + 13}" text-anchor="end" class="baan-as">${klok(baan[baan.length - 1][0])}</text>
+    <text x="${(BAAN_PROFIEL_X0 + BAAN_PROFIEL_X1) / 2}" y="${BAAN_PROFIEL_Y0 - 8}" text-anchor="middle" class="baan-as">hoogte boven de horizon in de tijd</text>`;
+
+  return `<svg class="passage-baan" viewBox="0 0 250 300" aria-hidden="true">
+    <defs>
+      <filter id="baanGloed" filterUnits="userSpaceOnUse" x="0" y="0" width="250" height="300">
+        <feGaussianBlur stdDeviation="1.6" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <radialGradient id="baanHemel" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#151a2e"/>
+        <stop offset="100%" stop-color="#0a0d18"/>
+      </radialGradient>
+    </defs>
+    <circle cx="${BAAN_C}" cy="${BAAN_CY}" r="${BAAN_R}" fill="url(#baanHemel)" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+    ${ring(30, true)}${ring(60, true)}
+    <line x1="${BAAN_C}" y1="${BAAN_CY - BAAN_R}" x2="${BAAN_C}" y2="${BAAN_CY + BAAN_R}" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+    <line x1="${BAAN_C - BAAN_R}" y1="${BAAN_CY}" x2="${BAAN_C + BAAN_R}" y2="${BAAN_CY}" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+    <text x="${BAAN_C + 3}" y="${(BAAN_CY - BAAN_R * (1 - 30 / 90) - 2).toFixed(1)}" class="baan-as">30°</text>
+    <text x="${BAAN_C + 3}" y="${(BAAN_CY - BAAN_R * (1 - 60 / 90) - 2).toFixed(1)}" class="baan-as">60°</text>
+    ${streepjes}${windroos}
+    ${lijnen}${pijl}${markers.join('')}${liveStip}
+    ${profielAs}
+  </svg>`;
+}
+
+// Tabel met de drie sleutelmomenten (ISS Spotter-stijl, op Lex' inspiratie-
+// screenshot van 2026-09-15): tijd op de seconde, azimut + richting, afstand.
+function passageTabelHtml(traject) {
+  if (!traject?.beginZicht || !traject?.max || !traject?.eindeZicht) return '';
+  const klok = (iso) => new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const rij = (label, m, extra = '') =>
+    `<tr><th>${label}</th><td>${klok(m.tijd)}</td><td>${m.az}° (${m.richting})</td><td>${m.el}°</td><td>${m.afstandKm} km</td></tr>`;
+  const eindLabel = traject.dooftUit ? 'In schaduw' : 'Ondergang';
+  return `<table class="passage-tabel">
+    <thead><tr><th></th><th>tijd</th><th>richting</th><th>hoogte</th><th>afstand</th></tr></thead>
+    <tbody>${rij('Zichtbaar vanaf', traject.beginZicht)}${rij('Hoogste punt', traject.max)}${rij(eindLabel, traject.eindeZicht)}</tbody>
+  </table>`;
+}
+
+// Legenda-/uitlegregel onder het plaatje: hoe het te lezen is.
+function passageBaanLegenda(traject) {
+  const dooft = traject?.dooftUit;
+  return `<div class="passage-baan-legenda">rand = horizon · midden = recht boven je · <span class="baan-leg-zicht">━</span> zichtbaar · <span class="baan-leg-schaduw">┅</span> in aardschaduw${dooft ? ' · <span class="baan-leg-kruis">✕</span> dooft uit' : ''}</div>`;
+}
+
 function issKompasSvg(azimuthGraden, elevatieGraden) {
   const zichtbaar = elevatieGraden != null && elevatieGraden >= 0 && azimuthGraden != null;
   let stip = '';
@@ -12051,6 +12287,9 @@ let issLiveVerzoekTeller = 0;
 // voor de opzet/levenscyclus.
 let issWereldkaartInstance = null;
 let issWereldkaartIssMarker = null;
+// 2026-09-15: traject van de actieve aanbevolen passage, zodat de live-stip
+// op het baan-plaatje getekend kan worden (zie passageBaanSvg()).
+let issLiveKaartTraject = null;
 
 function actieveAanbevolenIssPassage() {
   const alleSignalen = laatsteSignalenPerCategorie['hemel'] ?? [];
@@ -12098,7 +12337,9 @@ function werkIssLiveKaartBij() {
   tekstEl.textContent = live.zichtbaarNu ? `Kijk nu ${live.elevatieGraden}° boven ${live.richting}` : 'Nog niet boven de horizon vanaf jouw locatie';
   const subEl = document.getElementById('issLiveSub');
   if (subEl) subEl.textContent = `${live.hoogteKm} km hoog · ${live.afstandTotJouKm} km van jou`;
-  kompasWrap.innerHTML = issKompasSvg(live.azimuthGraden, live.elevatieGraden);
+  kompasWrap.innerHTML = issLiveKaartTraject?.baan
+    ? passageBaanSvg(issLiveKaartTraject, live)
+    : issKompasSvg(live.azimuthGraden, live.elevatieGraden);
 
   // Wereldkaartje (zie zorgIssWereldkaart() hieronder) meebewegen — alleen de
   // ISS-marker verplaatsen, dezelfde "setLatLng i.p.v. opnieuw aanmaken"-
@@ -12232,7 +12473,7 @@ function issKaartVoorHemel(s) {
     const live = issLiveData;
     kaart.innerHTML = `
       <div class="iss-badge">🛰️ Live - ISS-passage bezig</div>
-      <div class="planeten-kompas-wrap" id="issLiveKompasWrap">${issKompasSvg(live?.azimuthGraden, live?.elevatieGraden)}</div>
+      <div class="planeten-kompas-wrap" id="issLiveKompasWrap">${d.traject?.baan ? passageBaanSvg(d.traject, live) : issKompasSvg(live?.azimuthGraden, live?.elevatieGraden)}</div>
       <div class="iss-live-tekst" id="issLiveTekst">${live ? (live.zichtbaarNu ? `Kijk nu ${live.elevatieGraden}° boven ${live.richting}` : 'Nog niet boven de horizon vanaf jouw locatie') : `Kijk laag boven ${d.richtingOp}`}</div>
       <div class="iss-live-sub" id="issLiveSub">${live ? `${live.hoogteKm} km hoog · ${live.afstandTotJouKm} km van jou` : `loopt op tot ${d.maxElevatieGraden}° · nog ${Math.max(0, Math.round((eind - nu) / 60000))} min`}</div>
       <div class="iss-wereldkaart-wrap"><div id="issWereldkaart" class="iss-wereldkaart"></div></div>
@@ -12242,9 +12483,13 @@ function issKaartVoorHemel(s) {
     kaart.innerHTML = `
       <div class="iss-badge">🌟 Aanbevolen passage</div>
       <div class="t1">ISS-passage om ${tijdstempelTekst(d.starttijd)}${overTekst ? ` (${overTekst})` : ''}</div>
-      <div class="t2">max. ${d.maxElevatieGraden}° · ${d.duurMinuten} min · <span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${d.richtingOp}, onder in ${d.richtingOnder}</div>
+      <div class="t2">max. ${d.maxElevatieGraden}° · ${d.duurMinuten} min · <span class="iss-sterren">${sterrenTekst(d.sterren)}</span> · op in ${d.richtingOp16 ?? d.richtingOp}, ${d.traject?.dooftUit ? `dooft uit in ${d.traject.eindeZicht.richting} (${d.traject.eindeZicht.el}°)` : `onder in ${d.richtingOnder16 ?? d.richtingOnder}`}</div>
+      ${d.traject?.baan ? `<div class="planeten-kompas-wrap">${passageBaanSvg(d.traject)}</div>${passageBaanLegenda(d.traject)}${passageTabelHtml(d.traject)}` : ''}
+      ${d.beschrijving ? `<div class="passage-beschrijving passage-beschrijving--kaart">${d.beschrijving}</div>` : ''}
     `;
   }
+  // 2026-09-15: onthouden voor werkIssLiveKaartBij() (live-stip op de baan).
+  issLiveKaartTraject = d.traject ?? null;
   return kaart;
 }
 
@@ -12260,11 +12505,18 @@ function maakSkyKaart(s) {
   }
   const kaart = document.createElement('div');
   kaart.className = 'sky-card';
+  // 2026-09-15: bij ISS-/Starlink-passages die niet DE aanbevolen zijn, het
+  // baan-plaatje (passageBaanSvg) uitklapbaar eronder — standaard dicht,
+  // zodat de lijst compact blijft.
+  const baan = (s.id.startsWith('iss-') || s.id.startsWith('starlink-')) && s.detail?.traject?.baan
+    ? `<details class="passage-baan-details"><summary>Baan tonen</summary>${passageBaanSvg(s.detail.traject)}${passageBaanLegenda(s.detail.traject)}${passageTabelHtml(s.detail.traject)}</details>`
+    : '';
   kaart.innerHTML = `
     <span class="sky-icoon">${hemelIcoon(s.id)}</span>
-    <div>
+    <div class="sky-card-tekst">
       <div class="t1">${s.titel}</div>
       <div class="t2">${hemelSub(s)}</div>
+      ${baan}
     </div>
   `;
   return kaart;

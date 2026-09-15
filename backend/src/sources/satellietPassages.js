@@ -11,6 +11,11 @@ import { makeSignal } from '../normalize.js';
 import { stuurAlarm } from './pushover.js';
 import { stuurMailAlarm } from './email.js';
 import { stuurWebPushAlarm } from './webpush.js';
+// 2026-09-15: eigen doorrekening van het traject (waar verdwijnt hij in de
+// aardschaduw, 16-delige windroos, begeleidende tekst, baan voor de
+// grafische weergave) — zie passageTraject.js. Optioneel: zonder TLE valt
+// alles hieronder gewoon terug op de kale g7vrd-gegevens.
+import { berekenTraject, beschrijfPassage, windrichting16 } from './passageTraject.js';
 
 const WINDRICHTINGEN = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW'];
 
@@ -61,6 +66,11 @@ export async function haalPassagesOp({
   minDuurMinuten = 3,
   nuttigVensterStartUur = 19,
   nuttigVensterEindUur = 23,
+  // { line1, line2 } van de satelliet zelf — maakt traject/beschrijving
+  // mogelijk (zie passageTraject.js). null = alleen g7vrd-gegevens.
+  tle = null,
+  // Helderheidswoord alleen zinnig voor de ISS (Starlink is veel zwakker).
+  metHelderheid = false,
 }) {
   const res = await fetch(
     `https://api.g7vrd.co.uk/v1/satellite-passes/${noradId}/${lat}/${lon}.json?minelevation=${minElevatieGraden}&hours=${lookaheadUren}`
@@ -104,6 +114,28 @@ export async function haalPassagesOp({
     }).format(start);
     const richtingOp = windrichting(p.aos_azimuth);
 
+    // Eigen traject-doorrekening (2026-09-15). Faalt stil: zonder TLE of bij
+    // een SGP4-probleem blijft 'traject' null en toont de frontend alleen de
+    // g7vrd-regel zoals voorheen.
+    let traject = null;
+    if (tle?.line1 && tle?.line2) {
+      try {
+        // Iets ruimer dan g7vrd's AOS/LOS (die zijn op 0° elevatie; een halve
+        // minuut marge vangt kleine verschillen tussen beide berekeningen op).
+        const punten = berekenTraject({
+          line1: tle.line1,
+          line2: tle.line2,
+          lat,
+          lon,
+          start: start.getTime() - 30 * 1000,
+          eind: eind.getTime() + 30 * 1000,
+        });
+        traject = beschrijfPassage(punten, { metHelderheid });
+      } catch (err) {
+        console.error(`[weer] ${idVoorvoegsel}-traject mislukt:`, err.message ?? err);
+      }
+    }
+
     const zonHoogteGraden = zonHoogteOpMoment(lat, lon, tca);
     const sterren = Math.min(hoogteScore(maxElevatie, minElevatieGraden), donkerScore(zonHoogteGraden));
 
@@ -124,6 +156,8 @@ export async function haalPassagesOp({
         richtingOp,
         maxElevatieGraden: maxElevatie,
         duurMinuten,
+        eindtijd: p.end,
+        traject,
       };
     }
 
@@ -140,10 +174,18 @@ export async function haalPassagesOp({
         maxElevatieGraden: maxElevatie,
         richtingOp,
         richtingOnder: windrichting(p.los_azimuth),
+        // 16-delige varianten (2026-09-15): WZW i.p.v. ZW — nauwkeuriger om
+        // de juiste kant op te kijken. De 8-delige velden hierboven blijven
+        // voor bestaande tekst/alarmen.
+        richtingOp16: windrichting16(p.aos_azimuth),
+        richtingOnder16: windrichting16(p.los_azimuth),
         duurMinuten,
         sterren,
         aanbevolen: isAanbevolen,
         bronUrl,
+        // null als er geen TLE was of de doorrekening faalde — zie hierboven.
+        beschrijving: traject?.beschrijving ?? null,
+        traject,
       },
     });
   });
@@ -166,10 +208,26 @@ export function controleerPassageAlarm(aanbevolenPassage, { vooraankondigingSeco
   // venster altijd raakt, ook bij wat drift.
   if (secondenTotStart <= 0 || secondenTotStart > vooraankondigingSeconden + 30) return;
 
-  const { richtingOp, maxElevatieGraden, duurMinuten } = aanbevolenPassage;
+  const { richtingOp, maxElevatieGraden, duurMinuten, starttijd, eindtijd, traject } = aanbevolenPassage;
   const minutenTekst = Math.round(vooraankondigingSeconden / 60);
   const titel = `${titelVoorvoegsel} begint zo`;
-  const bericht = `Kijk over ${minutenTekst} minuten laag boven de horizon in het ${richtingOp} - loopt op tot ${maxElevatieGraden}° (${duurMinuten} min).`;
+  // 2026-09-15, op verzoek van Lex ("Deze info moet ook in de mail... de
+  // tijden moeten ook duidelijk zijn"): niet alleen "over 2 minuten", maar
+  // de kloktijden en de begeleidende tekst uit passageTraject.js erbij.
+  // Zonder traject (geen TLE) blijft de oude ene regel over.
+  const klok = (iso) =>
+    new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }).format(new Date(iso));
+  const regels = [`Kijk over ${minutenTekst} minuten laag boven de horizon in het ${richtingOp} - loopt op tot ${maxElevatieGraden}° (${duurMinuten} min).`];
+  if (traject) {
+    regels.push('');
+    regels.push(`Zichtbaar van ${klok(traject.zichtbaarVan)} tot ${klok(traject.zichtbaarTot)} (${traject.zichtbaarMinuten} min).`);
+    regels.push(`Opkomst ${klok(traject.opkomst.tijd)} in het ${traject.opkomst.richting} · hoogste punt ${klok(traject.max.tijd)} op ${traject.max.el}° (${traject.max.richting}) · ${traject.dooftUit ? `dooft uit ${klok(traject.eindeZicht.tijd)} op ${traject.eindeZicht.el}° (${traject.eindeZicht.richting})` : `ondergang ${klok(traject.ondergang.tijd)} (${traject.ondergang.richting})`}.`);
+    regels.push('');
+    regels.push(traject.beschrijving);
+  } else if (starttijd && eindtijd) {
+    regels.push(`Van ${klok(starttijd)} tot ${klok(eindtijd)}.`);
+  }
+  const bericht = regels.join('\n');
   const alarmId = `${alarmIdVoorvoegsel}-${aanbevolenPassage.starttijd}`;
 
   stuurAlarm({ id: alarmId, titel, bericht });

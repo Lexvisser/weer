@@ -75,9 +75,34 @@ const NUTTIG_VENSTER_EIND_UUR = 23; // exclusief: tot 22:59
 // het resultaat van de gewone (6-uurs) poll.
 let laatsteAanbevolenPassage = null;
 
+// 2026-09-15: de TLE van de ISS zelf, voor de eigen traject-doorrekening in
+// passageTraject.js (waar dooft hij uit, begeleidende tekst, baan-plaatje).
+// Zelfde CelesTrak-bron als starlinkTrain.js. De laatst goede TLE wordt
+// bewaard: een CelesTrak-hik mag de tekst/baan niet ineens laten verdwijnen
+// (een dag oude ISS-TLE is nog ruim nauwkeurig genoeg voor een passage).
+const CELESTRAK_ISS_TLE_URL = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${NORAD_ID_ISS}&FORMAT=TLE`;
+let laatsteIssTle = null;
+
+async function haalIssTleOp() {
+  try {
+    const res = await fetch(CELESTRAK_ISS_TLE_URL);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const regels = (await res.text()).split('\n').map((r) => r.replace(/\r$/, '').trim());
+    const line1 = regels.find((r) => r.startsWith('1 '));
+    const line2 = regels.find((r) => r.startsWith('2 '));
+    if (!line1 || !line2) throw new Error('geen TLE-regels in antwoord');
+    laatsteIssTle = { line1, line2 };
+  } catch (err) {
+    console.error('[weer] ISS-TLE ophalen mislukt (gebruik laatst bekende):', err.message ?? err);
+  }
+  return laatsteIssTle;
+}
+
 export async function fetchCelestrak({ homeLat, homeLon }) {
   const lat = homeLat ?? 52.09;
   const lon = homeLon ?? 5.12;
+
+  const tle = await haalIssTleOp();
 
   const { signalen, aanbevolenPassage } = await haalPassagesOp({
     noradId: NORAD_ID_ISS,
@@ -91,6 +116,8 @@ export async function fetchCelestrak({ homeLat, homeLon }) {
     minDuurMinuten: MIN_DUUR_MINUTEN,
     nuttigVensterStartUur: NUTTIG_VENSTER_START_UUR,
     nuttigVensterEindUur: NUTTIG_VENSTER_EIND_UUR,
+    tle,
+    metHelderheid: true,
   });
   laatsteAanbevolenPassage = aanbevolenPassage;
   return signalen;

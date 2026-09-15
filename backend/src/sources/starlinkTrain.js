@@ -199,6 +199,10 @@ export async function fetchStarlinkTrein({ homeLat, homeLon }) {
     minDuurMinuten: MIN_DUUR_MINUTEN,
     nuttigVensterStartUur: NUTTIG_VENSTER_START_UUR,
     nuttigVensterEindUur: NUTTIG_VENSTER_EIND_UUR,
+    // 2026-09-15: TLE van de representant erbij voor traject/tekst/baan-
+    // plaatje (zie passageTraject.js); geen helderheidswoord (Starlink is
+    // veel zwakker dan de ISS, daar zou de ISS-schatting misleiden).
+    tle: { line1: trein.line1, line2: trein.line2 },
   });
   laatsteAanbevolenPassage = aanbevolenPassage;
 
