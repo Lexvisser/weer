@@ -425,6 +425,104 @@ function ringenAlsLatLon(geometry) {
   return ringen(geometry).map((ring) => ring.map(([lon, lat]) => [lat, lon]));
 }
 
+// 2026-09-15, op melding van Lex ("Tornado Watch geeft geen area"): een
+// watch komt bij NWS zonder eigen polygon binnen (geometry: null) — alleen
+// een lijst county-zones in p.affectedZones (URL's als
+// https://api.weather.gov/zones/county/IAC001). Elke zone heeft bij NWS een
+// vaste omtrek; die halen we hier per zone op en bewaren 'm op schijf
+// (county-grenzen veranderen niet, dus per county maar één keer), en
+// plakken alle county-omtrekken samen als gebiedPolygon. Daarmee tekent de
+// bestaande kaart-/mailcode de watch gewoon als omtrek en krijgt 'ie een
+// pin op het zwaartepunt. Ringen worden uitgedund tot ZONE_MAX_PUNTEN per
+// ring, want een watch kan 30+ county's beslaan en alles gaat naar de
+// frontend/mail mee.
+const ZONES_PAD = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'nws-zones.json');
+const ZONE_MAX_PUNTEN = 120;
+const ZONE_MAX_GELIJKTIJDIG = 6;
+const zoneCache = new Map(); // zone-URL -> ringen ([lat,lon][][]) of [] als NWS geen geometrie gaf
+try {
+  if (existsSync(ZONES_PAD)) {
+    for (const [url, ringenLatLon] of Object.entries(JSON.parse(readFileSync(ZONES_PAD, 'utf-8')))) {
+      if (Array.isArray(ringenLatLon)) zoneCache.set(url, ringenLatLon);
+    }
+    console.log(`[weer] nws: ${zoneCache.size} zone-omtrek(ken) geladen van schijf.`);
+  }
+} catch (err) {
+  console.error('[weer] nws: zone-cache laden mislukt, begin leeg —', err.message ?? err);
+}
+let zoneCacheBewaarTimer = null;
+function bewaarZoneCacheUitgesteld() {
+  if (zoneCacheBewaarTimer) return;
+  zoneCacheBewaarTimer = setTimeout(() => {
+    zoneCacheBewaarTimer = null;
+    try {
+      mkdirSync(dirname(ZONES_PAD), { recursive: true });
+      const tmp = `${ZONES_PAD}.tmp`;
+      writeFileSync(tmp, JSON.stringify(Object.fromEntries(zoneCache)));
+      renameSync(tmp, ZONES_PAD);
+    } catch (err) {
+      console.error('[weer] nws: zone-cache bewaren mislukt —', err.message ?? err);
+    }
+  }, 2000);
+}
+
+function dunRingUit(ring, maxPunten) {
+  if (ring.length <= maxPunten) return ring;
+  const stap = ring.length / maxPunten;
+  const uit = [];
+  for (let i = 0; i < maxPunten; i++) uit.push(ring[Math.floor(i * stap)]);
+  uit.push(ring[ring.length - 1]);
+  return uit;
+}
+
+const zoneVerzoekenOnderweg = new Map(); // zone-URL -> Promise (dedupe bij gelijktijdige alerts op dezelfde county)
+async function haalZoneOmtrekOp(url) {
+  if (zoneCache.has(url)) return zoneCache.get(url);
+  if (zoneVerzoekenOnderweg.has(url)) return zoneVerzoekenOnderweg.get(url);
+  const belofte = (async () => {
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'weer-app-persoonlijk (contact: lokaal project)', Accept: 'application/geo+json' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const body = await res.json();
+      const ringenLatLon = ringenAlsLatLon(body.geometry).map((ring) => dunRingUit(ring, ZONE_MAX_PUNTEN));
+      zoneCache.set(url, ringenLatLon);
+      bewaarZoneCacheUitgesteld();
+      return ringenLatLon;
+    } catch (err) {
+      // Niet cachen: volgende poll probeert 'm gewoon opnieuw.
+      console.error(`[weer] nws: zone-omtrek ${url.split('/').pop()} ophalen mislukt —`, err.message ?? err);
+      return [];
+    } finally {
+      zoneVerzoekenOnderweg.delete(url);
+    }
+  })();
+  zoneVerzoekenOnderweg.set(url, belofte);
+  return belofte;
+}
+
+// Alle county-omtrekken van een alert, met beperkte gelijktijdigheid (niet
+// 30 verzoeken tegelijk op NWS afvuren).
+async function omtrekkenUitZones(zoneUrls) {
+  const urls = (zoneUrls ?? []).filter((u) => typeof u === 'string' && u.startsWith('https://api.weather.gov/zones/'));
+  const resultaat = [];
+  for (let i = 0; i < urls.length; i += ZONE_MAX_GELIJKTIJDIG) {
+    const stuk = await Promise.all(urls.slice(i, i + ZONE_MAX_GELIJKTIJDIG).map(haalZoneOmtrekOp));
+    stuk.forEach((ringenLatLon) => resultaat.push(...ringenLatLon));
+  }
+  return resultaat;
+}
+
+function zwaartepuntVanRingenLatLon(ringenLatLon) {
+  const punten = ringenLatLon.flat();
+  if (!punten.length) return [null, null];
+  const lat = punten.reduce((som, p) => som + p[0], 0) / punten.length;
+  const lon = punten.reduce((som, p) => som + p[1], 0) / punten.length;
+  return [lat, lon];
+}
+
 // 2026-08-19: community-media (zie sources/media.js), op verzoek van Lex
 // ("voor elke categorie akkoord"). NWS-alerts hebben geen eigen naam zoals
 // een orkaan — areaDesc (getroffen county's/staten) is de beste beschikbare
@@ -451,8 +549,14 @@ async function fetchEventType({ event, categorie }) {
   return Promise.all(
     (body.features ?? []).map(async (f) => {
       const p = f.properties;
-      const [lat, lon] = zwaartepunt(f.geometry);
-      const gebiedPolygon = ringenAlsLatLon(f.geometry);
+      let [lat, lon] = zwaartepunt(f.geometry);
+      let gebiedPolygon = ringenAlsLatLon(f.geometry);
+      // Geen eigen polygon (typisch bij een Watch) → county-omtrekken uit
+      // affectedZones, zie omtrekkenUitZones() hierboven.
+      if (!gebiedPolygon.length && Array.isArray(p.affectedZones) && p.affectedZones.length) {
+        gebiedPolygon = await omtrekkenUitZones(p.affectedZones);
+        [lat, lon] = zwaartepuntVanRingenLatLon(gebiedPolygon);
+      }
       const id = `nws-${p.id}`;
 
       const { pds, emergency } = tornadoDreigingsniveau(p, categorie);
