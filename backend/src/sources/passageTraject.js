@@ -22,9 +22,14 @@ import * as satellite from 'satellite.js';
 import * as Astronomy from 'astronomy-engine';
 
 const AARDSTRAAL_KM = 6371;
-// Burgerlijke schemering: zon lager dan -6° is donker genoeg om de ISS te
-// zien (dezelfde grens die Heavens-Above/ISS Spotter in de praktijk hanteren).
-const ZON_DONKER_GRADEN = -6;
+// Schemergrens voor "donker genoeg om de ISS te zien". -6° (burgerlijke
+// schemering) bleek te streng: de passage van 15-09-2026 20:22 (zon ~-4°)
+// viel er helemaal uit terwijl g7vrd 'm wél als zichtbaar geeft — de ISS is
+// bij mag -3 ook in de vroege schemering al te zien. Daarom -3°, en als er
+// dan nóg geen zichtbaar deel is, valt beschrijfPassage() terug op "in
+// zonlicht en boven de horizon" (g7vrd heeft de zichtbaarheid immers al
+// beoordeeld).
+const ZON_DONKER_GRADEN = -3;
 
 const WINDROOS_16 = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW', 'NW', 'NNW'];
 const WINDROOS_16_WOORD = [
@@ -96,8 +101,17 @@ export function berekenTraject({ line1, line2, lat, lon, start, eind, stapSecond
     const az = (satellite.radiansToDegrees(kijk.azimuth) + 360) % 360;
     const zonH = zonHoogte(observer, datum);
     const zonlicht = inZonlicht(pv.position, zonEenheidsVector(datum));
-    const zichtbaar = el > 0 && zonlicht && zonH < ZON_DONKER_GRADEN;
-    punten.push({ t, el, az, afstandKm: kijk.rangeSat, zonlicht, zonHoogte: zonH, zichtbaar });
+    punten.push({ t, el, az, afstandKm: kijk.rangeSat, zonlicht, zonHoogte: zonH, zichtbaar: false });
+  }
+  // Zichtbaar-vlag in twee stappen: eerst met de schemergrens, en als dat
+  // niets oplevert zonder (zie ZON_DONKER_GRADEN hierboven).
+  let aantal = 0;
+  for (const p of punten) {
+    p.zichtbaar = p.el > 0 && p.zonlicht && p.zonHoogte < ZON_DONKER_GRADEN;
+    if (p.zichtbaar) aantal++;
+  }
+  if (aantal === 0) {
+    for (const p of punten) p.zichtbaar = p.el > 0 && p.zonlicht;
   }
   return punten;
 }

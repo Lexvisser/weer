@@ -80,21 +80,44 @@ let laatsteAanbevolenPassage = null;
 // Zelfde CelesTrak-bron als starlinkTrain.js. De laatst goede TLE wordt
 // bewaard: een CelesTrak-hik mag de tekst/baan niet ineens laten verdwijnen
 // (een dag oude ISS-TLE is nog ruim nauwkeurig genoeg voor een passage).
-const CELESTRAK_ISS_TLE_URL = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${NORAD_ID_ISS}&FORMAT=TLE`;
+// Drie bronnen, in volgorde geprobeerd — 2026-09-15 bleek CelesTrak vanaf de
+// Minisforum niet bereikbaar ("fetch failed"), terwijl wheretheiss.at (al in
+// gebruik door issLive.js) daar wél werkt. wheretheiss geeft JSON
+// {line1,line2}, de andere twee platte TLE-tekst.
+const ISS_TLE_BRONNEN = [
+  { naam: 'wheretheiss.at', url: `https://api.wheretheiss.at/v1/satellites/${NORAD_ID_ISS}/tles`, json: true },
+  { naam: 'CelesTrak', url: `https://celestrak.org/NORAD/elements/gp.php?CATNR=${NORAD_ID_ISS}&FORMAT=TLE`, json: false },
+  { naam: 'tle.ivanstanojevic.me', url: `https://tle.ivanstanojevic.me/api/tle/${NORAD_ID_ISS}`, json: true },
+];
 let laatsteIssTle = null;
 
+function tleUitTekst(tekst) {
+  const regels = tekst.split('\n').map((r) => r.replace(/\r$/, '').trim());
+  const line1 = regels.find((r) => r.startsWith('1 '));
+  const line2 = regels.find((r) => r.startsWith('2 '));
+  return line1 && line2 ? { line1, line2 } : null;
+}
+
 async function haalIssTleOp() {
-  try {
-    const res = await fetch(CELESTRAK_ISS_TLE_URL);
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const regels = (await res.text()).split('\n').map((r) => r.replace(/\r$/, '').trim());
-    const line1 = regels.find((r) => r.startsWith('1 '));
-    const line2 = regels.find((r) => r.startsWith('2 '));
-    if (!line1 || !line2) throw new Error('geen TLE-regels in antwoord');
-    laatsteIssTle = { line1, line2 };
-  } catch (err) {
-    console.error('[weer] ISS-TLE ophalen mislukt (gebruik laatst bekende):', err.message ?? err);
+  for (const bron of ISS_TLE_BRONNEN) {
+    try {
+      const res = await fetch(bron.url, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      let tle = null;
+      if (bron.json) {
+        const body = await res.json();
+        tle = body?.line1 && body?.line2 ? { line1: String(body.line1).trim(), line2: String(body.line2).trim() } : null;
+      } else {
+        tle = tleUitTekst(await res.text());
+      }
+      if (!tle || !tle.line1.startsWith('1 ') || !tle.line2.startsWith('2 ')) throw new Error('geen TLE-regels in antwoord');
+      laatsteIssTle = tle;
+      return laatsteIssTle;
+    } catch (err) {
+      console.error(`[weer] ISS-TLE via ${bron.naam} mislukt:`, err.message ?? err);
+    }
   }
+  console.error(`[weer] ISS-TLE: alle bronnen mislukt${laatsteIssTle ? ', gebruik laatst bekende' : ', geen traject/tekst mogelijk'}`);
   return laatsteIssTle;
 }
 
