@@ -114,6 +114,34 @@
          + whisper.cpp): verwachting per tijdvak in °C/km/h en de laatste
          tekst. Open via 📝 op de zenderpin; zie nwrPaneelToon() in app.js. -->
     <div class="nwr-paneel verborgen" id="nwrPaneel"></div>
+    <!-- 15 sept 2026: drie webcam-venstertjes naast elkaar (zie toggleWebcam()
+         in app.js); een <video> krijgt pas een bron als zijn venster opengaat. -->
+    <div class="webcam-panelen" id="webcamPanelen">
+      <div class="webcam-paneel verborgen" id="webcamPaneel-hvh" data-webcam="hvh">
+        <div class="webcam-paneel-kop">
+          <span>📷 Waterweg-ingang</span>
+          <span class="webcam-paneel-sub webcam-status">Hoek van Holland</span>
+          <button type="button" class="webcam-sluit" title="Webcam sluiten">✕</button>
+        </div>
+        <video muted playsinline autoplay></video>
+      </div>
+      <div class="webcam-paneel verborgen" id="webcamPaneel-berghaven" data-webcam="berghaven">
+        <div class="webcam-paneel-kop">
+          <span>📷 Berghaven</span>
+          <span class="webcam-paneel-sub webcam-status">Hoek van Holland</span>
+          <button type="button" class="webcam-sluit" title="Webcam sluiten">✕</button>
+        </div>
+        <video muted playsinline autoplay></video>
+      </div>
+      <div class="webcam-paneel verborgen" id="webcamPaneel-draaibaar" data-webcam="draaibaar">
+        <div class="webcam-paneel-kop">
+          <span>📷 Waterweg-draaibaar</span>
+          <span class="webcam-paneel-sub webcam-status">Hoek van Holland</span>
+          <button type="button" class="webcam-sluit" title="Webcam sluiten">✕</button>
+        </div>
+        <video muted playsinline autoplay></video>
+      </div>
+    </div>
     <!-- Gevaren/Weer-schakelaar is op 2026-08-18 weggehaald: die deed toch
          alleen de radar-controls-balk hieronder tonen/verbergen, niet welke
          gevaren-iconen je zag — dus pure overhead. Radar en Satelliet staan
@@ -188,6 +216,13 @@
              kan niet, MarineTraffic staat geen iframe toe). Zie
              openMarineTraffic() in app.js. -->
         <button id="vaarMarineTrafficKnop" class="vaar-menu-item" title="MarineTraffic openen op dit kaartbeeld (nieuw tabblad)">🌍 <span class="knop-tekst">MarineTraffic</span></button>
+        <!-- 2026-09-15, op verzoek van Lex: live webcam Waterweg-ingang (Hoek van
+             Holland) als los venstertje op de kaart, alleen de feed zonder de
+             site eromheen. Stream loopt via /api/webcam/hvh/ (backend houdt het
+             Wowza-token warm). Zie toggleWebcam() in app.js. -->
+        <button class="vaar-menu-item webcam-knop" data-webcam="hvh" title="Live webcam Waterweg-ingang (Hoek van Holland) tonen/verbergen">📷 <span class="knop-tekst">Waterweg-ingang</span></button>
+        <button class="vaar-menu-item webcam-knop" data-webcam="berghaven" title="Live webcam Berghaven (Hoek van Holland) tonen/verbergen">📷 <span class="knop-tekst">Berghaven</span></button>
+        <button class="vaar-menu-item webcam-knop" data-webcam="draaibaar" title="Live webcam Waterweg-draaibaar (Hoek van Holland) tonen/verbergen">📷 <span class="knop-tekst">Waterweg-draaibaar</span></button>
         <div class="vaar-menu-scheidslijn"></div>
         <!-- 2026-09-02, op verzoek van Lex ("kunnen wij dit?" -- MarineTraffic's
              "Ship Type"-paneel) -- geen apart uitklap-knopje meer nodig zoals

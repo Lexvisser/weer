@@ -42,6 +42,7 @@ import { fetchIemLsr } from './sources/iemLsr.js';
 import { fetchNexradStations } from './sources/nexradStations.js';
 import { fetchP2000, msSindsLaatsteMMTMelding } from './sources/p2000.js';
 import { fetchLifeliner, lifelinerRapportTekst, vluchtlogboekJson } from './sources/lifeliner.js';
+import { startWebcams, stopWebcams, webcamStatus, serveWebcam } from './sources/webcam.js'; // 2026-09-15: webcam Hoek van Holland (HLS-proxy met token-verversing)
 import { fetchGetij } from './sources/getij.js';
 import { fetchNavtex } from './sources/navtex.js';
 import { fetchUkho } from './sources/ukho.js';
@@ -950,6 +951,7 @@ export function createApp(env) {
       for (const p of vaarradarLokaalFeed.posities.values()) merged.set(p.mmsi, { ...p, bron: 'lokaal' });
       return fetchAisNood({ posities: merged.values(), homeLat: env.homeLat, homeLon: env.homeLon, straalKm: env.aisNoodStraalKm }); // 14 sept 2026: straal, zie aisNood.js
     };
+    startWebcams(); // 2026-09-15: webcam-token warm houden, zie sources/webcam.js
     for (const source of SOURCES) {
       if (source.id === 'blitzortung') continue; // streaming, geen timer-polling — zie hieronder
       if (!source.implemented || source.pollIntervalMs == null) continue;
@@ -1054,6 +1056,7 @@ export function createApp(env) {
 
   function stopPolling() {
     timers.forEach(clearInterval);
+    stopWebcams();
     if (stopBlitzortung) stopBlitzortung();
     vaarradarFeed.stop();
     vaarradarLokaalFeed.stop();
@@ -1754,6 +1757,26 @@ export function createApp(env) {
     if (tegelStijlMatch) {
       if (!TEGEL_STIJLEN[tegelStijlMatch[1]]) return sendJson(res, 404, { fout: `onbekende kaartstijl: ${tegelStijlMatch[1]}` });
       return serveTegel(req, res, tegelStijlMatch[2], tegelStijlMatch[3], tegelStijlMatch[4], tegelStijlMatch[1]);
+    }
+    // 2026-09-15: webcam Hoek van Holland -- zie sources/webcam.js. De speler
+    // (hls.js) vraagt playlist/chunklist/segmenten hier op; het Wowza-token
+    // blijft in de backend.
+    if (url === '/api/webcam/status') return sendJson(res, 200, webcamStatus());
+    const webcamMatch = url.match(/^\/api\/webcam\/([a-z0-9]+)\/([^/]+)$/);
+    if (webcamMatch) {
+      return serveWebcam(req, res, webcamMatch[1], decodeURIComponent(webcamMatch[2]));
+    }
+    // hls.js zelf komt uit node_modules (npm-dependency, mee-geïnstalleerd door
+    // syncweer) i.p.v. een CDN -- werkt dan ook zonder internet via Tailscale.
+    if (url === '/vendor/hls.min.js') {
+      try {
+        const data = await readFile(join(__dirname, '..', 'node_modules', 'hls.js', 'dist', 'hls.min.js'));
+        res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'public, max-age=86400' });
+        return res.end(data);
+      } catch (err) {
+        console.error('[weer] hls.min.js niet gevonden (npm install gedraaid?):', err.message ?? err);
+        return res.writeHead(404).end();
+      }
     }
     const regenradarMatch = url.match(/^\/api\/regenradar\/(.+)$/);
     if (regenradarMatch) {

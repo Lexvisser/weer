@@ -12,6 +12,7 @@
   "dependencies": {
     "astronomy-engine": "^2.1.19",
     "cheerio": "^1.1.2",
+    "hls.js": "^1.7.3",
     "nodemailer": "^9.0.5",
     "pngjs": "^7.0.0",
     "satellite.js": "^5.0.0",

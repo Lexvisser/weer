@@ -9864,6 +9864,138 @@ function openMarineTraffic() {
 }
 document.getElementById('vaarMarineTrafficKnop')?.addEventListener('click', openMarineTraffic);
 
+// 2026-09-15, op verzoek van Lex: live webcams van webcam-hoekvanholland.nl
+// als losse venstertjes op de kaart -- alleen de feed, niet de site eromheen.
+// Eerst alleen Waterweg-ingang, in dezelfde sessie ("ja allebei") ook
+// Berghaven en Waterweg-draaibaar, elk met een eigen knop en venster naast
+// elkaar. De streams zijn HLS achter een Wowza-token dat elk half uur
+// verloopt; de backend (sources/webcam.js) houdt die tokens warm en proxyt
+// playlist/chunklist/segmenten op /api/webcam/<id>/…, dus hier is de bron
+// gewoon een vaste, eigen URL. hls.js wordt pas bij de eerste keer openen
+// geladen (niet bij elke app-start), en een stream stopt zodra zijn venster
+// dichtgaat -- geen video op de achtergrond, er wordt maar af en toe kort
+// gekeken. Safari/iPad speelt HLS native, daar is hls.js niet nodig.
+const WEBCAM_HERSTART_MS = 4000; // na een fatale hls.js-fout (bv. token net verlopen) opnieuw proberen
+const webcams = new Map(); // id -> { open, hls, herstartTimer, paneel, video, statusEl, knop }
+let webcamHlsLaden = null; // Promise zolang hls.min.js geladen wordt
+
+function webcamBron(id) { return `/api/webcam/${id}/playlist.m3u8`; }
+
+function webcamVan(id) {
+  let w = webcams.get(id);
+  if (w) return w;
+  const paneel = document.getElementById(`webcamPaneel-${id}`);
+  if (!paneel) return null;
+  w = {
+    id, open: false, hls: null, herstartTimer: null, paneel,
+    video: paneel.querySelector('video'),
+    statusEl: paneel.querySelector('.webcam-status'),
+    knop: document.querySelector(`.webcam-knop[data-webcam="${id}"]`),
+  };
+  webcams.set(id, w);
+  return w;
+}
+
+function webcamStatus(w, tekst) { if (w.statusEl) w.statusEl.textContent = tekst; }
+
+function laadHlsJs() {
+  if (window.Hls) return Promise.resolve();
+  if (webcamHlsLaden) return webcamHlsLaden;
+  webcamHlsLaden = new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = '/vendor/hls.min.js';
+    sc.onload = () => resolve();
+    sc.onerror = () => { webcamHlsLaden = null; reject(new Error('hls.min.js laden mislukt')); };
+    document.head.appendChild(sc);
+  });
+  return webcamHlsLaden;
+}
+
+function webcamStop(w) {
+  if (w.herstartTimer) { clearTimeout(w.herstartTimer); w.herstartTimer = null; }
+  if (w.hls) { try { w.hls.destroy(); } catch { /* al weg */ } w.hls = null; }
+  const video = w.video;
+  if (video) {
+    try { video.pause(); } catch { /* niets te pauzeren */ }
+    video.onplaying = null; video.onerror = null;
+    video.removeAttribute('src');
+    video.load(); // laat de browser de oude buffer/verbinding echt loslaten
+  }
+}
+
+async function webcamStart(w) {
+  const video = w.video;
+  if (!video || !w.open) return;
+  webcamStop(w);
+  webcamStatus(w, 'verbinden…');
+  // Native HLS (Safari/iPadOS): gewoon de bron zetten, geen bibliotheek.
+  if (video.canPlayType('application/vnd.apple.mpegurl') && !window.MediaSource) {
+    video.src = webcamBron(w.id);
+    video.play().catch(() => {});
+    video.onplaying = () => webcamStatus(w, 'live');
+    video.onerror = () => { webcamStatus(w, 'geen beeld, opnieuw proberen…'); webcamHerstartPlan(w); };
+    return;
+  }
+  try {
+    await laadHlsJs();
+  } catch (err) {
+    webcamStatus(w, 'speler laden mislukt');
+    console.error('[weer] webcam:', err.message ?? err);
+    return;
+  }
+  if (!w.open) return; // intussen dichtgeklapt
+  if (!window.Hls?.isSupported()) { webcamStatus(w, 'HLS niet ondersteund in deze browser'); return; }
+  const hls = new Hls({
+    liveSyncDurationCount: 3,
+    maxBufferLength: 20,
+    backBufferLength: 10,
+    manifestLoadingMaxRetry: 2,
+    levelLoadingMaxRetry: 2,
+    fragLoadingMaxRetry: 2,
+  });
+  w.hls = hls;
+  hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
+  hls.on(Hls.Events.FRAG_BUFFERED, () => { if (w.hls === hls) webcamStatus(w, 'live'); });
+  hls.on(Hls.Events.ERROR, (_evt, data) => {
+    if (w.hls !== hls || !data?.fatal) return;
+    // Fatale fout: meestal het Wowza-token dat net verliep (chunklist 403)
+    // of de camera die even offline is. Speler weggooien en opnieuw
+    // beginnen bij playlist.m3u8 -- de backend heeft dan al een vers token.
+    console.warn(`[weer] webcam ${w.id}: fatale hls-fout`, data.type, data.details);
+    webcamStatus(w, 'geen beeld, opnieuw proberen…');
+    webcamHerstartPlan(w);
+  });
+  hls.loadSource(webcamBron(w.id));
+  hls.attachMedia(video);
+}
+
+function webcamHerstartPlan(w) {
+  if (!w.open || w.herstartTimer) return;
+  w.herstartTimer = setTimeout(() => { w.herstartTimer = null; webcamStart(w); }, WEBCAM_HERSTART_MS);
+}
+
+function toggleWebcam(id, force) {
+  const w = webcamVan(id);
+  if (!w) return;
+  w.open = typeof force === 'boolean' ? force : !w.open;
+  w.paneel.classList.toggle('verborgen', !w.open);
+  w.knop?.classList.toggle('actief', w.open);
+  if (w.open) webcamStart(w);
+  else { webcamStop(w); webcamStatus(w, 'Hoek van Holland'); }
+}
+document.querySelectorAll('.webcam-knop').forEach((k) => k.addEventListener('click', () => toggleWebcam(k.dataset.webcam)));
+document.querySelectorAll('.webcam-paneel .webcam-sluit').forEach((k) => k.addEventListener('click', () => toggleWebcam(k.closest('.webcam-paneel').dataset.webcam, false)));
+// Tabblad naar de achtergrond (iPad: app-wissel) -> streams loslaten, en bij
+// terugkomen weer live aanhaken i.p.v. verder te spelen vanaf een oud punt.
+// (Let op bij testen: in een achtergrond-tabblad laadt Chrome sowieso geen
+// video -- dat is geen fout van de speler.)
+document.addEventListener('visibilitychange', () => {
+  for (const w of webcams.values()) {
+    if (!w.open) continue;
+    if (document.hidden) webcamStop(w); else webcamStart(w);
+  }
+});
+
 function toggleVaarradar() {
   vaarradarActief = !vaarradarActief;
   // 2026-09-02-herziening: #vaarMenuHandle is nu ZOWEL de aan/uit-knop als de
