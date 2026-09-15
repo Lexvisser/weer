@@ -2004,6 +2004,13 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
    is standaard grijsblauw (#9199b5, zie .sky-card .t2) — dat zou de sterren
    ook grijs maken. */
 .iss-sterren { font-size: 15px; color: #ffd75e; letter-spacing: 1px; }
+/* 2026-09-15, getij-labels (Lex: "de pijlen eb en vloed veel duidelijker") —
+   zie hemelSub() in app.js. Vet en iets groter dan de .t2-tekst eromheen,
+   hoogwater blauwgroen, laagwater oranje; de tijd zelf licht i.p.v. grijs. */
+.getij-label { font-family:'Inter',sans-serif; font-size: 12px; font-weight: 800; letter-spacing: 0.03em; }
+.getij-hw { color: #5df7ff; }
+.getij-lw { color: #ff9f6e; }
+.getij-tijd { color: #eaf6ff; font-weight: 600; }
 /* ---- Baan-plaatje + begeleidende tekst van een passage, 2026-09-15 -------
    Zie passageBaanSvg()/passageBaanLegenda() en hemelSub() in app.js. Lichte
    lijnen op de donkere kaartachtergrond (Lex' wens); de SVG schaalt mee met

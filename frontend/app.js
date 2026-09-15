@@ -11708,13 +11708,18 @@ function hemelSub(s) {
     // 2026-08-20, op verzoek van Lex: op tijdsvolgorde i.p.v. altijd
     // hoog-dan-laag — laagwater kan best vóór het eerstvolgende hoogwater
     // vallen (en andersom), dat moet dan ook zo in de tekst staan.
+    // 2026-09-15, op verzoek van Lex ("de pijlen eb en vloed veel duidelijker
+    // maken... dit is niet te lezen"): de kale ⬆/⬇-tekens vielen weg in het
+    // kleine grijze monospace van de tweede regel. Nu een gekleurd, vet label
+    // per moment — ▲ HW (blauwgroen) / ▼ LW (oranje) — zie .getij-hw/.getij-lw
+    // in styles.css.
     const momenten = [];
-    if (d.hoogwaterIso) momenten.push({ tijdMs: new Date(d.hoogwaterIso).getTime(), symbool: '⬆', iso: d.hoogwaterIso });
-    if (d.laagwaterIso) momenten.push({ tijdMs: new Date(d.laagwaterIso).getTime(), symbool: '⬇', iso: d.laagwaterIso });
+    if (d.hoogwaterIso) momenten.push({ tijdMs: new Date(d.hoogwaterIso).getTime(), label: '<span class="getij-label getij-hw">▲ HW</span>', iso: d.hoogwaterIso });
+    if (d.laagwaterIso) momenten.push({ tijdMs: new Date(d.laagwaterIso).getTime(), label: '<span class="getij-label getij-lw">▼ LW</span>', iso: d.laagwaterIso });
     momenten.sort((a, b) => a.tijdMs - b.tijdMs);
     const delen = momenten.map((m) => {
       const over = overTijdTekst(m.iso);
-      return `${m.symbool} ${tijdstempelTekst(m.iso)}${over ? ` (${over})` : ''}`;
+      return `${m.label} <span class="getij-tijd">${tijdstempelTekst(m.iso)}</span>${over ? ` (${over})` : ''}`;
     });
     if (d.afstandTotJouKm != null) delen.push(`${d.afstandTotJouKm} km van huis`);
     return delen.join(' · ');
