@@ -925,6 +925,13 @@ function initMap() {
     }
     const s = vaarSchepenData.get(mmsi);
     if (!s) return;
+    // 15 sept 2026: de hover-tooltip die bij het klikken nog onder de cursor
+    // hangt meteen weghalen -- anders blijft 'ie staan tot de volgende
+    // muisbeweging, en dat is precies het moment dat het kaartje eroverheen
+    // opengaat (zie ook de mousemove-handler hierboven).
+    vaarCanvasHoverMmsi = null;
+    vaarCanvasLaag.zetHover(null);
+    vaarCanvasTooltipEl.classList.add('verborgen');
     openVaarCanvasPopup(mmsi, s);
   });
   // 2026-09-14: zelfde hit-test-opzet voor de RWS-boeienlaag (tweede
