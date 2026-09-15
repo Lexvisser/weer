@@ -9984,6 +9984,18 @@ function toggleWebcam(id, force) {
   else { webcamStop(w); webcamStatus(w, 'Hoek van Holland'); }
 }
 document.querySelectorAll('.webcam-knop').forEach((k) => k.addEventListener('click', () => toggleWebcam(k.dataset.webcam)));
+// 15 sept 2026, op verzoek van Lex ("met een klik fullscreen en met een klik
+// weer terug"): klik op het beeld of op ⛶ -> het hele paneel schermvullend
+// (Fullscreen API), nog een klik/⛶/Esc -> terug. iPadOS-Safari kent geen
+// fullscreen op een div, daar de video-eigen fullscreen van Safari.
+function webcamVolledig(id) {
+  const w = webcamVan(id);
+  if (!w) return;
+  if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+  if (w.paneel.requestFullscreen) w.paneel.requestFullscreen().catch(() => {});
+  else if (w.video?.webkitEnterFullscreen) w.video.webkitEnterFullscreen();
+}
+document.querySelectorAll('.webcam-paneel video, .webcam-paneel .webcam-vol').forEach((el) => el.addEventListener('click', () => webcamVolledig(el.closest('.webcam-paneel').dataset.webcam)));
 document.querySelectorAll('.webcam-paneel .webcam-sluit').forEach((k) => k.addEventListener('click', () => toggleWebcam(k.closest('.webcam-paneel').dataset.webcam, false)));
 // Tabblad naar de achtergrond (iPad: app-wissel) -> streams loslaten, en bij
 // terugkomen weer live aanhaken i.p.v. verder te spelen vanaf een oud punt.
