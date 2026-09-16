@@ -13499,7 +13499,9 @@ async function abonneerOpMeldingen() {
     return;
   }
   try {
+    renderMeldingenStatus('[debug] toestemming vragen aan iOS...'); // TIJDELIJK
     const toestemming = await Notification.requestPermission();
+    renderMeldingenStatus(`[debug] toestemming beantwoord: ${toestemming}`); // TIJDELIJK
     if (toestemming !== 'granted') {
       renderMeldingenStatus('Geen toestemming gegeven - je kunt dit later opnieuw proberen via je iOS-instellingen.');
       return;
@@ -13576,6 +13578,12 @@ async function afmeldenVoorMeldingen() {
 // tik te laten vergeten -- vandaar nu de knoptekst zelf (al actueel via
 // verversMeldingenKnop()) synchroon aflezen i.p.v. opnieuw op te vragen.
 MELDINGEN_KNOP_EL?.addEventListener('click', async () => {
+  // TIJDELIJKE DEBUG (2026-09-16, weer weghalen na de diagnose met Lex):
+  // laat in de app zelf zien of de tik wordt opgepikt en wat de browser al
+  // synchroon weet, vóór er ook maar iets async gebeurt.
+  renderMeldingenStatus(
+    `[debug] tik ontvangen — permission=${typeof Notification !== 'undefined' ? Notification.permission : 'geen Notification API'}, standalone=${isPwaGeinstalleerd()}, pushManager=${'PushManager' in window}`
+  );
   const staatAan = MELDINGEN_KNOP_EL.querySelector('span').textContent.includes(': AAN');
   if (staatAan) {
     await afmeldenVoorMeldingen();
