@@ -263,7 +263,7 @@ async function haalPlaatsnaamOp(lat, lon) {
   if (wachtMs > 0) await new Promise((r) => setTimeout(r, wachtMs));
   laatsteNominatimVerzoekMs = Date.now();
 
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=9&accept-language=nl`;
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=nl`;
   const res = await fetch(url, { headers: { 'User-Agent': 'weer-app-persoonlijk (contact: lokaal project)' } });
   if (!res.ok) throw new Error(`Nominatim gaf status ${res.status}`);
   const body = await res.json();
