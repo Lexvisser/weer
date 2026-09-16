@@ -354,7 +354,7 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   for (const a of afbeeldingen) {
     if (!a?.png || !a?.cid) continue;
     attachments.push({ filename: a.filename ?? `${a.cid}.png`, content: a.png, cid: a.cid });
-    extraImgs.push(`<img src="cid:${a.cid}" alt="${a.alt ?? ''}" style="width:100%;max-width:375px;height:auto;border-radius:8px;margin-top:12px;display:block;" />`);
+    extraImgs.push(`<img src="cid:${a.cid}" width="600" alt="${a.alt ?? ''}" style="width:100%;max-width:375px;height:auto;border-radius:8px;margin-top:12px;display:block;" />`);
   }
   // 2026-08-28: de mail is nu ALTIJD ook HTML (voorheen alleen met kaartje)
   // zodat de tijdzone-pillen overal zichtbaar zijn; de platte-tekst-variant
@@ -367,7 +367,13 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   // buitenste div met een vaste marge, en het kaartje met display:block;
   // width:100% zodat het exact binnen diezelfde marge blijft -- zoals de
   // extraImgs (ISS/Starlink-plaatjes) al deden.
-  const html = `<div style="font-family:sans-serif;padding:0 8px;box-sizing:border-box;"><div style="white-space:pre-wrap;">${htmlMetTijdzonePillen(tekst)}</div>${kaartPng ? '<img src="cid:gebiedkaart" alt="Kaart met gebied" style="display:block;width:100%;max-width:100%;height:auto;border-radius:8px;margin-top:12px;" />' : ''}${extraImgs.join('')}</div>`;
+  // 2026-09-16 (later diezelfde dag): bovenstaande marge-fix loste het op in
+  // Gmail, maar niet in Apple Mail (iOS/macOS) -- die behandelt een <img>
+  // met width:100% als een bijna-volledige-breedte-banner en trekt 'm dan
+  // alsnog over de padding heen naar de rand, ongeacht de omliggende div.
+  // Vast HTML-attribuut width=600 (naast de CSS) voorkomt dat gedrag; de
+  // CSS max-width blijft de echte grens op een klein scherm bepalen.
+  const html = `<div style="font-family:sans-serif;padding:0 8px;box-sizing:border-box;"><div style="white-space:pre-wrap;">${htmlMetTijdzonePillen(tekst)}</div>${kaartPng ? '<img src="cid:gebiedkaart" width="600" alt="Kaart met gebied" style="display:block;width:100%;max-width:100%;height:auto;border-radius:8px;margin-top:12px;" />' : ''}${extraImgs.join('')}</div>`;
 
   // 2026-09-15, op verzoek van Lex: bij een reeks heruitgaves van dezelfde
   // dreiging kreeg elke mail exact dezelfde subject (bv. "🌪️ Tornado
