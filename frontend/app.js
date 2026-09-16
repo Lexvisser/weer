@@ -13568,9 +13568,16 @@ async function afmeldenVoorMeldingen() {
 // De knop is nu een echte aan/uit-toggle: staat er al een abonnement, dan
 // zet een tik 'm uit; anders zet 'm aan. verversMeldingenKnop() (hierboven)
 // zorgt dat de knoptekst altijd de eerstvolgende actie beschrijft.
+// 2026-09-16: Notification.requestPermission() moet zo dicht mogelijk op de
+// tik zelf volgen -- Safari/iOS laat 'm anders stil mislukken (geen pop-up,
+// geen foutmelding) zodra er eerst nog een await tussen zit. Bij een verse
+// installatie (nieuwe service worker, moet nog installeren) duurde het
+// eerdere 'await huidigAbonnement()' hier net lang genoeg om iOS de recente
+// tik te laten vergeten -- vandaar nu de knoptekst zelf (al actueel via
+// verversMeldingenKnop()) synchroon aflezen i.p.v. opnieuw op te vragen.
 MELDINGEN_KNOP_EL?.addEventListener('click', async () => {
-  const bestaand = await huidigAbonnement();
-  if (bestaand) {
+  const staatAan = MELDINGEN_KNOP_EL.querySelector('span').textContent.includes(': AAN');
+  if (staatAan) {
     await afmeldenVoorMeldingen();
   } else {
     await abonneerOpMeldingen();
