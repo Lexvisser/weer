@@ -13499,9 +13499,7 @@ async function abonneerOpMeldingen() {
     return;
   }
   try {
-    renderMeldingenStatus('[debug] toestemming vragen aan iOS...'); // TIJDELIJK
     const toestemming = await Notification.requestPermission();
-    renderMeldingenStatus(`[debug] toestemming beantwoord: ${toestemming}`); // TIJDELIJK
     if (toestemming !== 'granted') {
       renderMeldingenStatus('Geen toestemming gegeven - je kunt dit later opnieuw proberen via je iOS-instellingen.');
       return;
@@ -13578,12 +13576,6 @@ async function afmeldenVoorMeldingen() {
 // tik te laten vergeten -- vandaar nu de knoptekst zelf (al actueel via
 // verversMeldingenKnop()) synchroon aflezen i.p.v. opnieuw op te vragen.
 MELDINGEN_KNOP_EL?.addEventListener('click', async () => {
-  // TIJDELIJKE DEBUG (2026-09-16, weer weghalen na de diagnose met Lex):
-  // laat in de app zelf zien of de tik wordt opgepikt en wat de browser al
-  // synchroon weet, vóór er ook maar iets async gebeurt.
-  renderMeldingenStatus(
-    `[debug] tik ontvangen — permission=${typeof Notification !== 'undefined' ? Notification.permission : 'geen Notification API'}, standalone=${isPwaGeinstalleerd()}, pushManager=${'PushManager' in window}`
-  );
   const staatAan = MELDINGEN_KNOP_EL.querySelector('span').textContent.includes(': AAN');
   if (staatAan) {
     await afmeldenVoorMeldingen();
@@ -13807,15 +13799,25 @@ function laadDonder() {
 }
 function laatDonderHoren() {
   ontgrendelAudioContext();
+  // TIJDELIJKE DEBUG (2026-09-16, weer weghalen na de diagnose met Lex):
+  renderMeldingenStatus(`[debug-donder] audioCtx=${audioCtx ? audioCtx.state : 'null (kon niet aanmaken)'}`);
   if (!audioCtx) return;
   laadDonder().then((buf) => {
+    renderMeldingenStatus(
+      `[debug-donder] audioCtx=${audioCtx.state}, buffer=${buf ? `geladen (${buf.duration.toFixed(1)}s)` : 'niet geladen, val terug op synthetisch'}`
+    );
     if (!buf) { laatSynthetischeDonderHoren(); return; }
-    const bron = audioCtx.createBufferSource();
-    bron.buffer = buf;
-    const gain = audioCtx.createGain();
-    gain.gain.value = 1.0; // v8 piekt al op -0,8 dB; meer zou clippen (Web Audio kapt boven 0 dB hard af)
-    bron.connect(gain).connect(audioCtx.destination);
-    bron.start();
+    try {
+      const bron = audioCtx.createBufferSource();
+      bron.buffer = buf;
+      const gain = audioCtx.createGain();
+      gain.gain.value = 1.0; // v8 piekt al op -0,8 dB; meer zou clippen (Web Audio kapt boven 0 dB hard af)
+      bron.connect(gain).connect(audioCtx.destination);
+      bron.start();
+      renderMeldingenStatus(`[debug-donder] bron.start() aangeroepen, audioCtx=${audioCtx.state}`);
+    } catch (err) {
+      renderMeldingenStatus(`[debug-donder] fout bij afspelen: ${err.message}`);
+    }
   });
 }
 // Vangnet zonder opname: donder uit gefilterde ruis (zie toelichting hierboven).
