@@ -13799,25 +13799,15 @@ function laadDonder() {
 }
 function laatDonderHoren() {
   ontgrendelAudioContext();
-  // TIJDELIJKE DEBUG (2026-09-16, weer weghalen na de diagnose met Lex):
-  renderMeldingenStatus(`[debug-donder] audioCtx=${audioCtx ? audioCtx.state : 'null (kon niet aanmaken)'}`);
   if (!audioCtx) return;
   laadDonder().then((buf) => {
-    renderMeldingenStatus(
-      `[debug-donder] audioCtx=${audioCtx.state}, buffer=${buf ? `geladen (${buf.duration.toFixed(1)}s)` : 'niet geladen, val terug op synthetisch'}`
-    );
     if (!buf) { laatSynthetischeDonderHoren(); return; }
-    try {
-      const bron = audioCtx.createBufferSource();
-      bron.buffer = buf;
-      const gain = audioCtx.createGain();
-      gain.gain.value = 1.0; // v8 piekt al op -0,8 dB; meer zou clippen (Web Audio kapt boven 0 dB hard af)
-      bron.connect(gain).connect(audioCtx.destination);
-      bron.start();
-      renderMeldingenStatus(`[debug-donder] bron.start() aangeroepen, audioCtx=${audioCtx.state}`);
-    } catch (err) {
-      renderMeldingenStatus(`[debug-donder] fout bij afspelen: ${err.message}`);
-    }
+    const bron = audioCtx.createBufferSource();
+    bron.buffer = buf;
+    const gain = audioCtx.createGain();
+    gain.gain.value = 1.0; // v8 piekt al op -0,8 dB; meer zou clippen (Web Audio kapt boven 0 dB hard af)
+    bron.connect(gain).connect(audioCtx.destination);
+    bron.start();
   });
 }
 // Vangnet zonder opname: donder uit gefilterde ruis (zie toelichting hierboven).
