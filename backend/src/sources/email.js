@@ -360,7 +360,14 @@ export async function stuurMailAlarm({ id, titel, bericht, url, lat, lon, gebied
   // zodat de tijdzone-pillen overal zichtbaar zijn; de platte-tekst-variant
   // krijgt dezelfde omgerekende tijden tussen haakjes als terugval voor
   // clients zonder HTML.
-  const html = `<div style="font-family:sans-serif;white-space:pre-wrap;">${htmlMetTijdzonePillen(tekst)}</div>${kaartPng ? '<img src="cid:gebiedkaart" alt="Kaart met gebied" style="max-width:100%;border-radius:8px;margin-top:12px;" />' : ''}${extraImgs.join('')}`;
+  // 2026-09-16, op verzoek van Lex ("mail niet netjes uitgelijnd"): tekst en
+  // kaartje deelden geen gezamenlijke marge -- de tekst-div had geen eigen
+  // padding (die kwam van de mailclient), maar de losse <img> ernaast liep
+  // met max-width:100% tot de randen van het scherm door. Nu alles in één
+  // buitenste div met een vaste marge, en het kaartje met display:block;
+  // width:100% zodat het exact binnen diezelfde marge blijft -- zoals de
+  // extraImgs (ISS/Starlink-plaatjes) al deden.
+  const html = `<div style="font-family:sans-serif;padding:0 8px;box-sizing:border-box;"><div style="white-space:pre-wrap;">${htmlMetTijdzonePillen(tekst)}</div>${kaartPng ? '<img src="cid:gebiedkaart" alt="Kaart met gebied" style="display:block;width:100%;max-width:100%;height:auto;border-radius:8px;margin-top:12px;" />' : ''}${extraImgs.join('')}</div>`;
 
   // 2026-09-15, op verzoek van Lex: bij een reeks heruitgaves van dezelfde
   // dreiging kreeg elke mail exact dezelfde subject (bv. "🌪️ Tornado
