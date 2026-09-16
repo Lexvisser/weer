@@ -490,6 +490,7 @@ async function serveTegel(req, res, z, x, y, bron = 'osm') {
   if (bestaand && nu - bestaand.tijdMs < TEGEL_CACHE_MS) {
     noteerTegelStat(sleutel, nu, 'geheugen', 200);
     res.writeHead(200, {
+      'Access-Control-Allow-Origin': '*', // 2026-09-16: nodig zodat een losse pagina buiten de app-origin (bijv. de bol-test) tegels via fetch() mag lezen — Leaflet's <img>-tags hadden dit nooit nodig
       'Content-Type': bestaand.contentType,
       'Content-Length': bestaand.buffer.length,
       'Cache-Control': 'public, max-age=86400',
@@ -520,6 +521,7 @@ async function serveTegel(req, res, z, x, y, bron = 'osm') {
   tegelCache.set(sleutel, { buffer: resultaat.buffer, contentType: resultaat.contentType, tijdMs: nu });
 
   res.writeHead(200, {
+    'Access-Control-Allow-Origin': '*', // 2026-09-16: nodig zodat een losse pagina buiten de app-origin (bijv. de bol-test) tegels via fetch() mag lezen — Leaflet's <img>-tags hadden dit nooit nodig
     'Content-Type': resultaat.contentType,
     'Content-Length': resultaat.buffer.length,
     // 2026-08-19: was 'immutable, max-age=604800' (een week) — bleek een
@@ -624,6 +626,7 @@ async function serveRegenradar(req, res, pad) {
   const bestaand = regenradarCache.get(pad);
   if (bestaand && nu - bestaand.tijdMs < REGENRADAR_CACHE_MS) {
     res.writeHead(200, {
+      'Access-Control-Allow-Origin': '*', // 2026-09-16: nodig zodat een losse pagina buiten de app-origin (bijv. de bol-test) tegels via fetch() mag lezen — Leaflet's <img>-tags hadden dit nooit nodig
       'Content-Type': bestaand.contentType,
       'Content-Length': bestaand.buffer.length,
       'Cache-Control': 'public, max-age=3600',
@@ -650,6 +653,7 @@ async function serveRegenradar(req, res, pad) {
   regenradarCache.set(pad, { buffer: resultaat.buffer, contentType: resultaat.contentType, tijdMs: nu });
 
   res.writeHead(200, {
+    'Access-Control-Allow-Origin': '*', // 2026-09-16: nodig zodat een losse pagina buiten de app-origin (bijv. de bol-test) tegels via fetch() mag lezen — Leaflet's <img>-tags hadden dit nooit nodig
     'Content-Type': resultaat.contentType,
     'Content-Length': resultaat.buffer.length,
     'Cache-Control': 'public, max-age=3600',
