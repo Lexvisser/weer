@@ -5041,7 +5041,7 @@ let zeeGebiedenLaag = null;
 // het overzicht en hebben op havenniveau geen functie, maar lopen daar wel
 // dwars over land. Boven deze zoom dus weg; zodra je uitzoomt naar de
 // Noordzee staan ze er weer. Zie zetZeeGebiedenZichtbaar().
-const ZEE_GEBIED_MAX_ZOOM = 10;
+const ZEE_GEBIED_MAX_ZOOM = 12; // 2026-09-17, tweede ronde: 10 -> 12, op verzoek van Lex ("mag nog later intreden")
 let zeeModusActief = false;
 
 // 2026-08-20, op verzoek van Lex ("de gebieden krijgen ook altijd nog een
