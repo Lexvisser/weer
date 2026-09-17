@@ -12176,6 +12176,51 @@ function baanLabelKant(x, y) {
   return { dx: links ? -7 : 7, dy: boven ? -6 : 12, anker: links ? 'end' : 'start' };
 }
 
+// 2026-09-17 (Lex: "kan die bal ook klimmen" + "de blauwe bal ook echt laten
+// uitdoven op het moment dat dat gebeurt... dramatisch, knipperend naar
+// grijs"): waar zit de ISS NU op de voorberekende baan, en hangt hij daar in
+// het zonlicht of in de aardschaduw? secTotSchaduw = seconden tot (positief)
+// of sinds (negatief) het moment dat hij de schaduw in gaat; null als hij
+// deze passage niet uitdooft. Het overgangsmoment ligt halverwege het laatste
+// verlichte en het eerste donkere baanpunt (baan heeft 10s-stappen).
+const ISS_DOOF_VOORAF_SEC = 8; // ruim één poll (6s) vooruit de animatie klaarzetten
+const ISS_DOOF_DUUR_SEC = 10; // lengte van het knipperen, zie .iss-stip--dooft in styles.css
+function baanZonStatus(traject, nuMs = Date.now()) {
+  const baan = traject?.baan;
+  const startMs = new Date(traject?.start).getTime();
+  if (!Array.isArray(baan) || baan.length < 2 || !Number.isFinite(startMs)) return null;
+  const nuSec = (nuMs - startMs) / 1000;
+  const totaalSec = baan[baan.length - 1][0] || 1;
+  let schaduwSec = null;
+  for (let i = 1; i < baan.length; i += 1) {
+    if (baan[i - 1][3] === 1 && baan[i][3] === 0 && baan[i][1] >= 0) schaduwSec = (baan[i - 1][0] + baan[i][0]) / 2;
+  }
+  let dichtstbij = baan[0];
+  for (const p of baan) if (Math.abs(p[0] - nuSec) < Math.abs(dichtstbij[0] - nuSec)) dichtstbij = p;
+  const secTotSchaduw = schaduwSec == null ? null : schaduwSec - nuSec;
+  // Rond de overgang telt het berekende moment zelf (nauwkeuriger dan het
+  // dichtstbijzijnde 10s-punt); daarbuiten de vlag van het baanpunt.
+  const inSchaduw = secTotSchaduw != null && Math.abs(secTotSchaduw) < 10 ? secTotSchaduw <= 0 : dichtstbij[3] === 0;
+  return { nuSec, totaalSec, inSchaduw, secTotSchaduw, binnenBaan: nuSec >= 0 && nuSec <= totaalSec };
+}
+
+// Eén live-stip (hemelkaart of hoogtecurve). Drie standen: helder pulserend
+// (in zonlicht), knipperend uitdovend (rond het schaduwmoment — CSS-animatie
+// met een (negatieve) delay, zodat hij bij elke 6s-hertekening naadloos
+// doorloopt en precies op het berekende moment begint), of dof grijs ringetje.
+function issLiveStipSvg(x, y, status, r = 7) {
+  const cx = x.toFixed(1);
+  const cy = y.toFixed(1);
+  const dt = status?.secTotSchaduw;
+  if (dt != null && dt <= ISS_DOOF_VOORAF_SEC && dt > -ISS_DOOF_DUUR_SEC) {
+    return `<circle class="iss-stip iss-stip--dooft" style="animation-delay:${dt.toFixed(1)}s" cx="${cx}" cy="${cy}" r="${r}" stroke-width="1.5"/>`;
+  }
+  if (status?.inSchaduw) {
+    return `<circle class="iss-stip iss-stip--schaduw" cx="${cx}" cy="${cy}" r="${(r * 0.55).toFixed(1)}" fill="rgba(125,131,153,0.25)" stroke="#7d8399" stroke-width="1.2"/>`;
+  }
+  return `<circle class="iss-stip" cx="${cx}" cy="${cy}" r="${r}" fill="#5df7ff" stroke="rgba(10,12,22,0.6)" stroke-width="1.5"><animate attributeName="opacity" values="1;0.55;1" dur="2s" repeatCount="indefinite"/></circle>`;
+}
+
 function passageBaanSvg(traject, live) {
   const baan = traject?.baan;
   if (!Array.isArray(baan) || baan.length < 2) return '';
@@ -12255,7 +12300,14 @@ function passageBaanSvg(traject, live) {
   let liveStip = '';
   if (live && live.elevatieGraden != null && live.elevatieGraden >= 0 && live.azimuthGraden != null) {
     const { x, y } = baanPositie(live.azimuthGraden, live.elevatieGraden);
-    liveStip = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="#5df7ff" stroke="rgba(10,12,22,0.6)" stroke-width="1.5"><animate attributeName="opacity" values="1;0.55;1" dur="2s" repeatCount="indefinite"/></circle>`;
+    // 2026-09-17: uitdoven in de aardschaduw + tweede stip die op de
+    // hoogtecurve meeklimt (zie baanZonStatus()/issLiveStipSvg() hierboven).
+    const status = baanZonStatus(traject);
+    liveStip = issLiveStipSvg(x, y, status);
+    if (status?.binnenBaan) {
+      const pp = naarProfiel([status.nuSec, live.elevatieGraden]);
+      liveStip += issLiveStipSvg(pp.x, pp.y, status, 4.5);
+    }
   }
 
   const ring = (el, dash) =>
@@ -12409,6 +12461,14 @@ async function tikIssLive() {
   }
 }
 
+// 2026-09-17: in de aardschaduw is "Kijk nu ..." misleidend — hij staat
+// dan wel boven de horizon maar is niet meer te zien.
+function issLiveTekstVoor(live, traject) {
+  if (!live.zichtbaarNu) return 'Nog niet boven de horizon vanaf jouw locatie';
+  if (baanZonStatus(traject)?.inSchaduw) return `In de aardschaduw, niet te zien (${live.elevatieGraden}° boven ${live.richting})`;
+  return `Kijk nu ${live.elevatieGraden}° boven ${live.richting}`;
+}
+
 // Werkt de al gerenderde kompas/tekst rechtstreeks bij i.p.v. de hele
 // Hemel-lijst opnieuw te renderen (dat zou scrollpositie/opengeklapte
 // subgroepen kunnen verstoren voor iets dat alleen deze ene kaart raakt).
@@ -12420,7 +12480,7 @@ function werkIssLiveKaartBij() {
   const kompasWrap = document.getElementById('issLiveKompasWrap');
   const live = issLiveData;
   if (!tekstEl || !kompasWrap || !live) return;
-  tekstEl.textContent = live.zichtbaarNu ? `Kijk nu ${live.elevatieGraden}° boven ${live.richting}` : 'Nog niet boven de horizon vanaf jouw locatie';
+  tekstEl.textContent = issLiveTekstVoor(live, issLiveKaartTraject);
   const subEl = document.getElementById('issLiveSub');
   if (subEl) subEl.textContent = `${live.hoogteKm} km hoog · ${live.afstandTotJouKm} km van jou`;
   kompasWrap.innerHTML = issLiveKaartTraject?.baan
@@ -12560,7 +12620,7 @@ function issKaartVoorHemel(s) {
     kaart.innerHTML = `
       <div class="iss-badge">🛰️ Live - ISS-passage bezig</div>
       <div class="planeten-kompas-wrap" id="issLiveKompasWrap">${d.traject?.baan ? passageBaanSvg(d.traject, live) : issKompasSvg(live?.azimuthGraden, live?.elevatieGraden)}</div>
-      <div class="iss-live-tekst" id="issLiveTekst">${live ? (live.zichtbaarNu ? `Kijk nu ${live.elevatieGraden}° boven ${live.richting}` : 'Nog niet boven de horizon vanaf jouw locatie') : `Kijk laag boven ${d.richtingOp}`}</div>
+      <div class="iss-live-tekst" id="issLiveTekst">${live ? issLiveTekstVoor(live, d.traject) : `Kijk laag boven ${d.richtingOp}`}</div>
       <div class="iss-live-sub" id="issLiveSub">${live ? `${live.hoogteKm} km hoog · ${live.afstandTotJouKm} km van jou` : `loopt op tot ${d.maxElevatieGraden}° · nog ${Math.max(0, Math.round((eind - nu) / 60000))} min`}</div>
       <div class="iss-wereldkaart-wrap"><div id="issWereldkaart" class="iss-wereldkaart"></div></div>
     `;

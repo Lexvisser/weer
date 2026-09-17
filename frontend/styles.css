@@ -2036,6 +2036,29 @@ details.popup-groep[open] > summary.popup-groep-kop::before { content:'▾ '; }
 .baan-windroos { font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; fill:#39ff88; }
 .baan-windroos--tussen { font-size:8px; font-weight:400; fill:rgba(57,255,136,0.6); }
 .baan-as--top { fill:#ffd75e; }
+/* 2026-09-17 (Lex: "de overgang dramatisch maken, knipperend naar grijs"):
+   live ISS-stip die de aardschaduw in gaat. 10s (= ISS_DOOF_DUUR_SEC in
+   app.js): eerst hard knipperen in blauw, dan haperend naar grijs en klein.
+   animation-delay komt inline uit app.js (negatief = al bezig), fill-mode
+   both houdt 'm ervoor helder en erna grijs. */
+.iss-stip { transform-box: fill-box; transform-origin: center; }
+.iss-stip--dooft { fill:#5df7ff; stroke:rgba(10,12,22,0.6); animation: issStipDooft 10s linear both; }
+@keyframes issStipDooft {
+  0%   { fill:#5df7ff; opacity:1;    transform:scale(1); }
+  6%   { fill:#ffffff; opacity:1;    transform:scale(1.5); }
+  10%  { fill:#5df7ff; opacity:0.1;  transform:scale(1); }
+  16%  { fill:#5df7ff; opacity:1;    transform:scale(1.25); }
+  22%  { fill:#5df7ff; opacity:0.1;  transform:scale(1); }
+  28%  { fill:#5df7ff; opacity:1;    transform:scale(1.15); }
+  34%  { fill:#4fb9c9; opacity:0.1;  transform:scale(1); }
+  42%  { fill:#4fb9c9; opacity:0.9;  transform:scale(1); }
+  50%  { fill:#6f93a6; opacity:0.1;  transform:scale(0.9); }
+  60%  { fill:#6f93a6; opacity:0.75; transform:scale(0.85); }
+  70%  { fill:#7d8399; opacity:0.15; transform:scale(0.75); }
+  82%  { fill:#7d8399; opacity:0.6;  transform:scale(0.65); }
+  100% { fill:#7d8399; opacity:0.45; transform:scale(0.55); }
+}
+@media (prefers-reduced-motion: reduce) { .iss-stip--dooft { animation-duration: 0.01s; } }
 .baan-as { font-family:'JetBrains Mono',monospace; font-size:7.5px; fill:#7d8399; }
 .passage-baan-legenda { font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#7d8399; text-align:center; margin-top:2px; }
 .baan-leg-zicht { color:#eaf6ff; }
