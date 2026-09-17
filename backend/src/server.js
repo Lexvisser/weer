@@ -3,6 +3,7 @@
 // gewoon "node src/index.js". Scheelt gedoe voor een klein persoonlijk project.
 import { createServer } from 'node:http';
 import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
+import { kleurTegelMarine } from './tegelKleur.js'; // 2026-09-17: server-zijdige MarineTraffic-kleuring, zie dat bestand
 import { join, extname, dirname } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -433,16 +434,16 @@ function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
     // Stadia vereist geen API-key wanneer alsnog niet ingesteld (bv. tijdens
     // ontwikkelen zonder .env) — dan meteen een nette fout i.p.v. een kale
     // 401/403 van upstream door te geven.
-    if (bron === 'stadia' && !tegelStadiaApiKey()) {
+    if ((bron === 'stadia' || bron === 'marine') && !tegelStadiaApiKey()) {
       return { status: 501, bron: 'geen-stadia-key' };
     }
 
     try {
       // Alle bronnen gebruiken de gebruikelijke XYZ-volgorde (z/x/y).
-      const basisUrl = bron === 'diepte' ? TEGEL_DIEPTE_BASIS_URL : bron === 'stadia' ? TEGEL_STADIA_BASIS_URL : TEGEL_BASIS_URL;
+      const basisUrl = bron === 'diepte' ? TEGEL_DIEPTE_BASIS_URL : (bron === 'stadia' || bron === 'marine') ? TEGEL_STADIA_BASIS_URL : TEGEL_BASIS_URL;
       const upstreamUrl = TEGEL_STIJLEN[bron]
         ? tegelStijlUrl(bron, zNum, xNum, yNum) // 2026-09-03: extra kaartstijlen, zie TEGEL_STIJLEN
-        : bron === 'stadia'
+        : (bron === 'stadia' || bron === 'marine')
           ? `${basisUrl}/${zNum}/${xNum}/${yNum}.png?api_key=${tegelStadiaApiKey()}`
           : `${basisUrl}/${zNum}/${xNum}/${yNum}.png`;
       const upstream = await fetch(upstreamUrl, {
@@ -453,8 +454,21 @@ function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
         tegelFoutCache.set(sleutel, { status: upstream.status, tijdMs: Date.now() });
         return { status: upstream.status, bron: 'upstream-fout' };
       }
-      const buffer = Buffer.from(await upstream.arrayBuffer());
+      let buffer = Buffer.from(await upstream.arrayBuffer());
       const contentType = upstream.headers.get('content-type') ?? 'image/png';
+
+      // 2026-09-17: 'marine' is de donkere Stadia-tegel met de blauwgrijze
+      // MarineTraffic-kleuring erop (zie tegelKleur.js). Bewust HIER, vóór het
+      // cachen: de omgekleurde tegel gaat de geheugen- én schijfcache in, dus
+      // het rekenwerk gebeurt per tegel maar één keer. Mislukt het omkleuren
+      // (rare PNG), dan liever de ongekleurde tegel dan helemaal geen kaart.
+      if (bron === 'marine') {
+        try {
+          buffer = kleurTegelMarine(buffer);
+        } catch (err) {
+          console.error('[weer] tegel omkleuren (marine) mislukt, ongekleurd doorgegeven:', err.message ?? err);
+        }
+      }
 
       // Fire-and-forget naar schijf — een schrijffout (schijf vol, rechten)
       // mag het serveren zelf nooit ophouden of laten falen.
@@ -478,7 +492,7 @@ async function serveTegel(req, res, z, x, y, bron = 'osm') {
   const zNum = Number(z);
   const xNum = Number(x);
   const yNum = Number(y);
-  const maxZ = TEGEL_STIJLEN[bron] ? TEGEL_STIJLEN[bron].maxZ : bron === 'diepte' ? TEGEL_DIEPTE_MAX_Z : bron === 'stadia' ? TEGEL_STADIA_MAX_Z : TEGEL_MAX_Z;
+  const maxZ = TEGEL_STIJLEN[bron] ? TEGEL_STIJLEN[bron].maxZ : bron === 'diepte' ? TEGEL_DIEPTE_MAX_Z : (bron === 'stadia' || bron === 'marine') ? TEGEL_STADIA_MAX_Z : TEGEL_MAX_Z;
   if (!Number.isInteger(zNum) || !Number.isInteger(xNum) || !Number.isInteger(yNum) || zNum < 0 || zNum > maxZ) {
     res.writeHead(400).end('Ongeldige tegel-coördinaten');
     return;
@@ -1810,6 +1824,14 @@ export function createApp(env) {
     const tegelDonkerMatch = url.match(/^\/api\/tegel-donker\/(\d+)\/(\d+)\/(\d+)\.png$/);
     if (tegelDonkerMatch) {
       return serveTegel(req, res, tegelDonkerMatch[1], tegelDonkerMatch[2], tegelDonkerMatch[3], 'stadia');
+    }
+    // 2026-09-17: dezelfde Stadia-tegel, maar server-zijdig omgekleurd naar het
+    // blauwgrijs van MarineTraffic (zie tegelKleur.js) -- de tegenhanger van het
+    // CSS-filter dat de app in Zee+Vaart-modus over de tegels legt, maar dan
+    // bruikbaar in een WebGL-kaart en zonder de schepen mee te kleuren.
+    const tegelMarineMatch = url.match(/^\/api\/tegel-marine\/(\d+)\/(\d+)\/(\d+)\.png$/);
+    if (tegelMarineMatch) {
+      return serveTegel(req, res, tegelMarineMatch[1], tegelMarineMatch[2], tegelMarineMatch[3], 'marine');
     }
     // 2026-09-03: kaartstijl-keuze (wisselknop in de app), zie TEGEL_STIJLEN.
     const tegelStijlMatch = url.match(/^\/api\/tegel-stijl\/([a-z-]+)\/(\d+)\/(\d+)\/(\d+)\.png$/);
