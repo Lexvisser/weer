@@ -303,6 +303,12 @@ const TEGEL_STIJLEN = {
   'esri-satelliet': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZ: 19 },
   'esri-ocean': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', maxZ: 13 },
   'esri-topo': { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxZ: 19 },
+  // 2026-09-17: de OpenSeaMap-zeekaartlaag (vaarwegmarkeringen/seamarks) liep
+  // tot nu toe rechtstreeks vanuit de frontend (L.tileLayer in toggleZeeModus).
+  // Hier erbij zodat hij dezelfde proxy krijgt als de rest: CORS-header (een
+  // WebGL-kaart moet tegels cross-origin kunnen LEZEN, een <img> in Leaflet
+  // niet) plus de geheugen- en schijfcache. Transparante overlay-tegels.
+  seamark: { url: 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', maxZ: 18 },
 };
 function tegelStijlUrl(stijl, z, x, y) {
   const def = TEGEL_STIJLEN[stijl];
