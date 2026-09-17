@@ -531,6 +531,12 @@ let donkereKaartLaag = null;
 let signaalLaag = null;
 let flitsenLaag = null; // losse laag voor individuele bliksemflitsen van een aangetikt onweercomplex
 let geselecteerdComplexId = null; // welk onweercomplex de flitsenlaag nu volgt, voor live meeverversen
+// 2026-09-17, op melding van Lex ("blokkerig" bij uitzoomen): Leaflet houdt
+// standaard maar 2 tegels rond het beeld vast (keepBuffer), waardoor het oude
+// kaartbeeld bij snel uitzoomen tot een klein rechthoekje in een leeg vlak
+// kromp tot de nieuwe tegels binnen waren. 6 houdt een veel groter gebied
+// vast. Alleen op de basiskaartlagen (OSM / Stadia-donker / eigen stijl).
+const KAART_KEEP_BUFFER = 6;
 let gebiedLaag = null; // losse laag voor de polygon-omtrek van een aangetikt gebied-signaal (tornado-watch, severe-outlook) én, sinds 2026-08-17, de NHC-voorspelde-koers (cone + lijn) van een orkaan
 let geselecteerdGebiedId = null; // welk gebied-signaal de gebiedLaag nu volgt, voor live meeverversen
 // 2026-08-20: zie de "zoomend dragend"-listener in initMap() — vlak vóór elke
@@ -1043,6 +1049,7 @@ function initMap() {
   basisKaartLaag = L.tileLayer('/api/tegel/{z}/{x}/{y}.png?v=osm1', {
     attribution: '© OpenStreetMap-auteurs',
     maxZoom: 19,
+    keepBuffer: KAART_KEEP_BUFFER,
   }).addTo(kaart);
 
   // 2026-09-02, op verzoek van Lex ("Ik bedoel dit" -- twee MarineTraffic-
@@ -1062,6 +1069,7 @@ function initMap() {
   donkereKaartLaag = L.tileLayer('/api/tegel-donker/{z}/{x}/{y}.png?v=stadia1', {
     attribution: '© Stadia Maps, © OpenStreetMap-auteurs',
     maxZoom: 20,
+    keepBuffer: KAART_KEEP_BUFFER,
   });
   pasKaartStijlToe(); // 2026-09-03: eventueel eerder gekozen kaartondergrond (localStorage), zie KAART_STIJLEN
 
@@ -9949,7 +9957,7 @@ function pasKaartStijlToe() {
   } else {
     if (basisKaartLaag && kaart.hasLayer(basisKaartLaag)) kaart.removeLayer(basisKaartLaag);
     if (donkereKaartLaag && kaart.hasLayer(donkereKaartLaag)) kaart.removeLayer(donkereKaartLaag);
-    eigenKaartLaag = L.tileLayer(def.url, { attribution: def.attr, maxZoom: 20, maxNativeZoom: def.maxNativeZoom }).addTo(kaart);
+    eigenKaartLaag = L.tileLayer(def.url, { attribution: def.attr, maxZoom: 20, maxNativeZoom: def.maxNativeZoom, keepBuffer: KAART_KEEP_BUFFER }).addTo(kaart);
     eigenKaartLaag.bringToBack();
   }
   KAART_STIJL_KNOP_EL?.classList.toggle('actief', def.id !== 'standaard');
