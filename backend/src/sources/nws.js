@@ -512,7 +512,51 @@ async function omtrekkenUitZones(zoneUrls) {
     const stuk = await Promise.all(urls.slice(i, i + ZONE_MAX_GELIJKTIJDIG).map(haalZoneOmtrekOp));
     stuk.forEach((ringenLatLon) => resultaat.push(...ringenLatLon));
   }
-  return resultaat;
+  return binnenPuntenBudget(resultaat, SIGNAAL_MAX_PUNTEN);
+}
+
+// 2026-09-17, op melding van Lex ("in- en uitzoomen gaat ineens zeer matig"):
+// de NWS-tsunamitest van 16 sept besloeg de hele oost- en Golfkust — honderden
+// kustzones met duizenden eilandjes/baaien, samen 199.673 punten in één
+// signaal. Leaflet (SVG) herberekent die bij elke zoomstap, vandaar het
+// haperen. ZONE_MAX_PUNTEN begrenst alleen per RING; dit begrenst het hele
+// signaal: eerst vallen de kleinste ringen af (op bbox-oppervlak — eilandjes
+// en zandbanken), daarna worden de overgebleven ringen naar rato uitgedund.
+// Een gewone tornado-watch (30 county's) blijft onder het budget en
+// verandert dus niet.
+// Afgesteld op die test: 8.428 ringen, waarvan 4.197 van <=10 punten en 594
+// op de ringlimiet (de eigenlijke kustzones). 1.000 ringen / 20.000 punten
+// houdt alle echte zones met ~30 punten per stuk — 10x minder rekenwerk.
+const SIGNAAL_MAX_PUNTEN = 20000;
+const SIGNAAL_MAX_RINGEN = 1000;
+const RING_MIN_PUNTEN = 12;
+function bboxOppervlak(ring) {
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const [lat, lon] of ring) {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+  }
+  return (maxLat - minLat) * (maxLon - minLon);
+}
+function binnenPuntenBudget(ringenLatLon, budget) {
+  const totaal = ringenLatLon.reduce((som, ring) => som + ring.length, 0);
+  if (totaal <= budget) return ringenLatLon;
+  const maxRingen = Math.min(SIGNAAL_MAX_RINGEN, Math.floor(budget / RING_MIN_PUNTEN));
+  let over = ringenLatLon;
+  if (over.length > maxRingen) {
+    over = ringenLatLon
+      .map((ring) => ({ ring, opp: bboxOppervlak(ring) }))
+      .sort((a, b) => b.opp - a.opp)
+      .slice(0, maxRingen)
+      .map((r) => r.ring);
+  }
+  const overTotaal = over.reduce((som, ring) => som + ring.length, 0);
+  if (overTotaal <= budget) return over;
+  const factor = budget / overTotaal;
+  // -1: dunRingUit() plakt zelf het sluitpunt er nog achteraan.
+  return over.map((ring) => dunRingUit(ring, Math.max(RING_MIN_PUNTEN, Math.floor(ring.length * factor)) - 1));
 }
 
 function zwaartepuntVanRingenLatLon(ringenLatLon) {
@@ -844,6 +888,13 @@ export async function fetchNws() {
   // gededupliceerd worden via de gemeld-Set in pushover.js/email.js, maar dit
   // voorkomt sowieso elke twijfel daarover).
   const totaal = metHistorie('nws', signalen);
+  // 2026-09-17: verlopen signalen komen uit de historie-cache met de omtrek
+  // van tóén — dus ook een omtrek van vóór het puntenbudget (de tsunamitest
+  // van 16 sept: 199.673 punten). Hier alsnog begrenzen; detail is bij
+  // verlopen signalen een verse kopie (zie metHistorie), dus muteren is veilig.
+  for (const s of totaal) {
+    if (s.detail?.verlopen && Array.isArray(s.detail.gebiedPolygon)) s.detail.gebiedPolygon = binnenPuntenBudget(s.detail.gebiedPolygon, SIGNAAL_MAX_PUNTEN);
+  }
 
   // 2026-08-22: verlopen signalen zitten niet meer in `signalen` hierboven
   // (ze staan niet meer in de live NWS-feed), dus fetchEventType() heeft er
