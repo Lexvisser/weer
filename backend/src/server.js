@@ -1422,24 +1422,42 @@ export function createApp(env) {
       const f = huidigeFronten();
       if (!f?.pngAlleenFronten) { res.writeHead(404); return res.end(); }
       const etag = `"fronten-alleen-${f.bijgewerkt}"`;
-      if (req.headers['if-none-match'] === etag) { res.writeHead(304); return res.end(); }
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': f.pngAlleenFronten.length, ETag: etag, 'Cache-Control': 'no-cache' });
+      // 2026-09-17: zelfde reden als bij serveTegel/serveRegenradar -- een
+      // losse pagina buiten de app-origin (de Cesium-bolproef) laadt dit
+      // plaatje via een CORS-controle. Ook op het 304-antwoord nodig: de
+      // browser controleert de header ook daar, anders gaat alleen de
+      // eerste keer goed.
+      const corsPng = { 'Access-Control-Allow-Origin': '*' };
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, corsPng); return res.end(); }
+      res.writeHead(200, { ...corsPng, 'Content-Type': 'image/png', 'Content-Length': f.pngAlleenFronten.length, ETag: etag, 'Cache-Control': 'no-cache' });
       return res.end(f.pngAlleenFronten);
     }
     if (url === '/api/fronten-bron.png') {
       const f = huidigeFronten();
       if (!f?.bron) { res.writeHead(404); return res.end(); }
       const etag = `"fronten-bron-${f.bijgewerkt}"`;
-      if (req.headers['if-none-match'] === etag) { res.writeHead(304); return res.end(); }
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': f.bron.length, ETag: etag, 'Cache-Control': 'no-cache' });
+      // 2026-09-17: zelfde reden als bij serveTegel/serveRegenradar -- een
+      // losse pagina buiten de app-origin (de Cesium-bolproef) laadt dit
+      // plaatje via een CORS-controle. Ook op het 304-antwoord nodig: de
+      // browser controleert de header ook daar, anders gaat alleen de
+      // eerste keer goed.
+      const corsPng = { 'Access-Control-Allow-Origin': '*' };
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, corsPng); return res.end(); }
+      res.writeHead(200, { ...corsPng, 'Content-Type': 'image/png', 'Content-Length': f.bron.length, ETag: etag, 'Cache-Control': 'no-cache' });
       return res.end(f.bron);
     }
     if (url === '/api/fronten.png') {
       const f = huidigeFronten();
       if (!f) { res.writeHead(404); return res.end(); }
       const etag = `"fronten-${f.bijgewerkt}"`;
-      if (req.headers['if-none-match'] === etag) { res.writeHead(304); return res.end(); }
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': f.png.length, ETag: etag, 'Cache-Control': 'no-cache' });
+      // 2026-09-17: zelfde reden als bij serveTegel/serveRegenradar -- een
+      // losse pagina buiten de app-origin (de Cesium-bolproef) laadt dit
+      // plaatje via een CORS-controle. Ook op het 304-antwoord nodig: de
+      // browser controleert de header ook daar, anders gaat alleen de
+      // eerste keer goed.
+      const corsPng = { 'Access-Control-Allow-Origin': '*' };
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, corsPng); return res.end(); }
+      res.writeHead(200, { ...corsPng, 'Content-Type': 'image/png', 'Content-Length': f.png.length, ETag: etag, 'Cache-Control': 'no-cache' });
       return res.end(f.png);
     }
     // 2026-08-21: vliegradar/vaarradar — beide met dezelfde ?lat=&lon=&straal=
