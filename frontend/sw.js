@@ -8,7 +8,7 @@
 // aggregator-service even niet bereikbaar is. Verhoog CACHE_NAAM telkens als
 // je wilt garanderen dat oude installaties de nieuwe versie ophalen.
 
-const CACHE_NAAM = 'weer-shell-v29'; // v29: keepBuffer 6 op de basiskaartlagen (2026-09-17). v28: Waterweg- en Maasvlakte-webcam via YouTube toegevoegd (2026-09-15). v27: webcam Hoek van Holland (2026-09-15). v26: turbine-icoon amber i.p.v. wit (2026-09-10). v25: turbine-icoon + turbinelijst als losse posities (2026-09-10). v24: Ontvangst-viewer ruimt de kaart op + NAVTEX-schema verhuisd uit Instellingen (2026-09-10). v23: NWR-kaartlaag op NWS-data (2026-09-10) — v22 stond er nog van 28 aug, terwijl app.js sindsdien vaak wijzigde; bij een herstart van de server viel de pagina dan terug op die oude schil
+const CACHE_NAAM = 'weer-shell-v30'; // v30: zeegebied-grenzen alleen uitgezoomd (2026-09-17). v29: keepBuffer 6 op de basiskaartlagen (2026-09-17). v28: Waterweg- en Maasvlakte-webcam via YouTube toegevoegd (2026-09-15). v27: webcam Hoek van Holland (2026-09-15). v26: turbine-icoon amber i.p.v. wit (2026-09-10). v25: turbine-icoon + turbinelijst als losse posities (2026-09-10). v24: Ontvangst-viewer ruimt de kaart op + NAVTEX-schema verhuisd uit Instellingen (2026-09-10). v23: NWR-kaartlaag op NWS-data (2026-09-10) — v22 stond er nog van 28 aug, terwijl app.js sindsdien vaak wijzigde; bij een herstart van de server viel de pagina dan terug op die oude schil
 const SHELL_BESTANDEN = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

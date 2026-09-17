@@ -844,6 +844,7 @@ function initMap() {
   kaart.on('moveend zoomend', () => { if (gradenActief) tekenGradenGrid(); });
   // 2026-08-30: isobaar-labels/H-L alleen vanaf ISOBAAR_LABEL_MIN_ZOOM, zie tekenIsobaren().
   kaart.on('zoomend', zetIsobaarLabelsZichtbaar);
+  kaart.on('zoomend', zetZeeGebiedenZichtbaar); // 2026-09-17: gebiedsgrenzen alleen uitgezoomd, zie ZEE_GEBIED_MAX_ZOOM
   // 14 sept 2026, stap 2b van de Baken-samenvoeging (zie baken-status.md):
   // zoomwissel doorgeven aan de WS (server-kant kiest hiermee beknopt/vol
   // per veld, zie ZOOM_DETAIL_OMHOOG/OMLAAG in wsVaarradar.js), en de canvas
@@ -5035,6 +5036,12 @@ let zeeLaag = null;
 // dieptetinten onder de seamark-laag. Zie TEGEL_DIEPTE_* in server.js.
 let zeeDiepteLaag = null;
 let zeeGebiedenLaag = null;
+// 2026-09-17, op verzoek van Lex ("die lijn van de zeegebieden over de
+// maasvlakte vind ik wel erg lelijk"): de NAVTEX-gebiedsgrenzen zijn er voor
+// het overzicht en hebben op havenniveau geen functie, maar lopen daar wel
+// dwars over land. Boven deze zoom dus weg; zodra je uitzoomt naar de
+// Noordzee staan ze er weer. Zie zetZeeGebiedenZichtbaar().
+const ZEE_GEBIED_MAX_ZOOM = 10;
 let zeeModusActief = false;
 
 // 2026-08-20, op verzoek van Lex ("de gebieden krijgen ook altijd nog een
@@ -6309,6 +6316,16 @@ function tekenIsobaren(iso) {
   zetIsobaarLabelsZichtbaar();
 }
 
+// Zie ZEE_GEBIED_MAX_ZOOM hierboven. Let op: fitBounds in toggleZeeModus()
+// gebruikt zeeGebiedenLaag.getBounds(), en dat werkt ook als de laag (nog)
+// niet op de kaart staat -- die aanroep blijft dus gewoon goed.
+function zetZeeGebiedenZichtbaar() {
+  if (!zeeGebiedenLaag || !kaart) return;
+  const toon = zeeModusActief && kaart.getZoom() <= ZEE_GEBIED_MAX_ZOOM;
+  if (toon && !kaart.hasLayer(zeeGebiedenLaag)) kaart.addLayer(zeeGebiedenLaag);
+  if (!toon && kaart.hasLayer(zeeGebiedenLaag)) kaart.removeLayer(zeeGebiedenLaag);
+}
+
 function zetIsobaarLabelsZichtbaar() {
   if (!isobarenLaag?.labels || !kaart) return;
   const toon = kaart.getZoom() >= ISOBAAR_LABEL_MIN_ZOOM;
@@ -6553,7 +6570,7 @@ function toggleZeeModus(zonderAnimatie = false) {
     if (!zeeGebiedenLaag) zeeGebiedenLaag = bouwZeeGebiedenLaag();
     kaart.addLayer(zeeDiepteLaag);
     kaart.addLayer(zeeLaag);
-    kaart.addLayer(zeeGebiedenLaag);
+    zetZeeGebiedenZichtbaar();
     // 2026-08-21, op verzoek van Lex ("de knop zee moet altijd de focus
     // leggen op het noordzeegebied ongeacht waar ik sta") — voorheen deed
     // Zee-modus helemaal niks met de kaartpositie, dus je bleef gewoon staan
@@ -6586,7 +6603,7 @@ function toggleZeeModus(zonderAnimatie = false) {
   } else {
     if (zeeLaag) kaart.removeLayer(zeeLaag);
     if (zeeDiepteLaag) kaart.removeLayer(zeeDiepteLaag);
-    if (zeeGebiedenLaag) kaart.removeLayer(zeeGebiedenLaag);
+    if (zeeGebiedenLaag && kaart.hasLayer(zeeGebiedenLaag)) kaart.removeLayer(zeeGebiedenLaag);
     // Vaarradar "leunt" op Zee-modus (zie toggleVaarradar hieronder) — als
     // Zee-modus om wat voor reden dan ook uitgaat (ook via deze knop direct,
     // niet alleen via toggleVaarradar zelf), moet Vaarradar netjes meegaan,
