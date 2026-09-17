@@ -17,6 +17,58 @@ import { stuurWebPushAlarm } from './webpush.js';
 // alles hieronder gewoon terug op de kale g7vrd-gegevens.
 import { berekenTraject, beschrijfPassage, windrichting16 } from './passageTraject.js';
 import { maakPassageBaanPng } from './passageBaanAfbeelding.js';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 2026-09-17 (Lex: "geen blauwe bal bij de ISS-passage, de hele melding
+// verdween"): g7vrd geeft alleen TOEKOMSTIGE passages terug. Valt een
+// verversing (6-uurs-poll, of een herstart na syncweer) net tijdens een
+// passage, dan viel de lopende passage uit de lijst en daarmee de hele
+// live-kaart uit de Hemel-tab. Daarom per satelliet de laatst opgehaalde
+// signalen bewaren (geheugen + backend/data, zodat het ook een herstart
+// overleeft) en een nog lopende passage die in de nieuwe lijst ontbreekt
+// weer vooraan toevoegen. Faalt stil: zonder bestand gewoon het oude gedrag.
+const PASSAGES_DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
+const bewaardePassages = new Map(); // idVoorvoegsel -> signalen
+
+function leesBewaardePassages(idVoorvoegsel) {
+  if (bewaardePassages.has(idVoorvoegsel)) return bewaardePassages.get(idVoorvoegsel);
+  try {
+    const pad = join(PASSAGES_DATA_DIR, `passages-${idVoorvoegsel}.json`);
+    if (existsSync(pad)) {
+      const lijst = JSON.parse(readFileSync(pad, 'utf8'));
+      if (Array.isArray(lijst)) return lijst;
+    }
+  } catch (err) {
+    console.error(`[weer] bewaarde ${idVoorvoegsel}-passages lezen mislukt:`, err.message ?? err);
+  }
+  return [];
+}
+
+function bewaarPassages(idVoorvoegsel, signalen) {
+  bewaardePassages.set(idVoorvoegsel, signalen);
+  try {
+    mkdirSync(PASSAGES_DATA_DIR, { recursive: true });
+    const pad = join(PASSAGES_DATA_DIR, `passages-${idVoorvoegsel}.json`);
+    const tmp = `${pad}.tmp`;
+    writeFileSync(tmp, JSON.stringify(signalen));
+    renameSync(tmp, pad);
+  } catch (err) {
+    console.error(`[weer] ${idVoorvoegsel}-passages bewaren mislukt:`, err.message ?? err);
+  }
+}
+
+// Geëxporteerd voor een losse test; zie de aanroep onderaan haalPassagesOp().
+export function metLopendePassages(nieuweSignalen, bewaard, nu = Date.now()) {
+  const bekend = new Set(nieuweSignalen.map((s) => s.id));
+  const lopend = (bewaard ?? []).filter((s) => {
+    const start = new Date(s?.detail?.starttijd).getTime();
+    const eind = new Date(s?.detail?.eindtijd).getTime();
+    return Number.isFinite(start) && Number.isFinite(eind) && start <= nu && eind >= nu && !bekend.has(s.id);
+  });
+  return [...lopend, ...nieuweSignalen];
+}
 
 const WINDRICHTINGEN = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW'];
 
@@ -194,7 +246,11 @@ export async function haalPassagesOp({
     });
   });
 
-  return { signalen, aanbevolenPassage };
+  // 2026-09-17: lopende passage behouden, zie metLopendePassages() bovenaan.
+  const compleet = metLopendePassages(signalen, leesBewaardePassages(idVoorvoegsel));
+  bewaarPassages(idVoorvoegsel, compleet);
+
+  return { signalen: compleet, aanbevolenPassage };
 }
 
 // Gedeelde alarm-check. Beide callers (celestrak.js voor de ISS,
