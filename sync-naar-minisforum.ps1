@@ -67,8 +67,30 @@ if (-not (Test-Path $tarPad)) {
     exit 1
 }
 
+# 2026-09-18: de bol (C:\Projects\WeerBol) gaat als tweede pakketje mee en
+# landt op de server in frontend/bol/, zodat hij op https://.../bol/ te zien
+# is - handig om tussendoor op de iPad te kijken. De mappen en repo's blijven
+# op de pc gescheiden; ze komen alleen hier, bij het deployen, samen.
+# Bewust alleen de bestanden die de bol nodig heeft: server.py en start.bat
+# zijn er voor het ontwikkelen op de pc, en de oude proef-HTML's hoeven niet
+# op de server te staan.
+$bolDir = Join-Path (Split-Path $projectDir -Parent) 'WeerBol'
+$bolTarPad = Join-Path $env:TEMP 'weerbol-sync.tar.gz'
+$bolMee = Test-Path (Join-Path $bolDir 'index.html')
+if ($bolMee) {
+    Write-Host "Bol inpakken..." -ForegroundColor Cyan
+    tar -czf $bolTarPad -C $bolDir index.html styles.css js
+    if (-not (Test-Path $bolTarPad)) {
+        Write-Error "Inpakken van de bol mislukt - geen tar.gz aangemaakt."
+        exit 1
+    }
+}
+
 Write-Host "Versturen naar $doel..." -ForegroundColor Cyan
 scp $tarPad "${doel}:~/weer-app-sync.tar.gz"
+if ($bolMee) {
+    scp $bolTarPad "${doel}:~/weerbol-sync.tar.gz"
+}
 
 Write-Host "Herstart-script voorbereiden..." -ForegroundColor Cyan
 $remoteLines = @(
@@ -76,6 +98,16 @@ $remoteLines = @(
     'cd ~/weer-app',
     'tar --overwrite -xzf ~/weer-app-sync.tar.gz',
     'rm ~/weer-app-sync.tar.gz',
+    '',
+    '# 2026-09-18: de bol, als die is meegestuurd. Staat los van de app en',
+    '# heeft geen herstart nodig - het zijn statische bestanden die de',
+    '# backend zelf serveert (serveStatic), bereikbaar op /bol/.',
+    'if [ -f ~/weerbol-sync.tar.gz ]; then',
+    '  mkdir -p ~/weer-app/frontend/bol',
+    '  tar --overwrite -xzf ~/weerbol-sync.tar.gz -C ~/weer-app/frontend/bol',
+    '  rm ~/weerbol-sync.tar.gz',
+    '  echo "[sync] bol bijgewerkt"',
+    'fi',
     '',
     '# 2026-08-20: nieuwe/gewijzigde dependencies (package.json) worden nu',
     '# altijd meteen geinstalleerd, VOOR de herstart hieronder - node_modules',
@@ -138,6 +170,7 @@ ssh $doel "bash ~/weer-app-remote-restart.sh"
 $remoteExitCode = $LASTEXITCODE
 
 Remove-Item $tarPad
+if ($bolMee -and (Test-Path $bolTarPad)) { Remove-Item $bolTarPad }
 Remove-Item $remoteScriptPad
 
 if ($remoteExitCode -ne 0) {

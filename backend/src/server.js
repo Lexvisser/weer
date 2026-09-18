@@ -1172,7 +1172,10 @@ export function createApp(env) {
 
   async function serveStatic(req, res) {
     const urlPath = decodeURIComponent(req.url.split('?')[0]);
-    const relPath = urlPath === '/' ? '/index.html' : urlPath;
+    // 2026-09-18: ook een MAP naar zijn index.html sturen, niet alleen de
+    // hoofdmap. Nodig sinds de bol als frontend/bol/ meekomt: zonder dit zou
+    // je /bol/index.html moeten intypen, wat op een iPad geen doen is.
+    const relPath = urlPath.endsWith('/') ? `${urlPath}index.html` : urlPath;
     const filePath = join(env.frontendDir ?? 'frontend', relPath);
     // simpele traversal-check
     if (!filePath.startsWith(env.frontendDir ?? 'frontend')) {
@@ -1181,6 +1184,14 @@ export function createApp(env) {
     }
     try {
       const s = await stat(filePath);
+      // 2026-09-18: /bol (zonder afsluitende streep) is een map -- doorsturen
+      // naar /bol/ i.p.v. 404. Moet een echte omleiding zijn en geen stille
+      // index.html: anders zou de browser js/main.js vanaf de hoofdmap zoeken
+      // in plaats van vanuit /bol/.
+      if (s.isDirectory()) {
+        res.writeHead(301, { Location: `${urlPath}/` });
+        return res.end();
+      }
       if (!s.isFile()) throw new Error('geen bestand');
       const ext = extname(filePath);
       const etag = `"${s.size.toString(16)}-${Math.round(s.mtimeMs).toString(16)}"`;
