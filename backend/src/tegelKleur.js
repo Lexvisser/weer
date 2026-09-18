@@ -86,3 +86,60 @@ export function kleurTegelMarine(buffer) {
   }
   return PNG.sync.write(png);
 }
+
+// 2026-09-18, op verzoek van Lex: dezelfde truc nog een keer, nu voor de
+// STANDAARDKAART van de app -- de "Storm Noir"-look. Dat is de gewone
+// OSM-tegel met
+//   filter: invert(1) hue-rotate(200deg) brightness(0.95) contrast(0.9) saturate(1.4)
+// erover (zie #map .leaflet-tile-pane .leaflet-tile in styles.css). Cesium
+// heeft per laag wel helderheid/contrast/verzadiging/kleurdraai, maar geen
+// invert -- en juist die invert maakt deze kaart. Dus ook hier: één keer per
+// tegel op de server, vóór het cachen.
+//
+// Anders dan bij marine hierboven worden de stappen NIET tot één matrix
+// samengevouwen. De browser zet het tussenresultaat na elke filterstap terug
+// in een 8-bits buffer en klemt daarbij op [0,1]; bij saturate(1.4) over felle
+// kleuren (de rode wegen van OSM) scheelt dat zichtbaar. Volgorde hier is dus
+// letterlijk die van de CSS: invert, kleurdraai (klemmen), helderheid+contrast,
+// verzadiging (klemmen).
+//
+// Gecontroleerd tegen Chromium zelf (canvas met ctx.filter = dezelfde keten)
+// op tien typische OSM-kleuren -- papier, bos, weiland, water, snelweg-rood,
+// hoofdweg-oranje, wit, zwart, grens-paars en tekstgrijs: hoogstens 3 van 255
+// verschil per kanaal. Dat zit in hoe de browser tussenresultaten afrondt en
+// is met het blote oog niet te zien.
+const NOIR_HUE_GRADEN = 200;
+const NOIR_VERZADIGING = 1.4;
+const NOIR_HELDERHEID = 0.95;
+const NOIR_CONTRAST = 0.9;
+const NOIR_HUE = hueMatrix(NOIR_HUE_GRADEN);
+const NOIR_SAT = verzadigingMatrix(NOIR_VERZADIGING);
+// brightness(0.95) en daarna contrast(0.9) werken per kanaal en zijn samen
+// y = SCHAAL * x + VERSCHUIVING. Let op de volgorde: hier staat brightness
+// vóór contrast in de CSS (bij marine andersom), dus de verschuiving komt
+// alleen van het contrast. Het bereik blijft [0,05 .. 0,905] -- daartussen
+// hoeft dus niet geklemd.
+const NOIR_SCHAAL = NOIR_HELDERHEID * NOIR_CONTRAST;
+const NOIR_VERSCHUIVING = 0.5 - 0.5 * NOIR_CONTRAST;
+
+function klem(v) {
+  return v <= 0 ? 0 : v >= 1 ? 1 : v;
+}
+
+export function kleurTegelNoir(buffer) {
+  const png = PNG.sync.read(buffer);
+  const d = png.data;
+  const a = [0, 0, 0];
+  const b = [0, 0, 0];
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue; // volledig doorzichtig: niets te kleuren
+    for (let k = 0; k < 3; k++) a[k] = 1 - d[i + k] / 255; // invert(1)
+    for (let k = 0; k < 3; k++) b[k] = klem(NOIR_HUE[k][0] * a[0] + NOIR_HUE[k][1] * a[1] + NOIR_HUE[k][2] * a[2]);
+    for (let k = 0; k < 3; k++) a[k] = b[k] * NOIR_SCHAAL + NOIR_VERSCHUIVING;
+    for (let k = 0; k < 3; k++) {
+      const v = klem(NOIR_SAT[k][0] * a[0] + NOIR_SAT[k][1] * a[1] + NOIR_SAT[k][2] * a[2]);
+      d[i + k] = Math.round(v * 255);
+    }
+  }
+  return PNG.sync.write(png);
+}

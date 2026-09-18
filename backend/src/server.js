@@ -3,7 +3,7 @@
 // gewoon "node src/index.js". Scheelt gedoe voor een klein persoonlijk project.
 import { createServer } from 'node:http';
 import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
-import { kleurTegelMarine } from './tegelKleur.js'; // 2026-09-17: server-zijdige MarineTraffic-kleuring, zie dat bestand
+import { kleurTegelMarine, kleurTegelNoir } from './tegelKleur.js'; // 2026-09-17/09-18: server-zijdige MarineTraffic- en Storm Noir-kleuring, zie dat bestand
 import { join, extname, dirname } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -473,6 +473,17 @@ function haalTegelData(sleutel, zNum, xNum, yNum, bron = 'osm') {
           buffer = kleurTegelMarine(buffer);
         } catch (err) {
           console.error('[weer] tegel omkleuren (marine) mislukt, ongekleurd doorgegeven:', err.message ?? err);
+        }
+      }
+      // 2026-09-18: 'noir' is de gewone OSM-tegel met de "Storm Noir"-kleuring
+      // van de app-standaardkaart erop (zie tegelKleur.js) -- de tegenhanger
+      // van het invert-filter uit styles.css, maar dan bruikbaar in de
+      // WebGL-bol. Zelfde plek en zelfde vangnet als marine hierboven.
+      if (bron === 'noir') {
+        try {
+          buffer = kleurTegelNoir(buffer);
+        } catch (err) {
+          console.error('[weer] tegel omkleuren (noir) mislukt, ongekleurd doorgegeven:', err.message ?? err);
         }
       }
 
@@ -1838,6 +1849,13 @@ export function createApp(env) {
     const tegelMarineMatch = url.match(/^\/api\/tegel-marine\/(\d+)\/(\d+)\/(\d+)\.png$/);
     if (tegelMarineMatch) {
       return serveTegel(req, res, tegelMarineMatch[1], tegelMarineMatch[2], tegelMarineMatch[3], 'marine');
+    }
+    // 2026-09-18: de standaardkaart van de app (OSM + "Storm Noir"-filter),
+    // server-zijdig gekleurd zodat de Cesium-bol hem ook kan tonen. Bron is de
+    // gewone OSM-tegel, dus geen API-key en dezelfde maxZ 19.
+    const tegelNoirMatch = url.match(/^\/api\/tegel-noir\/(\d+)\/(\d+)\/(\d+)\.png$/);
+    if (tegelNoirMatch) {
+      return serveTegel(req, res, tegelNoirMatch[1], tegelNoirMatch[2], tegelNoirMatch[3], 'noir');
     }
     // 2026-09-03: kaartstijl-keuze (wisselknop in de app), zie TEGEL_STIJLEN.
     const tegelStijlMatch = url.match(/^\/api\/tegel-stijl\/([a-z-]+)\/(\d+)\/(\d+)\/(\d+)\.png$/);
